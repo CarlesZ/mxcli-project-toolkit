@@ -16,13 +16,18 @@
 #       read in existing-app-change mode only)
 #   T3  existing-app-change, rounds recorded: ROUND line is the LAST row, with stories and the
 #       delivered count; full screen carries it too
-#   T4  existing-app-change: no "agent slots unfilled" / "done- stalled" in WATCH, NEXT does not
-#       point at done-; the baseline on the same project DID print them (so the case can fail)
+#   T4  existing-app-change: no "agent slots unfilled" in WATCH, but "done- stalled" stays (the
+#       build loop runs unchanged at Stages 5-6); the baseline DID print the slot item
 #   T5  existing-app-change, no Rounds section: the ROUND line says none recorded and where to add it
 #   T6  Rounds table without a Stories column: no stories part, no crash
+#   T6b a "## Rounds of review" section is not the Rounds table
 #   T7  docs/manual-steps.md: unticked Done lines counted, ticked ones in the total, the fenced
 #       example ignored — on --brief STATE and on the full screen
 #   T8  the shipped template copied as-is counts 0 of 0 (its example is fenced)
+#   T9  NEXT drops final-look ONLY, and only under gate-check's derived stage readout below its
+#       from-stage: (a) derived Stage P keeps every other pending pass; (b) a module opened under
+#       that lagging line keeps look/sweep/journeys; (c) a hand-written line filters nothing;
+#       (d) the FIRST "Stage N" on the line is the stage, not a later one
 
 export MXTK_LEAKGUARD_DENYFILE="${TMPDIR:-/tmp}/mxtk-fixture-denylist.$$"
 export MXTK_NO_GUIDE=1
@@ -107,7 +112,7 @@ printf '%s\n' "$b" | grep -qxF "$exp" && ok "T3 --brief ROUND line is the last r
 f="$("$NEW" "$E" 2>&1)"
 printf '%s\n' "$f" | grep -qF 'ROUND     Round 2: Approval rework — in test' && ok "T3 full screen carries the ROUND line" || bad "T3 full screen ROUND line" "$f"
 case "$b$f" in *"agent slots unfilled"*) bad "T4 agent-slot noise still printed in existing-app mode" "$b";; *) ok "T4 no agent-slot WATCH item";; esac
-case "$b$f" in *"done- stalled"*|*"not done-"*) bad "T4 done- noise still printed in existing-app mode" "$b";; *) ok "T4 no done- stall in WATCH or NEXT";; esac
+case "$b" in *"done- stalled"*) ok "T4 done- stall still reported (Stages 5-6 run the build loop unchanged in this mode)";; *) bad "T4 done- stall dropped in existing-app mode — it must stay" "$b";; esac
 if [ "$HAVE_BASE" = 1 ]; then
   o="$("$OLD" "$E" --brief 2>&1)"
   case "$o" in *"agent slots unfilled"*) ok "T4 control: the baseline printed the agent-slot noise on this same project";;
@@ -125,6 +130,11 @@ E3="$(mkproj eac-nostories "Change an existing app")"
 printf '%s\n' '| Round | Title | State |' '|---|---|---|' '| 1 | Login tweak | building |' | add_rounds "$E3"
 b="$("$NEW" "$E3" --brief 2>&1)"
 printf '%s\n' "$b" | grep -qxF 'ROUND   Round 1: Login tweak — building · 0 of 1 round(s) delivered' && ok "T6 no Stories column: no stories part" || bad "T6 no-Stories-column ROUND line" "$b"
+
+# --- T6b: a "## Rounds of review" heading is a different section ------------------------------
+printf '\n## Rounds of review\n\n| Round | Title | State |\n|---|---|---|\n| 9 | Peer review | done |\n' >> "$E3/PROJECT.md"
+b="$("$NEW" "$E3" --brief 2>&1)"
+printf '%s\n' "$b" | grep -qxF 'ROUND   Round 1: Login tweak — building · 0 of 1 round(s) delivered' && ok "T6b \"## Rounds of review\" is not read as the Rounds table" || bad "T6b a look-alike heading was read" "$b"
 
 # --- T7: manual steps count ----------------------------------------------------------------
 cat > "$E/docs/manual-steps.md" <<'EOF'
@@ -152,10 +162,11 @@ cp "$W/tk/templates/manual-steps.md" "$E2/docs/manual-steps.md" 2>/dev/null
 b="$("$NEW" "$E2" --brief 2>&1)"
 printf '%s\n' "$b" | grep -qF 'manual steps pending 0 of 0' && ok "T8 template copied as-is: 0 of 0" || bad "T8 template count" "$b"
 
-# --- T9: NEXT never names an obligation owed only at a later stage (review of #303) ----------
+# --- T9: final-look leaves NEXT only on a derived readout below Stage 6 (reviews of #303, #326) --
 # A scaffold always has gate-check "Needs attention" items, which win NEXT before the obligation
 # rule is reached. tk2's gate-check.sh runs the REAL gate-check and drops only that block and its
-# count, so the obligation lines status.sh reads are real output, not typed here.
+# count, so the obligation lines status.sh reads are real output, not typed here. The stage line
+# is the one the real gate-check derives and writes (a fresh scaffold derives "Stage P").
 mkdir -p "$W/tk2"; (cd "$W/tk" && tar -cf - .) | (cd "$W/tk2" && tar -xf -)
 mv "$W/tk2/bin/gate-check.sh" "$W/tk2/bin/gate-check-real.sh"
 cat > "$W/tk2/bin/gate-check.sh" <<'WRAP'
@@ -165,26 +176,52 @@ cat > "$W/tk2/bin/gate-check.sh" <<'WRAP'
   | sed -E 's/[0-9]+ need attention/0 need attention/'
 WRAP
 chmod +x "$W/tk2/bin/gate-check.sh"
-P9="$W/ob"; mkdir -p "$P9"; : > "$P9/Fixture.mpr"; "$W/tk2/bin/init-project.sh" "$P9" >/dev/null 2>&1
-setstage() { awk -v st="$2" '/^## Current stage/{print; getline; print ""; getline; print st; next} {print}' "$1/PROJECT.md" > "$1/p.new" && mv "$1/p.new" "$1/PROJECT.md"
-             grep -q '^Entry mode:' "$1/PROJECT.md" || printf '\nEntry mode: migration\n' >> "$1/PROJECT.md"; }
+[ "$HAVE_BASE" = 1 ] && cp "$OLD" "$W/tk2/bin/status-baseline.sh"
 nextof() { "$1" "$2" --brief 2>/dev/null | sed -n 's/^NEXT    //p'; }
-setstage "$P9" "**Stage 3 — Architecture & Design**, in progress."
-grep -q '^\*\*Stage 3' "$P9/PROJECT.md" || bad "T9 setup: stage line not written" "$(sed -n '1,15p' "$P9/PROJECT.md")"
+stage_of() { awk '/^## Current stage/{f=1;next} f && /^\*\*Stage/{print;exit}' "$1/PROJECT.md"; }
+setline() { MXTK_L="$2" awk '/^## Current stage/{f=1} f && /^\*\*Stage/ && !d {print ENVIRON["MXTK_L"]; d=1; next} {print}' "$1/PROJECT.md" > "$1/p.new" && mv "$1/p.new" "$1/PROJECT.md"; }
+P9="$W/ob"; mkdir -p "$P9"; : > "$P9/Fixture.mpr"; "$W/tk2/bin/init-project.sh" "$P9" >/dev/null 2>&1
+printf '\nEntry mode: migration\n' >> "$P9/PROJECT.md"
+"$W/tk2/bin/gate-check-real.sh" "$P9" >/dev/null 2>&1   # writes the derived readout
+DERIVED="$(stage_of "$P9")"
+case "$DERIVED" in *"(derived by gate-check"*) ok "T9 setup: real gate-check wrote a derived readout";; *) bad "T9 setup: no derived readout" "$DERIVED";; esac
+
+# T9a derived Stage P, no module opened: final-look out of NEXT, the other pending passes stay.
 n="$(nextof "$W/tk2/bin/status.sh" "$P9")"
-case "$n" in "discharge:"*) ok "T9 Stage 3: NEXT still discharges what is owed now";; *) bad "T9 Stage 3: expected a discharge NEXT" "$n";; esac
-case "$n" in *final-look*|*skeleton*|*coherence*) bad "T9 Stage 3: NEXT names an obligation first owed at Stage 5/6" "$n";; *) ok "T9 Stage 3: no Stage 5/6 obligation in NEXT";; esac
-case "$n" in *workflow-count*) ok "T9 Stage 3: a Stage 3 obligation stays in NEXT";; *) bad "T9 Stage 3: Stage 3 obligation dropped" "$n";; esac
+case "$n" in "discharge:"*) ok "T9a derived Stage P: NEXT still discharges what is pending";; *) bad "T9a expected a discharge NEXT" "$n";; esac
+case "$n" in *final-look*) bad "T9a derived Stage P: NEXT still names final-look" "$n";; *) ok "T9a derived Stage P: final-look not in NEXT";; esac
+case "$n" in *skeleton*) ok "T9a only final-look is filtered (skeleton, also above Stage P, stays)";; *) bad "T9a filter dropped more than final-look" "$n";; esac
 f="$("$W/tk2/bin/status.sh" "$P9" 2>/dev/null)"
-printf '%s\n' "$f" | grep -q 'obligations pending:.*final-look' && ok "T9 the screen still lists final-look under obligations pending" || bad "T9 obligations pending line lost final-look" "$f"
-setstage "$P9" "**Stage 1 — Analysis**, in progress."
-n="$(nextof "$W/tk2/bin/status.sh" "$P9")"
-case "$n" in "discharge:"*) bad "T9 Stage 1: every pending obligation is above Stage 1, NEXT should fall through" "$n";; *) ok "T9 Stage 1: NEXT is not a discharge line (falls through to the later rules)";; esac
+printf '%s\n' "$f" | grep -q 'obligations pending:.*final-look' && ok "T9a the screen still lists final-look under obligations pending" || bad "T9a obligations pending line lost final-look"
 if [ "$HAVE_BASE" = 1 ]; then
-  cp "$OLD" "$W/tk2/bin/status-baseline.sh"
   o="$(nextof "$W/tk2/bin/status-baseline.sh" "$P9")"
-  case "$o" in *final-look*) ok "T9 control: the baseline told a Stage 1 project to discharge final-look";; *) bad "T9 control: baseline did not name final-look — case cannot fail" "$o";; esac
+  case "$o" in *final-look*) ok "T9a control: the baseline sent a Stage P project to final-look";; *) bad "T9a control: baseline did not name final-look — case cannot fail" "$o";; esac
 fi
+
+# T9b a module opened under the same lagging derived line: the module passes stay in NEXT.
+mkdir -p "$P9/.claude/loop/verify/Orders"
+n="$(nextof "$W/tk2/bin/status.sh" "$P9")"
+case "$n" in *look*sweep*journeys*|*look*journeys*sweep*) ok "T9b module opened under a lagging line: look/sweep/journeys still in NEXT";; *) bad "T9b owed module passes hidden from NEXT" "$n";; esac
+rm -rf "$P9/.claude/loop/verify"
+
+# T9c a hand-written (non-derived) Stage 1 line: no filtering at all.
+setline "$P9" "**Stage 1 — Analysis**, in progress."
+n="$(nextof "$W/tk2/bin/status.sh" "$P9")"
+case "$n" in *final-look*) ok "T9c hand-written stage line: final-look stays in NEXT";; *) bad "T9c a hand-written line must not filter" "$n";; esac
+
+# T9d the FIRST "Stage N" on the line decides: the real derived line with its stage set to 6 and a
+# later "Stage 2" in its text keeps final-look (owed from 6) in NEXT; reading the last one would
+# drop it. From Stage 5 the skeleton and agent-stub rules win NEXT first, so this case records a
+# proven skeleton and fills the stub slots — both are what a real Stage 6 project has.
+printf '\nSkeleton proven 2026-10-13\n' >> "$P9/PROJECT.md"
+for _f in "$P9"/.claude/agents/*.md "$P9/CLAUDE.local.md"; do
+  [ -f "$_f" ] && sed -E 's/\{\{[^}]*\}\}/filled/g' "$_f" > "$_f.new" && mv "$_f.new" "$_f"
+done
+setline "$P9" "$(printf '%s' "$DERIVED" | sed -E 's/Stage P — Kickoff/Stage 6 — Verify/; s/gates passed: [^(]*/gates passed: P-5, Stage 2 re-opened /')"
+case "$(stage_of "$P9")" in *"Stage 6"*"Stage 2"*"(derived by gate-check"*) : ;; *) bad "T9d setup" "$(stage_of "$P9")";; esac
+n="$(nextof "$W/tk2/bin/status.sh" "$P9")"
+case "$n" in "discharge:"*final-look*) ok "T9d first Stage N wins: Stage 6 keeps final-look despite a later Stage 2";;
+  *) bad "T9d expected final-look in a discharge NEXT (first Stage N is 6)" "$n";; esac
 
 echo "SCORE: $PASS/$((PASS+FAIL))"
 [ "$FAIL" -eq 0 ]

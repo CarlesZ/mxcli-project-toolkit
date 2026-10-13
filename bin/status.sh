@@ -121,7 +121,7 @@ if [ "$ENTRY" = "existing-app-change" ]; then
   ROUND_LINE="$(awk -F'|' '
     function trim(s) { gsub(/^[ \t*`]+|[ \t*`]+$/, "", s); return s }
     function cell(k) { return (k in col) ? trim($(col[k])) : "" }
-    /^## +Rounds/ { sec = 1; next }
+    /^## +Rounds *$/ { sec = 1; next }
     sec && /^## / { sec = 0 }
     !sec || !/^\|/ { next }
     !hdr { for (i = 2; i < NF; i++) col[tolower(trim($i))] = i; hdr = 1; next }
@@ -182,23 +182,25 @@ NEED_ATTN="$(printf '%s\n' "$GC" | awk '/^Needs attention/{f=1;next} /^Next up:|
 APPROVED_OVER="$(printf '%s\n' "$GC" | grep -m1 '^Approved over a failing gate:' | sed -E 's/^Approved over a failing gate: *//; s/ — .*$//')"
 N_ATTN="$(printf '%s\n' "$GC" | grep -oE '[0-9]+ need attention' | grep -oE '^[0-9]+' || echo 0)"
 OB_PENDING="$(printf '%s\n' "$GC" | grep -E '^Obligation ' | grep -E ' (PENDING|FAULT) ' | awk '{print $2": "$3}' | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
-# NEXT only names obligations the project can discharge NOW. Each row in bin/lib/obligations.tsv
-# carries the stage it is first owed at (column 8); the gate-check line reports every one, so a
-# Stage 1 project was told "discharge: final-look" — the Stage 6 whole-app LOOK — and never saw
-# gate-check's "Next up:" hint behind it (review of #303). Above-stage obligations stay on the
-# screen's "obligations pending" line; they are only kept out of NEXT. A stage line we cannot read
-# keeps them all (louder, never quieter).
-CUR_STAGE="$(printf '%s\n' "$STAGE_LINE" | sed -nE 's/.*Stage ([0-9P]).*/\1/p' | head -1)"
+# NEXT never sends a project to final-look (the Stage 6 whole-app LOOK) before Stage 6: a Stage 1
+# project was told "discharge: final-look" and never saw gate-check's "Next up:" hint behind it
+# (review of #303). final-look ONLY, and only when the stage line is gate-check's own derived
+# readout — the same rule obligation-check.sh applies once it prints NOT YET DUE (#321), at which
+# point final-look never reaches OB_PENDING and this is a no-op. Every other obligation keeps its
+# place in NEXT whatever the stage line says: a hand-written or lagging line must not hide the
+# module passes a project with an opened module owes (review of #326). The FIRST "Stage N" on the
+# line is the stage; the screen's "obligations pending" line still lists final-look.
 OB_NEXT="$OB_PENDING"
-if [ -n "$OB_PENDING" ] && [ -n "$CUR_STAGE" ] && [ -f "$TOOLKIT_ROOT/bin/lib/obligations.tsv" ]; then
-  OB_NEXT="$(printf '%s\n' "$OB_PENDING" | tr ',' '\n' | sed -E 's/^ +//' | awk -v cur="$CUR_STAGE" -v tsv="$TOOLKIT_ROOT/bin/lib/obligations.tsv" '
-    function rank(x) { return (x == "P") ? -1 : x + 0 }
-    BEGIN { FS = "\t"; while ((getline l < tsv) > 0) { if (l ~ /^#/ || l == "") continue; split(l, c, "\t"); from[c[1]] = c[8] }; FS = " " }
-    { id = $1; sub(/:$/, "", id)
-      if ((id in from) && from[id] ~ /^[0-9P]$/ && rank(from[id]) > rank(cur)) next
-      out = out (out == "" ? "" : ", ") $0 }
-    END { print out }')"
-fi
+case "$STAGE_LINE" in *"(derived by gate-check"*)
+  CUR_STAGE="$(printf '%s\n' "$STAGE_LINE" | grep -oE 'Stage [0-9P]' | head -1 | sed 's/^Stage //')"
+  FL_FROM="$(awk -F'\t' '$1=="final-look"{print $8; exit}' "$TOOLKIT_ROOT/bin/lib/obligations.tsv" 2>/dev/null)"
+  case "$CUR_STAGE:$FL_FROM" in
+    P:[0-9]*) _behind=1 ;;
+    [0-9]:[0-9]*) [ "$CUR_STAGE" -lt "$FL_FROM" ] && _behind=1 || _behind=0 ;;
+    *) _behind=0 ;;
+  esac
+  [ "$_behind" = 1 ] && OB_NEXT="$(printf '%s\n' "$OB_PENDING" | tr ',' '\n' | sed -E 's/^ +//' | grep -v '^final-look:' | paste -s -d, - | sed 's/,/, /g')" ;;
+esac
 MOD_OPENED="$(printf '%s\n' "$GC" | grep -m1 -E '^Obligation look ' | grep -q 'no module has been opened' && echo 0 || echo '≥1')"
 GC_NEXT="$(printf '%s\n' "$GC" | grep -m1 '^Next up:' | sed 's/^Next up: *//')"
 TK_UPD="$(printf '%s\n' "$GC" | grep -m1 '^Toolkit updates:' | sed 's/^Toolkit updates: *//; s/\..*$//')"
@@ -208,12 +210,12 @@ if [ -x "$PROJECT_DIR/bin/coherence-cadence.sh" ]; then
   COH="coherence $COH_OUT"
 fi
 
-# existing-app-change: the agent-slot and done- signals are pipeline-build bookkeeping. A change
-# stream delivered in rounds left them reading "agent slots unfilled: 35 in 6 file(s)" and
-# "done- stalled" through four delivered rounds, and NEXT pointed at them (#301). In that mode
-# only, they are dropped from WATCH and NEXT; the round line above is the progress readout.
-# Every other mode prints exactly as before (tests/wave2/test-status-existing-app.sh, byte-diff).
-if [ "$EAC" = 1 ]; then DONE_STALL=""; NOT_DONE_PASS=""; PH_TOTAL=0; fi
+# existing-app-change: a change stream delivered in rounds does not fill the pipeline agent stubs,
+# and "agent slots unfilled: 35 in 6 file(s)" sat in WATCH through four delivered rounds (#301).
+# In that mode only, that one WATCH item is dropped; the round line above is the progress readout.
+# done- stays: Stage 5-6 run the build loop unchanged in this mode (existing-app-change.md), and
+# the stub NEXT rule stays because it still fires only at Stage 5-7. Every other mode prints
+# exactly as before (tests/wave2/test-status-existing-app.sh, byte-diff).
 
 # --- NEXT: ordered lookup, earliest wins. Owner skill in the right-hand comment. -------------
 next_action() {
@@ -259,7 +261,7 @@ TK="toolkit $TK_COMMIT_NOW"; [ -n "$TK_COMMIT_REG" ] && [ "$TK_COMMIT_REG" != "$
 [ -n "$TK_UPD" ] && TK="$TK · updates: $TK_UPD"
 WATCH=""
 for _w in "${APPROVED_OVER:+APPROVED OVER A FAILING GATE: $APPROVED_OVER}" "$DONE_STALL" "${BP_STALE%% (*}" \
-          "$( [ "${PH_TOTAL:-0}" -gt 0 ] && echo "agent slots unfilled: $PH_TOTAL in $PH_FILES file(s)" )" "$PACK_GAP"; do
+          "$( [ "${PH_TOTAL:-0}" -gt 0 ] && [ "$EAC" = 0 ] && echo "agent slots unfilled: $PH_TOTAL in $PH_FILES file(s)" )" "$PACK_GAP"; do
   [ -n "$_w" ] && WATCH="${WATCH:+$WATCH · }$_w"
 done
 if [ "$BRIEF" = 1 ]; then

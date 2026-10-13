@@ -226,9 +226,10 @@ Record each round as one row in `PROJECT.md`, under a section you add when the f
   log rows in `PROJECT.md`). The per-story record — scope, touched units, decisions, test verdict,
   manual steps — stays there; this table does not copy it.
 
-In this entry mode `status.sh` drops the agent-slot and `done-` signals from WATCH and NEXT: a
-change stream delivered in rounds does not fill pipeline agent stubs or rename scripts to `done-`,
-so those lines measured nothing. The round line replaces them. Other modes print as before.
+In this entry mode `status.sh` drops the "agent slots unfilled" item from WATCH: a change stream
+delivered in rounds does not fill the pipeline agent stubs, so that line measured nothing, and the
+round line is the progress readout instead. The `done-` signals stay — Stages 5–6 run the build loop
+unchanged here, `done-` rename included. Other modes print as before.
 
 ---
 

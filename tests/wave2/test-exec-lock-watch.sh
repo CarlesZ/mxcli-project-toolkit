@@ -157,6 +157,17 @@ printf '%s 1700000000 old.mdl\n' "$(dead_pid)" > "$LOCK"
 OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
 [ "$RC" -eq 0 ] && ok "an empty takeover file older than a minute is stale too" || bad "empty old takeover file blocked (rc $RC)"
 rm -f "$LOCK.takeover"
+# A FRESH empty takeover file is a live contender between its create and its write, NOT stale.
+# `find -mmin +0` judged it stale within a second, so a third contender got in (review of #324).
+printf '%s 1700000000 old.mdl\n' "$(dead_pid)" > "$LOCK"
+: > "$LOCK.takeover"
+OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+[ "$RC" -ne 0 ] && ok "a fresh empty takeover file is respected: the run waits, then refuses (rc $RC)" \
+  || bad "a fresh empty takeover file was judged stale and the run went ahead"
+hasnt "  and it did not execute" "$OUT" "fake mxcli exec"
+[ -e "$LOCK.takeover" ] && [ ! -s "$LOCK.takeover" ] && ok "  and the contender's takeover file was left in place" \
+  || bad "the fresh takeover file was moved or replaced"
+rm -f "$LOCK" "$LOCK.takeover"
 
 echo "-- lock: old bare-pid format, dead pid"
 dead_pid > "$LOCK"
@@ -329,6 +340,12 @@ printf 'alter entity Shop.Order modify attribute Note: String(500);\n' > "$WORK/
 expect "$WORK/modattr.mdl" "$UNK" "modify attribute" "alter entity ... modify attribute (no ADD) is not watch-safe"
 printf "create constant Shop.ApiBase type String default 'https://example.invalid';\n" > "$WORK/const.mdl"
 expect "$WORK/const.mdl" "$UNK" "create constant" "create constant"
+# Neutral for the watch verdict: a move into a folder (verbatim from a pending issue) next to a
+# watch-safe page edit stays "watch can apply this".
+{ grep -m1 -E "^move page RenA\.Other to folder 'Pages/Same';" \
+    "$TOOLKIT/bug-logs/pending-github-issues/rename-page-renames-folder.md"; cat "$PFM/bind-contract-alter.mdl"; } > "$WORK/movefolder.mdl"
+grep -q '^move page' "$WORK/movefolder.mdl" && expect "$WORK/movefolder.mdl" "watch can apply this" "" "move page ... to folder + alter page is not 'unknown'" \
+  || bad "golden 'move page ... to folder' line not found"
 
 echo "-- watch-compat in a real run"
 cp "$GAL/05-demo-data.mdl" "$P/mdlsource/demo.mdl"

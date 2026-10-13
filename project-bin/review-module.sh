@@ -302,6 +302,16 @@ if [ "$MODULE_KNOWN" -eq 0 ]; then
 fi
 
 # ── 1. Conformance: the ledger's claimed status vs the live model ───────────
+# A module whose ledger is split one-per-BRD gets one conformance report PER BRD
+# (report-<date>-<BRD>.tsv, conformance-check.sh since 2026-10-13), not one report-<date>.tsv.
+# Reading a single file here took one BRD's rows (newest-by-mtime) or, on --reuse, none at all
+# — a per-BRD module would FAULT rung 13 of verify-module with "does not exist". So both paths
+# below read every report of the run and slice them together.
+# conf_slice OUT FILE... — header once, then this module's rows from every file.
+conf_slice() {
+  local out="$1"; shift
+  awk -F'\t' -v m="$MODULE" 'NR==1 {print; next} FNR==1 {next} $1==m' "$@" > "$out"
+}
 # The ledger is a claim. This measures it. A module with no ledger has made no claims to
 # measure, which is a FAULT and emphatically not a pass — "no ledger" is exactly the hole
 # that let projects ship with no coverage-ledger.md at all and read as silence.
@@ -315,15 +325,22 @@ if [ ! -f "$LEDGER" ]; then
 elif [ -n "$REUSE_CONF" ]; then
   printf '\n\033[1m── conformance (reusing the caller'"'"'s run)\033[0m\n'
   case "$REUSE_CONF" in /*) RC_PATH="$REUSE_CONF" ;; *) RC_PATH="$ROOT/$REUSE_CONF" ;; esac
-  if [ ! -f "$RC_PATH" ]; then
+  # The reused path names the run's base report (report-<date>.tsv); its per-BRD siblings
+  # (report-<date>-<BRD>.tsv) belong to the same run and are read with it.
+  # Counted, not read back as ${#RC_FILES[@]}: bash 3.2 (stock macOS) aborts on an empty
+  # array expansion under `set -u`.
+  RC_FILES=(); RC_N=0
+  [ -f "$RC_PATH" ] && { RC_FILES[$RC_N]="$RC_PATH"; RC_N=$((RC_N+1)); }
+  for f in "${RC_PATH%.tsv}"-*.tsv; do [ -f "$f" ] && { RC_FILES[$RC_N]="$f"; RC_N=$((RC_N+1)); }; done
+  if [ "$RC_N" -eq 0 ]; then
     c_warn "  ! INSTRUMENT FAULT"; echo " — $REUSE_CONF does not exist"
     echo "      The caller said it had already measured conformance and it had not."
     printf 'conformance (reused)\tFAULT\t2\t-\t(%s missing)\n' "$REUSE_CONF" >> "$SUMMARY"
     note_instrument conformance fault 2 "" "" "reuse requested but $REUSE_CONF does not exist"
     FAULTED=$((FAULTED+1))
   else
-    awk -F'\t' -v m="$MODULE" 'NR==1 || $1==m' "$RC_PATH" > "$OUTDIR/conformance.tsv"
-    RC_ROWS=$(awk -F'\t' -v m="$MODULE" '$1==m' "$RC_PATH" | grep -c . || true)
+    conf_slice "$OUTDIR/conformance.tsv" "${RC_FILES[@]}"
+    RC_ROWS=$(awk -F'\t' -v m="$MODULE" 'FNR>1 && $1==m' "${RC_FILES[@]}" | grep -c . || true)
     if [ "${RC_ROWS:-0}" -eq 0 ]; then
       rm -f "$OUTDIR/conformance.tsv"
       c_warn "  ! INSTRUMENT FAULT"; echo " — $REUSE_CONF carries no rows for $MODULE"
@@ -333,7 +350,7 @@ elif [ -n "$REUSE_CONF" ]; then
         "reused report carries no rows for $MODULE — refusing to report a clean run over zero measurements"
       FAULTED=$((FAULTED+1))
     else
-      c_ok "  ✓ reused"; echo "  ($RC_ROWS rows from ${REUSE_CONF})"
+      c_ok "  ✓ reused"; echo "  ($RC_ROWS rows from $RC_N report(s): ${REUSE_CONF%.tsv}[-<BRD>].tsv)"
       printf 'conformance (reused)\tPASS\t0\t-\t%s\n' "$REUSE_CONF" >> "$SUMMARY"
       note_instrument conformance pass 0 "" "$REUSE_CONF" ""
     fi
@@ -359,13 +376,18 @@ else
     echo "      conformance did not complete — NOT slicing an older report in as its result."
   else
     CONF_TSV="$(ls -t "$ROOT"/docs/conformance/report-*.tsv 2>/dev/null | head -1)"
+    CONF_NEW=(); CONF_N=0
+    for f in "$ROOT"/docs/conformance/report-*.tsv; do
+      [ -f "$f" ] && [ "$f" -nt "$OUTDIR/.started" ] && { CONF_NEW[$CONF_N]="$f"; CONF_N=$((CONF_N+1)); }
+    done
     if [ -z "$CONF_TSV" ]; then
       echo "      no docs/conformance/report-*.tsv to slice; the report will carry a fault row."
-    elif [ ! "$CONF_TSV" -nt "$OUTDIR/.started" ]; then
+    elif [ "$CONF_N" -eq 0 ]; then
       echo "      newest conformance report predates this run — NOT slicing it in."
       echo "      (${CONF_TSV#$ROOT/} is older than $STAMP; it measured a different run.)"
     else
-      awk -F'\t' -v m="$MODULE" 'NR==1 || $1==m' "$CONF_TSV" > "$OUTDIR/conformance.tsv"
+      # Every report this run wrote: one, or one per BRD for a per-BRD ledger.
+      conf_slice "$OUTDIR/conformance.tsv" "${CONF_NEW[@]}"
     fi
   fi
 fi

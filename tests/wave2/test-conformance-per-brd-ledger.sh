@@ -20,6 +20,7 @@
 #   6. a module whose index links to another module's per-BRD file: the link is named
 #   7. LEDGER_FILE that does not exist FAULTs instead of falling back
 #   8. --help documents LEDGER_FILE
+#   9. a BRD file name with a space stays one BRD (one report, not two)
 #
 # The ledgers and the mxcli stub are SYNTHETIC, as in test-conformance-baseline-scope.sh: the
 # field-proof rule's captured-golden-input clause governs parsers of tool output, and nothing
@@ -74,6 +75,9 @@ if grep -qx "$name" "$d/PRESENT"; then echo "-- $name"; echo "create $name;"; ex
 echo "Error: $name not found"; exit 1
 EOF
   chmod +x "$P/mxcli"
+  mkdir -p "$P/architecture/modules/Shipping/coverage-ledger"
+  ledger_rows "$P/architecture/modules/Shipping/coverage-ledger/F003 shipping.md" Shipping Parcel ACT_Parcel_Send
+  printf 'Shipping.Parcel\nShipping.ACT_Parcel_Send\n' >> "$P/PRESENT"
   ledger_rows "$O/coverage-ledger/F001-orders.md" Orders Order ACT_Order_Save
   ledger_rows "$O/coverage-ledger/F002-invoicing.md" Orders Invoice ACT_Invoice_Send
   cat > "$O/coverage-ledger.md" <<'EOF'
@@ -126,8 +130,8 @@ for layout in single two; do
 
   # --- 4. unscoped run: the index is not a third ledger -----------------------------------------
   rc="$(run)"
-  if [ "$rc" = 0 ] && grep -q "measured 4 " "$WORK/out" && ! grep -q "Orders/coverage-ledger.md" "$WORK/out"; then
-    ok "[$layout] unscoped run measures the 4 per-BRD rows; Orders' index is not read"
+  if [ "$rc" = 0 ] && grep -q "measured 6 " "$WORK/out" && ! grep -q "Orders/coverage-ledger.md" "$WORK/out"; then
+    ok "[$layout] unscoped run measures the 6 per-BRD rows (3 BRDs); Orders' index is not read"
   else
     bad "[$layout] unscoped run wrong on per-BRD layout" "rc=$rc $(out)"
   fi
@@ -145,6 +149,14 @@ for layout in single two; do
   [ "$rc" = 2 ] && grep -q "is an index" "$WORK/out" && grep -q "Orders/coverage-ledger/F002-invoicing.md" "$WORK/out" \
     && ok "[$layout] Billing's index names the ledger its rows are in" \
     || bad "[$layout] cross-module index not explained" "rc=$rc $(out)"
+
+  # --- 9. a BRD id with a space is one BRD --------------------------------------------------------
+  rm -f "$P"/docs/conformance/report-*.tsv
+  rc="$(run --module Shipping)"
+  n=$(ls "$P"/docs/conformance/ | grep -c '^report-')
+  [ "$rc" = 0 ] && [ "$n" = 1 ] && ls "$P"/docs/conformance/report-*-"F003 shipping.tsv" >/dev/null 2>&1 \
+    && ok "[$layout] 'F003 shipping.md' writes one report, report-<date>-F003 shipping.tsv" \
+    || bad "[$layout] a BRD id with a space was split" "rc=$rc $(ls "$P/docs/conformance" | tr '\n' '|')"
 
   # --- 7. a LEDGER_FILE that does not exist FAULTs ----------------------------------------------
   rc="$( ( cd "$P" && PROJECT_ROOT="$P" LEDGER_FILE=architecture/nope.md bash "$SUT" --quiet --module Orders ) \

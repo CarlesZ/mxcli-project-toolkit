@@ -249,8 +249,10 @@ BUILD_MODE="$(q "SELECT Value FROM catalog_meta WHERE Key='build_mode';")"
 # The build_mode LABEL is not checked (fixed 2026-10-13, field report 2026-10-11): mxcli v0.24.0
 # labels a complete catalog 'source', and the old `!= full` test refused it on every run. What
 # this script needs is checked instead, below: the tables by name, non-empty refs/activities,
-# and at least one 'call' edge (the call graph in step 2 reads RefKind='call'). The label is
-# recorded in manifest.json as found, so a reader can still see it.
+# and at least one refs row that carries a RefKind (the dependency facts group by it). The label
+# is recorded in manifest.json as found, so a reader can still see it. Zero 'call' edges is NOT a
+# fault: an early module reached only from pages and buttons has none, and its call graph is
+# legitimately empty — requiring them (the first cut of this fix) refused such apps.
 MISSING=""
 for t in modules_data entities_data microflows_data activities_data pages_data scheduled_events_data refs catalog_meta projects; do
   [ "$(q "SELECT count(*) FROM sqlite_master WHERE name='$t';")" = "1" ] || MISSING="$MISSING $t"
@@ -268,14 +270,14 @@ if [ "${N_MODULES:-0}" -eq 0 ] || [ "${N_REFS:-0}" -eq 0 ] || [ "${N_ACTS:-0}" -
   echo "FAULT: catalog is vacuous (modules=$N_MODULES refs=$N_REFS activities=$N_ACTS, build_mode '${BUILD_MODE:-unset}'). An empty graph is not a clean app." >&2
   exit 2
 fi
-N_CALLS=$(q "SELECT count(*) FROM refs WHERE RefKind='call';")
-if [ "${N_CALLS:-0}" -eq 0 ]; then
-  KINDS="$(q "SELECT RefKind || '=' || count(*) FROM refs GROUP BY RefKind ORDER BY count(*) DESC LIMIT 8;" | paste -sd' ' -)"
-  echo "FAULT: catalog has 0 'call' edges (build_mode '${BUILD_MODE:-unset}', $N_REFS refs: ${KINDS:-none})." >&2
-  echo "       The call graph and dead-asset facts read 'call' edges. Refusing to write facts without them." >&2
+KINDS="$(q "SELECT k || '=' || n FROM (SELECT COALESCE(NULLIF(RefKind,''),'(none)') k, count(*) n FROM refs GROUP BY k ORDER BY n DESC LIMIT 8);" | paste -sd' ' -)"
+N_KINDED=$(q "SELECT count(*) FROM refs WHERE COALESCE(RefKind,'') <> '';")
+if [ "${N_KINDED:-0}" -eq 0 ]; then
+  echo "FAULT: catalog refs carry no RefKind (build_mode '${BUILD_MODE:-unset}', $N_REFS refs by kind: ${KINDS:-none})." >&2
+  echo "       The dependency and call-graph facts are read by kind. Refusing to write facts without one." >&2
   exit 2
 fi
-log "catalog ok: build_mode=${BUILD_MODE:-unset} modules=$N_MODULES refs=$N_REFS (call=$N_CALLS) activities=$N_ACTS (${T1}s)"
+log "catalog ok: build_mode=${BUILD_MODE:-unset} modules=$N_MODULES refs=$N_REFS (${KINDS:-none}) activities=$N_ACTS (${T1}s)"
 
 # ---------------------------------------------------------------------------------------------
 # Step 2 — inventory + dependencies, straight from the catalog through the REAL module column.

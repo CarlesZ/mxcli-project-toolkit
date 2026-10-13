@@ -26,7 +26,7 @@
 # is an intent question, answered against the module brief, not here.
 #
 # Usage: bin/graph-sweep.sh [--module <Name>] [--min-elements N] [--tsv]
-# Exit:  0 swept · 2 instrument fault (stale catalog, empty graph, no 'call' edges, missing db)
+# Exit:  0 swept · 2 instrument fault (stale catalog, empty or untyped graph, missing db)
 
 set -uo pipefail
 
@@ -119,26 +119,32 @@ fi
 # rows. So the sweep FAULTed on every run on that mxcli, on a fresh, complete catalog:
 #   FAULT: catalog build_mode is 'source'; reference edges require 'full'.
 # The label was a proxy for "the reference edges are there". Test that directly instead: the
-# orphan finding reads RefKind 'call' (with action/menu_item/show_page/datasource), and a
-# catalog built without edges (the old 'fast' mode) has none. Zero 'call' edges is the
-# signature of a catalog that cannot answer the question, whatever its label says.
-# Assumption, stated: a real model with microflows has at least one microflow-to-microflow
-# call. A model with literally none would FAULT here; the message says what was counted.
+# wiring finding reads every refs row, grouped by module, and the orphan finding reads the
+# inbound kinds in $READ_KINDS (shared with the ORPHANS query below). A catalog built without
+# edges (the old 'fast' mode) has an empty refs table; one whose rows carry no RefKind cannot
+# answer the orphan question either. Those two FAULT, naming the mode and the per-kind counts.
+#
+# Requiring 'call' specifically (the first cut of this fix) was a regression: an early greenfield
+# module reached only from buttons and pages has action/show_page edges and no microflow-to-
+# microflow call at all, and master swept it fine. So any kinded edge is enough to run; a catalog
+# with none of the orphan-read kinds still sweeps, with a warning that its orphan list is moot.
+READ_KINDS="'call','action','menu_item','show_page','datasource'"
 REFS=$(q "SELECT COUNT(*) FROM refs;")
 OBJS=$(q "SELECT COUNT(*) FROM objects;")
+KINDS="$(q "SELECT k || '=' || n FROM (SELECT COALESCE(NULLIF(RefKind,''),'(none)') k, count(*) n FROM refs GROUP BY k ORDER BY n DESC LIMIT 8);" | paste -sd' ' -)"
 if [ "${REFS:-0}" -eq 0 ] || [ "${OBJS:-0}" -eq 0 ]; then
   echo "FAULT: graph is empty (refs=$REFS objects=$OBJS, build_mode '${BUILD_MODE:-unset}'). Refusing to report a clean sweep." >&2
   echo "       Rebuild: ./mxcli -p $MPR -c 'REFRESH CATALOG FULL'" >&2
   exit 2
 fi
-CALLS=$(q "SELECT COUNT(*) FROM refs WHERE RefKind='call';")
-if [ "${CALLS:-0}" -eq 0 ]; then
-  KINDS="$(q "SELECT RefKind || '=' || COUNT(*) FROM refs GROUP BY RefKind ORDER BY COUNT(*) DESC LIMIT 8;" | paste -sd' ' -)"
-  echo "FAULT: catalog has 0 'call' edges (build_mode '${BUILD_MODE:-unset}', $REFS refs: ${KINDS:-none})." >&2
-  echo "       The orphan finding reads 'call' edges; without them every microflow looks orphaned." >&2
+KINDED=$(q "SELECT COUNT(*) FROM refs WHERE COALESCE(RefKind,'') <> '';")
+if [ "${KINDED:-0}" -eq 0 ]; then
+  echo "FAULT: catalog refs carry no RefKind (build_mode '${BUILD_MODE:-unset}', $REFS refs by kind: ${KINDS:-none})." >&2
+  echo "       The orphan finding is read by kind. Refusing to report a sweep from untyped edges." >&2
   echo "       Rebuild: ./mxcli -p $MPR -c 'REFRESH CATALOG FULL'" >&2
   exit 2
 fi
+READ_EDGES=$(q "SELECT COUNT(*) FROM refs WHERE RefKind IN ($READ_KINDS);")
 
 WIRING_FILTER=""
 ORPHAN_FILTER=""
@@ -194,7 +200,7 @@ WHERE m.ModuleName NOT IN (
   AND NOT EXISTS (
         SELECT 1 FROM refs r
         WHERE r.TargetName = m.QualifiedName
-          AND r.RefKind IN ('call','action','menu_item','show_page','datasource'))
+          AND r.RefKind IN ($READ_KINDS))
   $ORPHAN_FILTER
 ORDER BY m.ModuleName, m.Name;
 ")"
@@ -210,7 +216,7 @@ fi
 N_UNWIRED=$(printf '%s\n' "$WIRING" | awk -F'|' 'NF && $3==0' | grep -c . || true)
 N_ORPH=$(printf '%s\n' "$ORPHANS" | grep -c . || true)
 
-echo "graph-sweep · catalog $CAT_MTIME (build_mode ${BUILD_MODE:-unset}) · $OBJS objects · $REFS typed edges ($CALLS call)"
+echo "graph-sweep · catalog $CAT_MTIME (build_mode ${BUILD_MODE:-unset}) · $OBJS objects · $REFS typed edges (${KINDS:-none})"
 echo
 echo "  module wiring (>= $MIN_ELEMENTS elements)"
 printf '    %-24s %8s %9s %10s\n' MODULE ELEMENTS INBOUND OUTBOUND
@@ -218,6 +224,7 @@ printf '%s\n' "$WIRING" | awk -F'|' 'NF {printf "    %-24s %8s %9s %10s%s\n", $1
 
 echo
 echo "  orphaned microflows (no call / action / nav inbound, entry-point prefixes excluded): $N_ORPH"
+[ "${READ_EDGES:-0}" -eq 0 ] && echo "    WARNING: the catalog has no call/action/menu_item/show_page/datasource edges, so every microflow reads as orphaned here; check the edge kinds above."
 if [ "$N_ORPH" -gt 0 ]; then
   printf '%s\n' "$ORPHANS" | awk -F'|' 'NF {printf "    %-56s %s activities\n", $1, $2}' | head -40
   [ "$N_ORPH" -gt 40 ] && echo "    ... and $((N_ORPH-40)) more"

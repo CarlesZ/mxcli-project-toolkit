@@ -428,13 +428,15 @@ STAMP="$(date +%Y-%m-%d)"
 # One report per BRD for per-BRD ledgers (report-<date>-<BRD>.tsv), so measuring several BRDs
 # does not leave only the last one on disk; rows from every other shape keep report-<date>.tsv.
 REPORTS=""
-for b in $(printf '%s\n' "$RESULTS" | awk -F'\t' 'NF{print $7}' | sort -u); do
+# while-read, not `for b in $(…)`: a BRD file name with a space must stay one BRD.
+while IFS= read -r b; do
+  [ -n "$b" ] || continue
   if [ "$b" = "-" ]; then REPORT="$OUTDIR/report-$STAMP.tsv"; else REPORT="$OUTDIR/report-$STAMP-$b.tsv"; fi
   { printf 'module\tpointer\tstored\tobserved\tverdict\tcommand\n'
     printf '%s\n' "$RESULTS" | awk -F'\t' -v b="$b" 'BEGIN{OFS="\t"} $7==b {print $1,$2,$3,$4,$5,$6}'
   } > "$REPORT"
   REPORTS+="$REPORT"$'\n'
-done
+done <<< "$(printf '%s\n' "$RESULTS" | awk -F'\t' 'NF{print $7}' | sort -u)"
 
 count() { printf '%s\n' "$RESULTS" | awk -F'\t' -v v="$1" '$5==v' | grep -c . || true; }
 OK=$(count OK); STALE=$(count STALE); UNDER=$(count UNDERSTATED); UNK=$(count UNKNOWN-STATUS)

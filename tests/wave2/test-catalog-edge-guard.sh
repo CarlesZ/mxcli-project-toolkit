@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: bash test-catalog-call-edges.sh [path-to-graph-sweep.sh]
+# Usage: bash test-catalog-edge-guard.sh [path-to-graph-sweep.sh]
 #
 # Fixture for the catalog guard in project-bin/graph-sweep.sh and project-bin/app-facts.sh
 # (app-facts.sh is taken from beside the subject).
@@ -9,14 +9,19 @@
 # writes 'source' even after `REFRESH CATALOG FULL`, on a catalog holding 5,368 typed refs rows,
 # so every sweep on that mxcli ended in (verbatim from the report — the golden input):
 #   FAULT: catalog build_mode is 'source'; reference edges require 'full'.
-# The fix tests what the scripts read instead of the label: a non-empty refs table with at
-# least one RefKind='call' edge.
+# The fix tests what the scripts read instead of the label: a non-empty refs table whose rows
+# carry a RefKind. It FAULTs only on an empty or kind-less refs table.
+#
+# The first cut of the fix required a 'call' edge, which refused a model with no
+# microflow-to-microflow calls at all (an early module reached only from pages and buttons) —
+# a regression against master, caught in review. Case 2 guards it.
 #
 # Cases, each on BOTH layouts (single-tree, and two-tree with the .mpr and catalog under app/):
-#   1. build_mode 'source' + call edges  -> sweep runs, orphan finding still correct
-#   2. build_mode 'full'   + zero call edges -> FAULT naming the mode and the per-kind counts
-#   3. build_mode 'fast'   + empty refs  -> FAULT (graph is empty), as before
-#   4. app-facts: 'source' + calls passes the guard; zero calls FAULTs naming mode and counts
+#   1. build_mode 'source' + call edges   -> sweep runs, orphan finding still correct
+#   2. build_mode 'full'   + action edges only, zero calls -> sweep runs (as on master)
+#   3. build_mode 'full'   + kind-less refs -> FAULT naming the mode and the per-kind counts
+#   4. build_mode 'fast'   + empty refs    -> FAULT, as before
+#   5. app-facts: 'source' + calls and action-only both pass the guard; kind-less FAULTs
 #
 # The catalog databases are SYNTHETIC: no real catalog.db is captured in this repo, and the
 # report quotes only the FAULT line and the counts. Tables and columns are exactly the ones the
@@ -45,9 +50,9 @@ bad() { FAIL=$((FAIL+1)); echo "  FAIL — $1"; [ -n "${2:-}" ] && echo "       
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/catalog-calls.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
-# mkdb <db> <build_mode> <with-calls:1|0> <with-refs:1|0>
+# mkdb <db> <build_mode> <refs shape: calls|actions|kindless|empty>
 mkdb() {
-  local db="$1" mode="$2" calls="$3" refs="$4"
+  local db="$1" mode="$2" shape="$3"
   mkdir -p "$(dirname "$db")"; rm -f "$db"
   {
     echo "CREATE TABLE catalog_meta (key TEXT, value TEXT);"
@@ -68,11 +73,15 @@ mkdb() {
       echo "INSERT INTO objects VALUES ('$m','${m%%.*}','MICROFLOW');"
       echo "INSERT INTO microflows_data VALUES ('$m','${m%%.*}','${m#*.}',3,'MICROFLOW');"
     done
-    if [ "$refs" = 1 ]; then
-      echo "INSERT INTO refs VALUES ('PAGE','Orders.Order_Edit','Orders.ACT_Save','action','Orders');"
-      echo "INSERT INTO refs VALUES ('MICROFLOW','Billing.ACT_Send','Orders.ACT_Save','action','Billing');"
-      [ "$calls" = 1 ] && echo "INSERT INTO refs VALUES ('MICROFLOW','Orders.ACT_Save','Orders.SUB_Total','call','Orders');"
-    fi
+    case "$shape" in
+      calls|actions)
+        echo "INSERT INTO refs VALUES ('PAGE','Orders.Order_Edit','Orders.ACT_Save','action','Orders');"
+        echo "INSERT INTO refs VALUES ('MICROFLOW','Billing.ACT_Send','Orders.ACT_Save','action','Billing');"
+        [ "$shape" = calls ] && echo "INSERT INTO refs VALUES ('MICROFLOW','Orders.ACT_Save','Orders.SUB_Total','call','Orders');" ;;
+      kindless)
+        echo "INSERT INTO refs VALUES ('PAGE','Orders.Order_Edit','Orders.ACT_Save','','Orders');"
+        echo "INSERT INTO refs VALUES ('MICROFLOW','Orders.ACT_Save','Orders.SUB_Total',NULL,'Orders');" ;;
+    esac
   } | sqlite3 "$db"
 }
 
@@ -94,7 +103,7 @@ for layout in single two; do
   echo "== graph-sweep · $layout-tree layout"
 
   # --- 1. 'source' with call edges: the field case --------------------------------------------
-  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" source 1 1
+  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" source calls
   rc="$(sweep "$P")"
   if grep -q "FAULT: catalog build_mode is 'source'; reference edges require 'full'." "$WORK/out"; then
     bad "[$layout] build_mode 'source' refused by label (issue #259 golden FAULT line)" "rc=$rc $(out)"
@@ -109,18 +118,27 @@ for layout in single two; do
     bad "[$layout] orphan finding wrong on a 'source' catalog" "$(out)"
   fi
 
-  # --- 2. 'full' label but zero call edges: the label is not evidence --------------------------
-  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" full 0 1
+  # --- 2. no microflow-to-microflow calls at all: still sweeps (the review-caught regression) ----
+  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" full actions
   rc="$(sweep "$P")"
-  if [ "$rc" = 2 ] && grep -q "0 'call' edges" "$WORK/out" && grep -q "build_mode 'full'" "$WORK/out" \
-     && grep -q "action=2" "$WORK/out"; then
-    ok "[$layout] zero call edges FAULTs, naming the mode and per-kind counts (action=2)"
+  if [ "$rc" = 0 ] && grep -q "graph-sweep ·.*action=2" "$WORK/out" && grep -q "Orders.SUB_Total" "$WORK/out"; then
+    ok "[$layout] action-only catalog (zero calls) is swept, as on master"
   else
-    bad "[$layout] a catalog with no call edges was not refused by what it holds" "rc=$rc $(out)"
+    bad "[$layout] a model with no calls was refused" "rc=$rc $(out)"
   fi
 
-  # --- 3. empty refs still FAULTs ---------------------------------------------------------------
-  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" fast 0 0
+  # --- 3. refs present but kind-less: the label is not evidence ---------------------------------
+  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" full kindless
+  rc="$(sweep "$P")"
+  if [ "$rc" = 2 ] && grep -q "carry no RefKind" "$WORK/out" && grep -q "build_mode 'full'" "$WORK/out" \
+     && grep -q "(none)=2" "$WORK/out"; then
+    ok "[$layout] kind-less refs FAULT, naming the mode and per-kind counts ((none)=2)"
+  else
+    bad "[$layout] a catalog with untyped edges was not refused by what it holds" "rc=$rc $(out)"
+  fi
+
+  # --- 4. empty refs still FAULTs ---------------------------------------------------------------
+  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" fast empty
   rc="$(sweep "$P")"
   if [ "$rc" = 2 ] && grep -q "^FAULT:" "$WORK/out"; then
     ok "[$layout] empty refs still FAULTs (never a clean sweep)"
@@ -128,13 +146,14 @@ for layout in single two; do
     bad "[$layout] empty refs not refused" "rc=$rc $(out)"
   fi
 
-  # --- 4. app-facts: same guard, through a stub mxcli that drops a prepared catalog -------------
+  # --- 5. app-facts: same guard, through a stub mxcli that drops a prepared catalog -------------
   if [ -f "$AF" ]; then
-    for variant in source-calls full-nocalls; do
-      P="$(proj $layout)"; M="$(mdir "$P")"
+    for variant in source-calls full-actions full-kindless; do
+      P="$(proj $layout)"
       case "$variant" in
-        source-calls) mkdb "$WORK/prep.db" source 1 1 ;;
-        full-nocalls) mkdb "$WORK/prep.db" full 0 1 ;;
+        source-calls)  mkdb "$WORK/prep.db" source calls ;;
+        full-actions)  mkdb "$WORK/prep.db" full actions ;;
+        full-kindless) mkdb "$WORK/prep.db" full kindless ;;
       esac
       cat > "$WORK/mxcli-stub" <<EOF
 #!/usr/bin/env bash
@@ -152,11 +171,18 @@ EOF
           else
             bad "[$layout] app-facts refused a 'source' catalog with call edges" "rc=$rc $(out)"
           fi ;;
-        full-nocalls)
-          if [ "$rc" = 2 ] && grep -q "0 'call' edges" "$WORK/out" && grep -q "build_mode 'full'" "$WORK/out"; then
-            ok "[$layout] app-facts FAULTs on zero call edges, naming the mode"
+        full-actions)
+          if grep -q "catalog ok: build_mode=full" "$WORK/out"; then
+            ok "[$layout] app-facts accepts an action-only catalog (zero calls)"
           else
-            bad "[$layout] app-facts wrote facts from a catalog with no call edges" "rc=$rc $(out)"
+            bad "[$layout] app-facts refused a model with no calls" "rc=$rc $(out)"
+          fi ;;
+        full-kindless)
+          if [ "$rc" = 2 ] && grep -q "carry no RefKind" "$WORK/out" && grep -q "build_mode 'full'" "$WORK/out" \
+             && grep -q "(none)=2" "$WORK/out"; then
+            ok "[$layout] app-facts FAULTs on kind-less refs, naming the mode and counts"
+          else
+            bad "[$layout] app-facts wrote facts from untyped refs" "rc=$rc $(out)"
           fi ;;
       esac
     done

@@ -22,11 +22,16 @@
 #       --dry-run writes nothing
 #   T8  exec.sh --cr: a malformed id is refused (exit 2) before anything needs a project; a
 #       well-formed one passes through to --change-class; the BUILD-LOG detail carries "cr:"
+#   T9  CRLF PROJECT.md (saved on Windows): the section is found, the scan and the gate line
+#       match the LF copy exactly, and sync does not append a second section
 
 export MXTK_LEAKGUARD_DENYFILE="${TMPDIR:-/tmp}/mxtk-fixture-denylist.$$"
 export MXTK_NO_GUIDE=1
 export MXTK_SYNC_SKIP_CLONE_CHECK=1
-set -uo pipefail
+# No pipefail, on purpose: every pipeline here is `printf "$OUT" | grep -q …`, and under pipefail a
+# grep -q that matches early can SIGPIPE printf on a long $OUT, turning a hit into a FAIL. Seen as
+# an intermittent "no sync message" in T7 (2026-10-13). No assertion reads an upstream exit code.
+set -u
 
 GATE="${1:?usage: test-change-log.sh /path/to/gate-check.sh}"
 case "$GATE" in /*) ;; *) GATE="$PWD/$GATE" ;; esac
@@ -187,6 +192,37 @@ OUT="$(cd "$WORK/empty" && bash "$EXEC" --cr CR-07 --change-class "$MDL" 2>&1)";
 [ "$RC" = "0" ] && printf '%s' "$OUT" | grep -qE '^(logic|ui-only)	' && ok "--cr CR-07 passes through to --change-class" \
   || bad "--cr then --change-class: rc=$RC" "$OUT"
 grep -q 'cr: \$CR_ID' "$EXEC" && ok "BUILD-LOG detail carries 'cr: <id>'" || bad "BUILD-LOG detail has no cr tag"
+
+echo "== T9: CRLF register =="
+# Same rows as T2 on a fresh real scaffold, then every line ended in CRLF — what an editor on
+# Windows writes. Before the fix the heading regex never matched: has_section failed, the scan
+# counted 0 rows, gate-check said "no section", and sync-project.sh appended a second one.
+P9="$(mkproj t9)"; R9="$P9/PROJECT.md"
+add_rows "$R9" <<'EOF2'
+| CR-01 | 2026-10-13 | user | Customer also needs a VAT number | requirement | S | F003.brd.json | proven | abc1234, journey customer-edit |
+| CR-02 | 2026-10-13 | user | Orders overview should be a gallery, not a grid | visual | S | design/ui-reviews/orders | applied | |
+| CR-03 | 2026-10-13 | stakeholder (finance lead) | Approvals over 10k need a second approver | decision | L | PROJECT.md new row | open | |
+| CR-04 | 2026-10-13 | user | Search \| Reset buttons do nothing | bug | S | none | **agreed** | |
+EOF2
+LF_SCAN="$(mxtk_change_log_scan "$R9")"
+LF_LINE="$("$GATE" --no-html "$P9" 2>&1 | grep '^Change log:')"
+case "$LF_LINE" in "Change log: WARN — 2 of 4 change request(s) not yet applied (open 1, refined 0, agreed 1); 1 applied/proven with no Closed-by"*) ok "LF baseline: WARN, 2 of 4 pending + 1 without evidence" ;;
+  *) bad "LF baseline line" "$LF_LINE" ;; esac
+awk '{ printf "%s\r\n", $0 }' "$R9" > "$R9.crlf" && mv "$R9.crlf" "$R9"
+grep -q $'\r$' "$R9" && ok "precondition: PROJECT.md is CRLF" || bad "CRLF conversion failed"
+mxtk_change_log_has_section "$R9" && ok "has_section finds the heading in a CRLF file" || bad "has_section misses the CRLF heading"
+CR_SCAN="$(mxtk_change_log_scan "$R9")"
+[ "$CR_SCAN" = "$LF_SCAN" ] && ok "scan of the CRLF file = scan of the LF file" \
+  || bad "CRLF scan differs" "$(printf 'LF:\n%s\nCRLF:\n%s' "$LF_SCAN" "$CR_SCAN" | cat -A)"
+printf '%s\n' "$CR_SCAN" | grep -q $'\r' && bad "a \\r leaked into the scan output" || ok "no \\r in the scan output"
+CR_LINE="$("$GATE" --no-html "$P9" 2>&1 | grep '^Change log:')"
+[ "$CR_LINE" = "$LF_LINE" ] && ok "gate line on CRLF = gate line on LF ($LF_LINE)" \
+  || bad "gate line differs on CRLF" "$(printf 'LF:   %s\nCRLF: %s' "$LF_LINE" "$CR_LINE")"
+OUT="$("$SYNC" "$P9" 2>&1)"
+[ "$(count_heading "$R9")" = "1" ] && ok "sync on CRLF: still exactly one '## Change log'" \
+  || bad "sync on CRLF: $(count_heading "$R9") headings"
+printf '%s\n' "$OUT" | grep -q "appended the '## Change log' section" && bad "sync claims it appended a section to a CRLF file that has one" \
+  || ok "sync does not append to a CRLF file"
 
 echo ""
 echo "test-change-log: $PASS passed, $FAIL failed"

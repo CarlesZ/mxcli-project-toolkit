@@ -763,7 +763,7 @@ stale assertion. This is a real, observed failure mode, not a hypothetical — s
 `iterative-build-loop.md` → "Requirements Drift-Sync Rule" (where the detection mechanics — which
 BRD fields count as "asserted" — live).
 
-**Ownership is split, on purpose** (the table in `change-intake.md` → Owners is the single source):
+**Ownership is split, on purpose** (`change-intake.md` → Owners is the single source; `change-intake-detail.md` expands it):
 - **The lead** (the session talking to the user) **marks**: it writes the decision row and its
   marker. A helper that hits a BRD-touching decision reports it to the lead, because `mdl-agent`
   writes only `.mdl` and `gate-agent` is read-only (`agent-roles.md`).

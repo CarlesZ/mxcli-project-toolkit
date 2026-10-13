@@ -7,7 +7,9 @@
 #   ./bin/app-restart.sh --timeout <s>    readiness bound (default 240, MXTK_RESTART_TIMEOUT)
 #
 # Exit: 0 up and serving · 1 restarted but not proven up (timeout, no bundle) · 2 usage ·
-#       3 refused — nothing was stopped (no record, record belongs elsewhere, start command unknown)
+#       3 refused — nothing was stopped (no record, record belongs elsewhere, start command unknown) ·
+#       4 instrument blocked — the app or admin port is held by a process this script did not record
+#         (named, with its pid; never stopped). A run summary records it as blocked, not as FAIL.
 #
 # WHY (#289 item 1, field run 2026-10-12). A 20-task UX-fix run over three apps, one lane per app:
 # implementers were told never to start or stop apps, because a broad kill in one lane had once
@@ -41,6 +43,14 @@
 # carries Mendix markers — any 4xx-answering process is NOT enough, see test-stack-up.sh), and the
 # JS bundle that index.html references (dist/index.js or mxui.js) answering 2xx — an app serving
 # a blank page because the bundle is missing is not up (contrib note 5e, 2026-08-29).
+#
+# PORTS HELD BY SOMEONE ELSE (#262, field run 2026-10-10): Studio Pro had started its own runtime on
+# the same app/admin ports seconds before a restart. `mxcli run --local` then failed with
+# "Authentication failed" — the admin API answering was the other runtime's — which reads as a
+# credential problem, and the next journey ran against Studio Pro's runtime: no OQL, run INVALID,
+# four more runs NOT RUN. So before stopping anything, and again before starting, the app port and
+# the admin port (record's adminPort, else app port + 10) must be free or held by the recorded
+# process tree; otherwise it exits 4 naming the holder (lsof / ss / netstat) and kills nothing.
 #
 # Never touches Studio Pro, the model, Docker, or another port. Docker stack: bin/test-stack-up.sh
 # --restart (scoped to this project's container). Bash 3.2 / Git Bash / macOS / Linux.
@@ -119,6 +129,66 @@ mask() {  # print argv joined, with the value after any password/secret/token/ke
     "s/(-[-A-Za-z_]*([Pp][Aa][Ss][Ss]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Kk][Ee][Yy])[-A-Za-z_]*)(=| +)[^ ']+/\1\3****/g"
 }
 
+# port_holder <port> — who LISTENs on it: prints "<pid>|<process name>" and returns 0, or returns 1
+# when the port is free. "?|an unidentified process" when something accepts connections but no
+# tool here can name it (lsof without root cannot see another user's sockets). Never kills anything.
+# Per platform: lsof (macOS, Linux), then ss (Linux without lsof), netstat -ano + tasklist (Windows).
+port_holder() {
+  local p="$1" out pid="" name=""
+  case "$(mxtk_platform)" in
+    windows)
+      pid="$(netstat -ano 2>/dev/null | tr -d '\r' | awk -v p=":$p" '$1=="TCP" && $4=="LISTENING" && substr($2, length($2)-length(p)+1)==p { print $5; exit }')"
+      [ -n "$pid" ] && name="$(tasklist //FI "PID eq $pid" //FO CSV //NH 2>/dev/null | tr -d '\r' | head -1 | cut -d'"' -f2)" ;;
+    *)
+      if command -v lsof >/dev/null 2>&1; then
+        out="$(lsof -nP -iTCP:"$p" -sTCP:LISTEN -Fpc 2>/dev/null)"
+        pid="$(printf '%s\n' "$out" | sed -n 's/^p//p' | head -1)"
+        name="$(printf '%s\n' "$out" | sed -n 's/^c//p' | head -1)"
+      fi
+      if [ -z "$pid" ] && command -v ss >/dev/null 2>&1; then
+        out="$(ss -ltnpH "sport = :$p" 2>/dev/null | head -1)"
+        pid="$(printf '%s' "$out" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
+        name="$(printf '%s' "$out" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p')"
+      fi ;;
+  esac
+  if [ -n "$pid" ]; then printf '%s|%s\n' "$pid" "${name:-unknown}"; return 0; fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then printf '?|an unidentified process\n'; return 0; fi
+  return 1
+}
+# holder_text "<pid>|<name>" — "studiopro pid 4711" plus its parent where ps can show one, because a
+# runtime Studio Pro started shows up as plain "java"; the parent is what names the owner.
+holder_text() {
+  local pid="${1%%|*}" name="${1#*|}" pp pn
+  [ "$pid" = "?" ] && { printf '%s (pid unknown — no lsof/ss/netstat could name it)\n' "$name"; return; }
+  printf '%s pid %s' "$name" "$pid"
+  if [ "$(mxtk_platform)" != windows ]; then
+    pp="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    pn="$(ps -o comm= -p "${pp:-0}" 2>/dev/null | sed 's#.*/##')"
+    [ -n "$pp" ] && [ "$pp" != 1 ] && [ -n "$pn" ] && printf ' (parent: %s pid %s)' "$pn" "$pp"
+  fi
+  printf '\n'
+}
+# blocked <port> "<pid>|<name>" <when> — exit 4, the holder named, nothing of it touched.
+blocked() {
+  echo "✗ app-restart: instrument blocked — port :$1 is held by $(holder_text "$2"), not this project's run --local." >&2
+  echo "  $3. This script never stops a process it did not record, so it is not touching that one." >&2
+  echo "  Starting now would collide: mxcli reports 'Authentication failed' against the other runtime's admin API." >&2
+  echo "  → Stop that process yourself (Studio Pro: stop its run), or start on free ports:" >&2
+  echo "    ./bin/app-restart.sh --cmd './mxcli run --local --watch -p $(basename "$MPR") --app-port <free> --admin-port <free>'" >&2
+  echo "  Record this run as INSTRUMENT BLOCKED, not as a test failure." >&2
+  exit 4
+}
+# in_our_tree <pid> — the recorded pid itself, or a descendant of it (the runtime mxcli started).
+in_our_tree() {
+  local p="$1" i=0
+  [ "$ALIVE" = 1 ] || return 1
+  while [ -n "$p" ] && [ "$p" != 0 ] && [ "$p" != 1 ] && [ "$i" -lt 10 ]; do
+    [ "$p" = "$PID" ] && return 0
+    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"; i=$((i + 1))
+  done
+  return 1
+}
+
 # ── 1. The record ───────────────────────────────────────────────────────────
 [ -n "$HS" ] || refuse "no run --local record for this project (.mxcli/run-local.json beside $(basename "$MPR"))." \
   "This app was not started with \`mxcli run --local\` (v0.24+), or it is not running. This script never" \
@@ -138,6 +208,7 @@ if [ "$HS_REAL" != "$MPR_REAL" ] && [ "$HS_REAL" != "$MPR_TARGET" ] \
     "A copied project carries the original's record; stopping its pid would stop someone else's app."
 fi
 ALIVE=0; pid_alive "$PID" && ALIVE=1
+ADMIN_PORT="$(hs_num adminPort "$HS")"; [ -n "$ADMIN_PORT" ] || ADMIN_PORT=$((PORT + 10))
 
 # ── 2. How it was started ───────────────────────────────────────────────────
 REC_DIR="$PROJECT_ROOT/.claude/loop/app-restart"; REC="$REC_DIR/start.cmd"
@@ -175,6 +246,22 @@ if [ "$ALIVE" = 1 ]; then echo "  stop:  pid $PID (from $HS) and its own child p
 else echo "  stop:  nothing — recorded pid $PID is not running"; fi
 echo "  start: $(mask "${ARGV[@]}")"
 echo "         in $START_CWD   [$HOW]"
+echo "  ports: app :$PORT, admin :$ADMIN_PORT"
+
+# ── 2b. Ports: free, or held by the recorded tree — never by someone else ───
+# Checked before anything is stopped, so a collision costs nothing. When the recorded app is alive
+# and the holder cannot be placed in its tree (no name, or Windows where Git Bash shows no parent
+# pids), it is left to the post-stop check below, which is exact: after our tree is gone, whatever
+# still holds the port is not ours.
+for _p in "$PORT" "$ADMIN_PORT"; do
+  _h="$(port_holder "$_p")" || continue
+  if [ "$ALIVE" = 1 ]; then
+    case "${_h%%|*}" in '?') continue ;; esac
+    [ "$(mxtk_platform)" = windows ] && continue
+    in_our_tree "${_h%%|*}" && continue
+  fi
+  blocked "$_p" "$_h" "Nothing was stopped"
+done
 [ "$DRY" = 1 ] && { echo "  (dry run — nothing stopped or started)"; exit 0; }
 
 # ── 3. Stop exactly that process tree ───────────────────────────────────────
@@ -192,11 +279,17 @@ if [ "$ALIVE" = 1 ]; then
   fi
   echo "  ✓ stopped pid $PID"
 fi
-for _i in $(seq 1 30); do port_answers "$PORT" || break; sleep 1; done
-if port_answers "$PORT"; then
-  echo "✗ app-restart: :$PORT still answers after the recorded process stopped — something else holds it." >&2
-  echo "  Not touching it, and not starting a second app. Find the owner of :$PORT by hand." >&2
-  exit 1
+_busy=""
+for _i in $(seq 1 30); do
+  _busy=""
+  for _p in "$PORT" "$ADMIN_PORT"; do port_holder "$_p" >/dev/null && { _busy="$_p"; break; }; done
+  [ -z "$_busy" ] && ! port_answers "$PORT" && break
+  sleep 1
+done
+if [ -n "$_busy" ]; then
+  blocked "$_busy" "$(port_holder "$_busy" || echo '?|an unidentified process')" "The recorded app was stopped; nothing was started"
+elif port_answers "$PORT"; then
+  blocked "$PORT" "?|an unidentified process" "The recorded app was stopped; nothing was started"
 fi
 
 # ── 4. Start it the same way, detached, and remember how ────────────────────

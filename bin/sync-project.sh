@@ -1465,7 +1465,13 @@ if [ "$WIRED" -eq 1 ] && [ -x "$SCRIPT_DIR/doctor.sh" ] \
   else
     _ps_rc=0
     _ps_out="$("$SCRIPT_DIR/doctor.sh" --property-sets --if-stale "$PROJECT_DIR" 2>&1)" || _ps_rc=$?
-    printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed 's/^/   /'
+    # rc 3 (an mxcli before v0.26 cannot check) is informational here, not a sync warning, so
+    # doctor's own WARN line for it is relabelled rather than shown as one.
+    if [ "$_ps_rc" -eq 3 ]; then
+      printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed -e 's/^  WARN  /  info  /' -e 's/^/   /'
+    else
+      printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed 's/^/   /'
+    fi
     case "$_ps_rc" in
       0|2) ;;
       3) echo "   (the project's mxcli predates 'fix property-sets', v0.26.0 — upgrade it before a Team Server merge)" ;;

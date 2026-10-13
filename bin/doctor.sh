@@ -193,15 +193,46 @@ probe_runs() {
 # The result is recorded in <project>/.claude/.property-sets-receipt (machine-local, like the
 # doctor receipt): line 1 "<date> <time> <result> <detail>", line 2 "mxcli: <--version line>".
 # Line 2 is what --if-stale and --quick compare: the check is owed again when mxcli changes.
+# Only a settled answer is recorded — clean, needs, failed, or unsupported (the support probe
+# ran and the subcommand is absent). An error or a timeout is never written, and --if-stale
+# skips the run only on a recorded clean/unsupported, so a one-off failure (locked model,
+# unreadable version, a probe that crashed) is re-checked on the next sync instead of being
+# repeated from the receipt until mxcli changes.
+#
+# The dry-run reads every unit, so it is bounded: MXTK_PROPSETS_TIMEOUT seconds (default 300),
+# through `timeout` when a working one is on PATH, else a polling watchdog. A timeout is
+# NOT RUN (exit 2), not cached. MXTK_PROPSETS_NO_TIMEOUT_BIN=1 forces the watchdog (fixtures).
 PS_RESULT=""
 PS_DETAIL=""
 PS_OUT=""
 PS_VER=""
 ps_receipt() { printf '%s/.claude/.property-sets-receipt' "$PROJECT_DIR"; }
 ps_version() { probe_capture _ps_v "$1" --version || true; printf '%s\n' "$_ps_v" | grep -v '^[[:space:]]*$' | head -1; }
+# ps_supported <mxcli> — 0 supported, 1 the help ran and does not list it, 2 the probe failed.
 ps_supported() {
-  probe_capture _ps_help "$1" fix --help || return 1
-  printf '%s\n' "$_ps_help" | grep -qE '^[[:space:]]+property-sets[[:space:]]'
+  probe_capture _ps_help "$1" fix --help || return 2
+  printf '%s\n' "$_ps_help" | grep -qE '^[[:space:]]+property-sets[[:space:]]' || return 1
+}
+# ps_bounded <var> <secs> <cmd...> — probe_capture with a clock; returns 124 on timeout.
+ps_bounded() {
+  _pb_var="$1"; _pb_t="$2"; shift 2
+  _pb_f=$(mktemp "${TMPDIR:-/tmp}/doctor-ps.XXXXXX"); _pb_rc=0
+  if [ "${MXTK_PROPSETS_NO_TIMEOUT_BIN:-0}" != 1 ] && timeout 5 true >/dev/null 2>&1; then
+    timeout "$_pb_t" "$@" > "$_pb_f" 2>&1 < /dev/null || _pb_rc=$?
+  else
+    "$@" > "$_pb_f" 2>&1 < /dev/null &
+    _pb_pid=$!; _pb_s=0
+    while kill -0 "$_pb_pid" 2>/dev/null; do
+      if [ "$_pb_s" -ge "$_pb_t" ]; then
+        kill "$_pb_pid" 2>/dev/null; wait "$_pb_pid" 2>/dev/null; _pb_rc=124; break
+      fi
+      sleep 1; _pb_s=$((_pb_s + 1))
+    done
+    [ "$_pb_rc" -eq 124 ] || { wait "$_pb_pid"; _pb_rc=$?; }
+  fi
+  eval "$_pb_var=\$(cat \"\$_pb_f\")"
+  rm -f "$_pb_f"
+  return "$_pb_rc"
 }
 # ps_classify <exit> <output> — sets PS_RESULT (clean|needs|failed|error) and PS_DETAIL.
 ps_classify() {
@@ -222,6 +253,8 @@ ps_classify() {
   fi
 }
 ps_write_receipt() {
+  case "$PS_RESULT" in clean|needs|failed|unsupported) ;; *) return 0 ;; esac
+  [ -n "$PS_VER" ] || return 0
   [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ] || return 0
   mkdir -p "$PROJECT_DIR/.claude" 2>/dev/null || return 0
   { printf '%s %s %s\n' "$(date '+%Y-%m-%d %H:%M')" "$PS_RESULT" "$PS_DETAIL"
@@ -229,7 +262,8 @@ ps_write_receipt() {
   } > "$(ps_receipt)" 2>/dev/null || true
   if [ -d "$PROJECT_DIR/.git" ] && ! git -C "$PROJECT_DIR" check-ignore -q .claude/.property-sets-receipt 2>/dev/null; then
     printf '\n# Machine-local toolkit marker (doctor.sh property-set check)\n/.claude/.property-sets-receipt\n' \
-      >> "$PROJECT_DIR/.gitignore" 2>/dev/null || true
+      >> "$PROJECT_DIR/.gitignore" 2>/dev/null \
+      && note "(added /.claude/.property-sets-receipt to the project's .gitignore — the receipt is machine-local)"
   fi
 }
 # ps_stale — 0 when no check has been recorded for the mxcli that is installed now.
@@ -240,7 +274,13 @@ ps_check() {
   if [ -z "${MPR:-}" ]; then note "property sets: NOT RUN — no .mpr in the project root or app/"; return 0; fi
   if [ -z "${PMXCLI_PROBE:-}" ]; then note "property sets: NOT RUN — no runnable project mxcli"; return 0; fi
   PS_VER="$(ps_version "$PMXCLI_PROBE")"
-  if ! ps_supported "$PMXCLI_PROBE"; then
+  _pss_rc=0; ps_supported "$PMXCLI_PROBE" || _pss_rc=$?
+  if [ "$_pss_rc" -eq 2 ]; then
+    PS_RESULT=error; PS_DETAIL="'mxcli fix --help' itself failed, so support is unknown"
+    warn "property sets: could not run the check — $PS_DETAIL (not recorded; the next run re-checks)"
+    return 0
+  fi
+  if [ "$_pss_rc" -eq 1 ]; then
     PS_RESULT=unsupported; PS_DETAIL="${PS_VER:-this mxcli} has no 'fix property-sets'"
     warn "property sets: ${PS_VER:-this mxcli} cannot check them — 'mxcli fix property-sets' arrived in v0.26.0"
     note "Units an mxcli before v0.26 wrote can make Studio Pro's merge/diff throw although mx check,"
@@ -248,7 +288,14 @@ ps_check() {
     ps_write_receipt; return 0
   fi
   _psk_rc=0
-  probe_capture PS_OUT "$PMXCLI_PROBE" fix property-sets -p "$MPR" --dry-run || _psk_rc=$?
+  _psk_t="${MXTK_PROPSETS_TIMEOUT:-300}"
+  ps_bounded PS_OUT "$_psk_t" "$PMXCLI_PROBE" fix property-sets -p "$MPR" --dry-run || _psk_rc=$?
+  if [ "$_psk_rc" -eq 124 ]; then
+    PS_RESULT=not-run; PS_DETAIL="timed out after ${_psk_t}s"
+    note "property sets: NOT RUN — the read-only check timed out after ${_psk_t}s (MXTK_PROPSETS_TIMEOUT)."
+    note "Not recorded. Run it when there is time: bin/doctor.sh --property-sets ${PROJECT_DIR:-<project>}"
+    return 0
+  fi
   ps_classify "$_psk_rc" "$PS_OUT"
   case "$PS_RESULT" in
     clean) ok "property sets: $PS_DETAIL — every unit has the property names Studio Pro writes" ;;
@@ -260,7 +307,7 @@ ps_check() {
       [ "$PS_RESULT" = needs ] && note "repair (snapshot + mxbuild gate + restore): bin/doctor.sh --fix-property-sets ${PROJECT_DIR:-<project>}"
       [ "$(printf '%s\n' "$PS_OUT" | grep -c '^  FAILED ' || true)" -gt 0 ] && \
         note "FAILED units are left alone by mxcli and make the guarded repair roll back — resolve them first." ;;
-    *) warn "property sets: could not classify the check — $PS_DETAIL"
+    *) warn "property sets: could not classify the check — $PS_DETAIL (not recorded; the next run re-checks)"
        printf '%s\n' "$PS_OUT" | grep -v '^[[:space:]]*$' | head -5 | while IFS= read -r l; do note "  $l"; done ;;
   esac
   ps_write_receipt
@@ -302,10 +349,14 @@ if [ -n "$PS_MODE" ]; then
   head_ "Property sets (Studio Pro merge safety): $PROJECT_DIR"
   if [ "$PS_IF_STALE" = 1 ] && [ "$PS_MODE" = check ] && [ -n "$PMXCLI_PROBE" ]; then
     PS_VER="$(ps_version "$PMXCLI_PROBE")"
-    if ! ps_stale; then
+    if [ -n "$PS_VER" ] && ! ps_stale; then
       PS_RESULT="$(sed -n '1s/^[^ ]* [^ ]* \([^ ]*\).*/\1/p' "$(ps_receipt)")"
-      ok "already checked for $PS_VER: $(sed -n 1p "$(ps_receipt)")"
-      exit "$(ps_exit_code)"
+      # Only a settled "nothing to do here" short-circuits; needs/failed re-check every time.
+      case "$PS_RESULT" in
+        clean|unsupported)
+          ok "already checked for $PS_VER: $(sed -n 1p "$(ps_receipt)")"
+          exit "$(ps_exit_code)" ;;
+      esac
     fi
   fi
   ps_check

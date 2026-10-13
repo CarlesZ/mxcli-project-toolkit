@@ -58,7 +58,17 @@
 # without --watch a model newer than the handshake is reported stale with the restart to run. Only
 # pid and appPort are read; the file also holds the admin password and boot config, never copied.
 #
-# Exit codes: 0 = required stack is up · 1 = not up and could not fix · 2 = usage/env error
+# Exit codes: 0 = required stack is up · 1 = not up and could not fix · 2 = usage/env error ·
+#             4 = instrument blocked: the port `mxcli run --local` needs is held by another process
+#                 (named with its pid, never stopped) — record it as blocked, not as a test failure
+#
+# PORT HELD BEFORE RUN --LOCAL (#262, field run 2026-10-10). Studio Pro had started its own runtime on
+# the app/admin ports a run --local restart needed. mxcli failed with "Authentication failed" (the
+# admin API answering was Studio Pro's), and the journeys then ran against Studio Pro's runtime: run
+# INVALID. Wherever this script would tell you to start `mxcli run --local`, it first checks that
+# loop's app and admin port — from a leftover run-local.json, else RUN_LOCAL_APP_PORT /
+# RUN_LOCAL_ADMIN_PORT (stack.conf), else mxcli's defaults 8080 / app port + 10 — and exits 4
+# naming the holder (lsof / ss; netstat on Windows) instead of advising a start that cannot work.
 #
 # PROJECT CONFIGURATION — no project name, port or service path is hardcoded here. Put anything
 # project-specific in <project>/.claude/loop/stack.conf, which this script sources if present:
@@ -249,6 +259,69 @@ pid_alive() {
     windows) tasklist //FI "PID eq $1" //NH 2>/dev/null | grep -q " $1 " ;;
     *)       kill -0 "$1" 2>/dev/null ;;
   esac
+}
+# port_holder <port> — who LISTENs on it: prints "<pid>|<process name>" and returns 0, or returns 1
+# when the port is free. "?|an unidentified process" when something accepts connections but no
+# tool here can name it (lsof without root cannot see another user's sockets). Never kills anything.
+# Per platform: lsof (macOS, Linux), then ss (Linux without lsof), netstat -ano + tasklist (Windows).
+port_holder() {
+  local p="$1" out pid="" name=""
+  case "$(mxtk_platform)" in
+    windows)
+      pid="$(netstat -ano 2>/dev/null | tr -d '\r' | awk -v p=":$p" '$1=="TCP" && $4=="LISTENING" && substr($2, length($2)-length(p)+1)==p { print $5; exit }')"
+      [ -n "$pid" ] && name="$(tasklist //FI "PID eq $pid" //FO CSV //NH 2>/dev/null | tr -d '\r' | head -1 | cut -d'"' -f2)" ;;
+    *)
+      if command -v lsof >/dev/null 2>&1; then
+        out="$(lsof -nP -iTCP:"$p" -sTCP:LISTEN -Fpc 2>/dev/null)"
+        pid="$(printf '%s\n' "$out" | sed -n 's/^p//p' | head -1)"
+        name="$(printf '%s\n' "$out" | sed -n 's/^c//p' | head -1)"
+      fi
+      if [ -z "$pid" ] && command -v ss >/dev/null 2>&1; then
+        out="$(ss -ltnpH "sport = :$p" 2>/dev/null | head -1)"
+        pid="$(printf '%s' "$out" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
+        name="$(printf '%s' "$out" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p')"
+      fi ;;
+  esac
+  if [ -n "$pid" ]; then printf '%s|%s\n' "$pid" "${name:-unknown}"; return 0; fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then printf '?|an unidentified process\n'; return 0; fi
+  return 1
+}
+# holder_text "<pid>|<name>" — "studiopro pid 4711" plus its parent where ps can show one, because a
+# runtime Studio Pro started shows up as plain "java"; the parent is what names the owner.
+holder_text() {
+  local pid="${1%%|*}" name="${1#*|}" pp pn
+  [ "$pid" = "?" ] && { printf '%s (pid unknown — no lsof/ss/netstat could name it)\n' "$name"; return; }
+  printf '%s pid %s' "$name" "$pid"
+  if [ "$(mxtk_platform)" != windows ]; then
+    pp="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    pn="$(ps -o comm= -p "${pp:-0}" 2>/dev/null | sed 's#.*/##')"
+    [ -n "$pp" ] && [ "$pp" != 1 ] && [ -n "$pn" ] && printf ' (parent: %s pid %s)' "$pn" "$pp"
+  fi
+  printf '\n'
+}
+# The ports a `mxcli run --local` of this project will want: "<app> <admin>".
+run_local_ports() {
+  local a="" m=""
+  if pick_local_hs; then a="$(hs_field appPort)"; m="$(sed -n 's/^  "adminPort": *\([0-9][0-9]*\).*/\1/p' "$LOCAL_HS" 2>/dev/null | head -1)"; fi
+  a="${RUN_LOCAL_APP_PORT:-${a:-8080}}"
+  m="${RUN_LOCAL_ADMIN_PORT:-${m:-$((a + 10))}}"
+  echo "$a $m"
+}
+# Exit 4 if a run --local of this project could not bind its ports. Never stops the holder.
+check_run_local_ports() {
+  local p h kind=app
+  for p in $(run_local_ports); do
+    if h="$(port_holder "$p")"; then
+      bad "INSTRUMENT BLOCKED — :$p (the run --local $kind port) is held by $(holder_text "$h")"
+      echo "  Not touching it. \`mxcli run --local\` here would collide: it reports 'Authentication failed'"
+      echo "  against the other runtime's admin API, and a journey would test that runtime instead."
+      echo "  → Stop that process yourself (Studio Pro: stop its run), or start on free ports:"
+      echo "    ./mxcli run --local --watch -p $(basename "$MPR") --app-port <free> --admin-port <free>"
+      echo "  Record the run as INSTRUMENT BLOCKED, not as a failure. Then re-run with --check."
+      exit 4
+    fi
+    kind=admin
+  done
 }
 local_loop_port() {
   local pid port
@@ -455,6 +528,8 @@ if [ "$MODE" = "check" ]; then
     echo "READY (app :$APP_PORT · jaeger $([ $JAEGER_OK -eq 0 ] && echo up || echo DOWN))"
     exit 0
   fi
+  # A leftover run-local record means this project runs as run --local: name a port thief now.
+  [ $APP_FOUND -ne 0 ] && pick_local_hs && check_run_local_ports
   echo "NOT READY — re-run without --check to bring it up"
   exit 1
 fi
@@ -531,6 +606,7 @@ fi
 # --- Bring up the app -------------------------------------------------------
 if [ $APP_FOUND -ne 0 ]; then
   if [ "$MODE" = "nodocker" ]; then
+    check_run_local_ports
     bad "App down and --no-docker given. Click Run Locally in Studio Pro (or, with no Studio Pro, ./mxcli run --local --watch), then re-run --check."
     exit 1
   fi
@@ -548,6 +624,7 @@ if [ $APP_FOUND -ne 0 ]; then
     [ -n "$_DK" ] || { wait "$_dk_pid"; _DK=$?; }
   fi
   if [ "$_DK" != 0 ]; then
+    check_run_local_ports
     bad "App down and no Docker/Podman reachable, so this script cannot build the app container."
     echo "  Normal in a cloud container, and fine on a desktop without one. Run the app without it:"
     echo "    Studio Pro: Run Locally.  No Studio Pro:"

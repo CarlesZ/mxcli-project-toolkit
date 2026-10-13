@@ -54,7 +54,8 @@ case "${1:-}" in
   --help)    echo "mxcli (stub)"; exit 0 ;;
   fix) shift
     case "${1:-}" in
-      --help) cat "$F/fix-help-$V.txt"; exit 0 ;;
+      --help) [ -f "$D/.stub-helpfail" ] && { echo "panic: stub"; exit 2; }
+              cat "$F/fix-help-$V.txt"; exit 0 ;;
       property-sets)
         dry=0; mpr=""; prev=""
         for a in "$@"; do [ "$a" = --dry-run ] && dry=1; [ "$prev" = -p ] && mpr="$a"; prev="$a"; done
@@ -78,6 +79,7 @@ case "${1:-}" in
                   echo "1 unit(s) could not be normalized and were left as they are."; exit 1 ;;
           notfound) cat "$F/dry-run-not-found-v0.26.0.txt"; exit 1 ;;
           noversion) echo "$b has no readable Mendix version; nothing is normalized without one."; exit 0 ;;
+          slow) sleep 6; echo "Checked 3 unit(s) in $b against the Mendix 11.12.1 property sets."; exit 0 ;;
         esac ;;
     esac ;;
 esac
@@ -113,6 +115,7 @@ R="$P/.claude/.property-sets-receipt"
 sed -n 1p "$R" 2>/dev/null | grep -q " clean " && sed -n 2p "$R" | grep -qx "mxcli: mxcli version v0.26.0 (2026-10-11T18:37:07Z)" \
   && ok "receipt records result and mxcli version" || bad "receipt wrong" "$(cat "$R" 2>&1)"
 grep -qx '/.claude/.property-sets-receipt' "$P/.gitignore" 2>/dev/null && ok "receipt is gitignored (machine-local)" || bad "receipt not gitignored"
+printf '%s' "$OUT" | grep -q "added /.claude/.property-sets-receipt to the project's .gitignore" && ok "the .gitignore append is announced" || bad "silent .gitignore append" "$OUT"
 grep -q -- 'property-sets -p .*/App.mpr --dry-run' "$P/.stub-log" && ok "the check is the --dry-run" || bad "dry-run not used" "$(cat "$P/.stub-log")"
 
 echo "== P3 units need completing =="
@@ -131,6 +134,15 @@ for st in failed notfound noversion; do
   [ "$RC" -eq 1 ] && ! printf '%s' "$OUT" | grep -q "ok    property sets" && ok "$st: exit 1, no ok line" || bad "$st: rc=$RC" "$OUT"
 done
 printf '%s' "$OUT" | grep -q "no Mendix version" && ok "noversion: says nothing was checked" || bad "noversion wording" "$OUT"
+for st in notfound noversion; do
+  [ -f "$WORK/st-$st/.claude/.property-sets-receipt" ] && bad "$st: an error result was recorded" || ok "$st: error result not recorded"
+done
+P="$WORK/st-notfound"; "$DOCTOR" --property-sets --if-stale "$P" >/dev/null 2>&1
+[ "$(grep -c -- '--dry-run' "$P/.stub-log")" -eq 2 ] && ok "notfound: --if-stale re-checks after an error" || bad "notfound: --if-stale skipped after an error"
+P="$(mkproj helpfail)"; touch "$P/.stub-helpfail"
+OUT="$("$DOCTOR" --property-sets "$P" 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q "support is unknown" && [ ! -f "$P/.claude/.property-sets-receipt" ] \
+  && ok "failed 'fix --help' probe: error (exit 1), not unsupported, not recorded" || bad "helpfail rc=$RC" "$OUT"
 
 echo "== P5 --if-stale: once per mxcli version =="
 P="$(mkproj stale)"; echo clean > "$P/.stub-state"
@@ -144,6 +156,25 @@ sed -i.bak '2s/.*/mxcli: mxcli version v0.25.0 (2026-10-05T09:18:28Z)/' "$P/.cla
 "$DOCTOR" --property-sets --if-stale "$P" >/dev/null 2>&1
 n3="$(grep -c -- '--dry-run' "$P/.stub-log")"
 [ "$n3" -eq 2 ] && ok "mxcli changed since the receipt: re-run" || bad "after a version change n3=$n3"
+
+P="$WORK/needs"; n1="$(grep -c -- '--dry-run' "$P/.stub-log")"
+"$DOCTOR" --property-sets --if-stale "$P" >/dev/null 2>&1; n2="$(grep -c -- '--dry-run' "$P/.stub-log")"
+[ "$n2" -eq $((n1 + 1)) ] && ok "needs on the receipt: --if-stale re-checks" || bad "needs: --if-stale skipped ($n1 -> $n2)"
+P="$WORK/old-v0.25.0"
+OUT="$("$DOCTOR" --property-sets --if-stale "$P" 2>&1)"; RC=$?
+[ "$RC" -eq 3 ] && printf '%s' "$OUT" | grep -q "already checked" && ok "recorded unsupported: --if-stale short-circuits, exit 3" || bad "unsupported if-stale rc=$RC" "$OUT"
+
+echo "== P5b the dry-run is bounded; a timeout is NOT RUN and not recorded =="
+for mode in timeout-bin watchdog; do
+  P="$(mkproj slow-$mode)"; echo slow > "$P/.stub-state"
+  nb=0; [ "$mode" = watchdog ] && nb=1
+  t0=$(date +%s)
+  OUT="$(MXTK_PROPSETS_TIMEOUT=1 MXTK_PROPSETS_NO_TIMEOUT_BIN=$nb "$DOCTOR" --property-sets "$P" 2>&1)"; RC=$?
+  el=$(( $(date +%s) - t0 ))
+  [ "$RC" -eq 2 ] && printf '%s' "$OUT" | grep -q "timed out after 1s" && ok "$mode: exit 2, says it timed out" || bad "$mode: rc=$RC" "$OUT"
+  [ "$el" -lt 6 ] && ok "$mode: returned before the slow check finished (${el}s)" || bad "$mode: waited ${el}s"
+  [ ! -f "$P/.claude/.property-sets-receipt" ] && ok "$mode: timeout not recorded" || bad "$mode: timeout recorded"
+done
 
 echo "== P6 two-tree checkout (.mpr under app/) =="
 P="$(mkproj twotree app)"; echo clean > "$P/.stub-state"
@@ -203,7 +234,18 @@ OUT="$("$SYNC" "$S" 2>&1)"; RC=$?
 printf '%s' "$OUT" | grep -q "⚠️  property sets: Studio Pro's merge/diff can throw" && ok "plain sync: counted as a sync warning with the repair command" || bad "sync warning" "$(printf '%s' "$OUT" | grep -i 'property')"
 grep -v -- '--dry-run' "$S/.stub-log" | grep -q 'property-sets' && bad "sync wrote to the model" || ok "sync did not repair"
 n1="$(grep -c -- '--dry-run' "$S/.stub-log")"; "$SYNC" "$S" >/dev/null 2>&1; n2="$(grep -c -- '--dry-run' "$S/.stub-log")"
-[ "$n1" -eq "$n2" ] && ok "second sync, same mxcli: check not re-run" || bad "re-ran: $n1 -> $n2"
+[ "$n2" -eq $((n1 + 1)) ] && ok "second sync, receipt says needs: re-checked" || bad "needs not re-checked: $n1 -> $n2"
+echo clean > "$S/.stub-state"; "$SYNC" "$S" >/dev/null 2>&1
+n3="$(grep -c -- '--dry-run' "$S/.stub-log")"; "$SYNC" "$S" >/dev/null 2>&1; n4="$(grep -c -- '--dry-run' "$S/.stub-log")"
+[ "$n3" -eq "$n4" ] && ok "sync after a clean check, same mxcli: not re-run" || bad "clean re-ran: $n3 -> $n4"
+
+S3="$WORK/syncold"; mkdir -p "$S3"; : > "$S3/App.mpr"
+MXTK_NO_GUIDE=1 "$TK/bin/init-project.sh" "$S3" >/dev/null 2>&1
+mkstub "$S3"; echo v0.25.0 > "$S3/.stub-ver"
+OUT="$("$SYNC" "$S3" 2>&1)"
+psl="$(printf '%s\n' "$OUT" | grep -i 'property' )"
+printf '%s' "$psl" | grep -q "info  property sets: .*arrived in v0.26.0" && ! printf '%s' "$psl" | grep -q "WARN  \|⚠️" \
+  && ok "sync, mxcli < v0.26: informational line, no WARN, no sync warning" || bad "sync old mxcli" "$psl"
 
 echo "== P10 (#236) sync names a pre-fix bin/model-stamp.sh =="
 grep -v 'GIT_WORK_TREE' "$TK/project-bin/model-stamp.sh" > "$S/bin/model-stamp.sh"; chmod +x "$S/bin/model-stamp.sh"

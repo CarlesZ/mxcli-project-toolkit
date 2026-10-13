@@ -244,11 +244,31 @@ _ob_has_denominator() {
 # quietly stale, is the failure being retired). Unmeasurable (no git, hash unknown here) also
 # returns 1: an instrument reports what it measured, and "could not measure" must not read as
 # "expired".
+#
+# "Newest" is by COMMIT TIME, not by position (#155). A report kept as one dated file with an
+# addendum per build row carries several stamps; whether the author appends addenda at the
+# bottom or prepends them under the headline, the stamp that says the most recent thing is the
+# one whose commit is newest. Unresolvable stamps are skipped; with none resolvable, the last
+# stamp in the file is returned (and the callers then treat it as unmeasurable).
+_ob_valid_at_stamps() {
+  tr -d '\r' < "$1" 2>/dev/null \
+    | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}' \
+    | grep -oiE '[0-9a-f]{7,40}$'
+}
+_ob_newest_stamp() {
+  local root="$1" hit="$2" h t best="" best_t=-1 last=""
+  while IFS= read -r h; do
+    [ -n "$h" ] || continue
+    last="$h"
+    t="$(git -C "$root" show -s --format=%ct "${h}^{commit}" 2>/dev/null || true)"
+    [ -n "$t" ] || continue
+    if [ "$t" -ge "$best_t" ]; then best="$h"; best_t="$t"; fi
+  done <<< "$(_ob_valid_at_stamps "$hit")"
+  printf '%s' "${best:-$last}"
+}
 _ob_stale() {
   local root="$1" hit="$2" hash n
-  hash="$(cat "$hit" 2>/dev/null | tr -d '\r' \
-    | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}' \
-    | grep -oiE '[0-9a-f]{7,40}$' | tail -1)"
+  hash="$(_ob_newest_stamp "$root" "$hit")"
   [ -n "$hash" ] || return 1
   git -C "$root" cat-file -e "${hash}^{commit}" 2>/dev/null || return 1
   n="$(git -C "$root" log --oneline "${hash}..HEAD" -- '*.mpr' mdlsource 2>/dev/null | wc -l | tr -d ' ')"
@@ -273,8 +293,18 @@ _ob_stale() {
 #     2. every cited file EXISTS on disk and is ≥ 10 KB — a real full-page PNG is hundreds of
 #        KB; a blank capture or a placeholder is not (base64 embeds in the report are display,
 #        not proof: they cannot be checked for freshness);
-#     3. every cited file is NEWER than the report's VALID AT commit — shots are taken during
-#        the review, after the last model commit; citing last month's screenshots fails here.
+#     3. every cited file is NEWER than the VALID AT commit OF ITS OWN SECTION — shots are
+#        taken during the review, after the last model commit; citing last month's screenshots
+#        fails here. "Its section" = the nearest VALID AT stamp above the citation (a citation
+#        above every stamp belongs to the first stamp: the headline's).
+#
+#   Why per-section and not "one report per pass" (#155, field run 2026-09-26): projects keep
+#   one dated review file and append an addendum per build row, each with its own VALID AT and
+#   its own PROOF-OF-LOOK lines. Judging every citation against the single newest stamp made the
+#   first section's honest proofs "older than VALID AT", so the only way back to green was to
+#   re-shoot every page and delete the earlier proof lines — erasing the review history to
+#   satisfy the checker. Each section is a pass; each pass is judged by its own stamp. Staleness
+#   of the report as a whole is still decided by the newest stamp (_ob_stale).
 #   A report that fails is treated exactly like no report (FAULT): a visual verdict with no
 #   verifiable screenshot behind it is a CSS review wearing a LOOK report's clothes.
 #
@@ -290,7 +320,12 @@ _ob_look_proof_broken() {
   fdate="$(basename "$hit" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)"
   if [ -n "$fdate" ] && [[ "$fdate" < "$_OB_LOOK_PROOF_SINCE" ]]; then return 1; fi
 
-  entries="$(tr -d '\r' < "$hit" | grep -oE 'PROOF-OF-LOOK:[[:space:]]*[^=<]+=[[:space:]]*[^<>[:space:]]+')"
+  # One ordered token stream of stamps and citations, so each citation knows its section.
+  # grep -o emits matches left to right within a line, lines in order: a minified one-line
+  # report sections the same way as a pretty-printed one.
+  local tokens
+  tokens="$(tr -d '\r' < "$hit" | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}|PROOF-OF-LOOK:[[:space:]]*[^=<]+=[[:space:]]*[^<>[:space:]]+')"
+  entries="$(printf '%s\n' "$tokens" | grep -E '^PROOF-OF-LOOK:' || true)"
   if [ -z "$entries" ]; then
     printf 'no PROOF-OF-LOOK citations — verdicts with no screenshot on disk are a CSS review'
     return 0
@@ -301,17 +336,29 @@ _ob_look_proof_broken() {
   claimed="$(head -c 4000 "$hit" 2>/dev/null | tr -d '\r' \
     | grep -oiE '[0-9]+[[:space:]]+of[[:space:]]+[0-9]+' | head -1 | awk '{print $1}')"
 
-  # VALID AT commit time, for freshness. Unresolvable → freshness unmeasured, not failed.
-  local vhash vtime=""
-  vhash="$(cat "$hit" 2>/dev/null | tr -d '\r' \
-    | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}' \
-    | grep -oiE '[0-9a-f]{7,40}$' | tail -1)"
+  # Section stamp for freshness: starts at the FIRST stamp in the file (so citations above
+  # every stamp belong to the headline's), then each stamp met in the stream opens a section.
+  # Unresolvable stamp → that section's freshness is unmeasured, not failed.
+  local vhash="" vtime="" first_stamp
+  first_stamp="$(printf '%s\n' "$tokens" | grep -iE '^VALID' | head -1 | grep -oiE '[0-9a-f]{7,40}$')"
+  vhash="$first_stamp"
   [ -n "$vhash" ] && vtime="$(git -C "$root" show -s --format=%ct "${vhash}^{commit}" 2>/dev/null || true)"
 
   reldir="$(dirname "$hit")"
   local line page shot f sz mt
   while IFS= read -r line; do
     [ -n "$line" ] || continue
+    case "$line" in
+      PROOF-OF-LOOK:*) ;;
+      [Vv][Aa][Ll][Ii][Dd]*)
+         line="$(printf '%s' "$line" | grep -oiE '[0-9a-f]{7,40}$')"
+         if [ "$line" != "$vhash" ]; then
+           vhash="$line"; vtime=""
+           [ -n "$vhash" ] && vtime="$(git -C "$root" show -s --format=%ct "${vhash}^{commit}" 2>/dev/null || true)"
+         fi
+         continue ;;
+      *) continue ;;   # a lower-case "proof-of-look:" was never a citation (case-sensitive, as before)
+    esac
     page="$(printf '%s' "$line" | sed 's/^PROOF-OF-LOOK:[[:space:]]*//;s/[[:space:]]*=.*$//')"
     shot="$(printf '%s' "$line" | sed 's/^.*=[[:space:]]*//')"
     n_cited=$((n_cited+1))
@@ -323,12 +370,12 @@ _ob_look_proof_broken() {
       mt="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || true)"
       [ -n "$mt" ] && [ "$mt" -lt "$vtime" ] && oldshots="$oldshots $page"
     fi
-  done <<< "$entries"
+  done <<< "$tokens"
 
   local why=""
   [ -n "$missing" ] && why="cited screenshots not on disk:$missing"
   [ -n "$small" ] && why="${why:+$why; }cited screenshots under 10KB (blank/placeholder):$small"
-  [ -n "$oldshots" ] && why="${why:+$why; }screenshots older than VALID AT (a previous review's shots):$oldshots"
+  [ -n "$oldshots" ] && why="${why:+$why; }screenshots older than their section's VALID AT (a previous review's shots):$oldshots"
   if [ -n "$claimed" ] && [ "$n_cited" -lt "$claimed" ]; then
     why="${why:+$why; }$n_cited citation(s) for $claimed reviewed page(s)"
   fi

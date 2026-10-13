@@ -133,15 +133,9 @@ For each page, ask and answer in writing:
 - **Does every displayed field actually show its value?** Especially DateTime, enum, and
   calculated fields. A blank where data must exist (a system `createdDate` can never be null) is
   a render bug, not missing data. Confirm the binding in MDL, then treat a persistent blank as P1.
-- **Does every filter show its preset on first load, before you touch it?** Count the filters on
-  the page and write `N of N show their preset`. A list already narrowed while its filter looks
-  empty (no value, no clear button) is a lazy-loaded combo box hiding its preset
-  (`learned-detection-gaps.md`); every model gate passes it.
-- **After an insert into an existing container, does anything overlap?** For every widget this
-  change inserted into a container that already existed, look at the rows around it at each
-  width and write `N of N inserted widgets fully visible`. A neighbour covering part of it (a
-  clear button, a label) usually means the theme pins `height` on positional row classes
-  (`learned-detection-gaps.md`).
+- **`N of N` filters show their preset on first load** — lazy loading hides it.
+- **`N of N` widgets inserted into an existing container fully visible** — theme-pinned row
+  heights cover them (`learned-detection-gaps.md`).
 - **Submit every New/Edit form with required fields empty.** A visible validation message must
   appear. A 4xx/5xx with no user-facing feedback is high-severity silent failure, not a pass.
 - **Does every View/Edit/action button point at the *current* page?** Confirm with

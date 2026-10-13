@@ -6885,7 +6885,7 @@ setting from the model bytes before starting. The setting is the BSON string `Af
 in the project-settings unit (`mprcontents/4e/70/4e70063d-….mxunit`, or inside a v1 `.mpr`). This
 needs no mxcli. When the value is `MxTest.RegisterEndpoint` or `MxTest.TestRunner`, both scripts
 refuse and print the repair. `app-restart.sh` lets a live `--test-endpoint` app through, because it
-holds the injection legitimately, and checks again after the stop.
+holds the injection legitimately, and checks again after the stop. `MXTK_SKIP_MXTEST_GUARD=1` skips the check out loud, so a false refusal never blocks.
 
 **Repair** (any one of):
 - `git checkout -- mprcontents/4e/70/<settings unit>`, then `git status`: the run may also have left an `MxTest` module.

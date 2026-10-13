@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // set-after-startup.js — fixture helper: re-encode a captured Mendix settings unit (BSON) with
 // AfterStartupMicroflow = <value>, every enclosing length rewritten. Re-encoding with the original
-// value ('') reproduces the capture byte for byte (checked by test-mxtest-guard.sh).
+// value ('') reproduces the capture byte for byte (checked by tests/wave2/test-test-scratch.sh).
 const fs = require('fs');
 const [inp, out, value] = process.argv.slice(2);
 const buf = fs.readFileSync(inp);

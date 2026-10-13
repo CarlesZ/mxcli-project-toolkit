@@ -150,11 +150,27 @@ if command -v node >/dev/null 2>&1; then
   OUT="$(run l -- tests/a.test.mdl)"; RC=$?
   [ "$RC" -eq 3 ] && ok "MxTest.TestRunner → refused (exit 3)" || bad "TestRunner exit $RC"
   cp "$GU" "$UNIT"
-  echo "-- #244 on a v1 model (settings inside the .mpr itself)"
+  echo "-- #244: another unit that merely MENTIONS the setting (a doc string) does not switch the guard off"
+  D1="$P/mprcontents/00/00/00000000-doc.mxunit"; D2="$P/mprcontents/ff/ff/ffffffff-doc.mxunit"; mkdir -p "$(dirname "$D1")" "$(dirname "$D2")"
+  printf 'Documentation\0Set AfterStartupMicroflow to MxTest.Setup for tests\0' | tee "$D1" > "$D2"
+  node "$SETAS" "$GU" "$UNIT" "MxTest.RegisterEndpoint"
+  OUT="$(run n -- tests/a.test.mdl)"; RC=$?
+  [ "$RC" -eq 3 ] && ok "doc-string units beside the injected settings unit → still refused" || bad "doc-string unit hid the injection (exit $RC)"
+  echo "-- #244: MXTK_SKIP_MXTEST_GUARD=1 lets a run through, out loud"
+  OUT="$(MXTK_SKIP_MXTEST_GUARD=1 run o -- tests/a.test.mdl)"; RC=$?
+  [ "$RC" -eq 0 ] && has "skipped, and says so" "$OUT" "MXTK_SKIP_MXTEST_GUARD=1 — NOT checking" || bad "override exit $RC"
+  rm -f "$D1" "$D2"
+  echo "-- #244 on a v1 model (settings inside the .mpr itself), 2 MB of model after the setting"
+  # Large on purpose: the reader stops at the first match, od then dies of SIGPIPE, and under the
+  # script's pipefail that once discarded the answer — the guard silently did nothing on a real .mpr.
   V="$WORK/v1"; mkdir -p "$V/bin"; cp "$P/bin/"*.sh "$V/bin/"; cp "$P/mxcli" "$V/"
-  { printf 'SQLite format 3\0'; node "$SETAS" "$GU" /dev/stdout "MxTest.RegisterEndpoint"; printf '\0\0trailing'; } > "$V/Fixture.mpr"
+  node "$SETAS" "$GU" "$WORK/inj.mxunit" "MxTest.RegisterEndpoint"
+  { printf 'SQLite format 3\0'; cat "$WORK/inj.mxunit"; head -c 2000000 /dev/zero; } > "$V/Fixture.mpr"
   OUT="$( cd "$V" && REC="$WORK/rec.m" ./bin/test-scratch.sh -- x.test.mdl 2>&1 )"; RC=$?
-  [ "$RC" -eq 3 ] && has "v1 .mpr → refused, git repair degrades to a placeholder" "$OUT" "HEAD: not readable" || bad "v1 exit $RC: $(printf '%s' "$OUT" | tail -3)"
+  [ "$RC" -eq 3 ] && has "large v1 .mpr → refused, git repair degrades to a placeholder" "$OUT" "HEAD: not readable" || bad "v1 exit $RC: $(printf '%s' "$OUT" | tail -3)"
+  { printf 'SQLite format 3\0'; cat "$GU"; head -c 2000000 /dev/zero; } > "$V/Fixture.mpr"
+  OUT="$( cd "$V" && REC="$WORK/rec.p" ./bin/test-scratch.sh -- x.test.mdl 2>&1 )"; RC=$?
+  [ "$RC" -eq 0 ] && ok "large clean v1 .mpr → runs" || bad "clean v1 exit $RC: $(printf '%s' "$OUT" | tail -3)"
 else
   echo "  [skip] node missing — the injected settings units are built from the capture with node"
 fi

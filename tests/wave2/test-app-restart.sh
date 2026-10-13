@@ -102,7 +102,8 @@ start_app() {  # $1 = project dir, $2 = extra run flags (optional); waits for th
   local i; for i in $(seq 1 50); do [ -f "$1/.mxcli/run-local.json" ] && return 0; sleep 0.2; done; return 1
 }
 hs_pid() { sed -n 's/^  "pid": *\([0-9]*\).*/\1/p' "$1/.mxcli/run-local.json" 2>/dev/null; }
-alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
+# Zombie-aware: a stopped child nobody has reaped yet still answers kill -0 (3/10 flakes on "was not stopped").
+alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null || return 1; case "$(ps -o stat= -p "$1" 2>/dev/null)" in Z*) return 1 ;; esac; }
 restart() { ( cd "$1" && shift && FAKE_GOLDEN="$GOLDEN" LOGDIR="$WORK" ./bin/app-restart.sh "$@" ) 2>&1; }
 
 PORT=$(( 20000 + RANDOM % 20000 ))
@@ -193,6 +194,8 @@ has "names the leftover" "$OUT" "after-startup microflow is MxTest.RegisterEndpo
 has "prints the MDL repair" "$OUT" "alter settings runtime (AfterStartupMicroflow:"
 has "says nothing was stopped" "$OUT" "Nothing was stopped"
 alive "$CUR" && ok "the app was left running" || bad "the app was stopped"
+OUT="$(MXTK_SKIP_MXTEST_GUARD=1 restart "$P" --dry-run)"; RC=$?
+[ "$RC" -eq 0 ] && has "MXTK_SKIP_MXTEST_GUARD=1 lets it through, out loud" "$OUT" "NOT checking" || bad "override exit $RC"
 cp "$GU" "$UNIT"
 
 echo "-- #244: a live --test-endpoint app holds the injection legitimately; a stop that does not restore it → exit 5"

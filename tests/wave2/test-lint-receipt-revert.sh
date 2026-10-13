@@ -94,6 +94,10 @@ out=$(gate --update-baseline --reason "x" 2>&1); rc=$?
 echo "T5 LINT_RULES_REVERTED_OK=1 lints anyway, with the warning"
 out=$(cd "$P" && LINT_RULES_REVERTED_OK=1 LINT_JSON="$WORK/lint.json" bash bin/lint-gate.sh 2>&1); rc=$?
 case "$out" in *"REVERTED TO STOCK"*"FAIL —"*) ok "warned, then compared (rise visible)" ;; *) bad "override did not lint" "$out" ;; esac
+before=$(cat "$P/.claude/lint-baseline.json")
+out=$(cd "$P" && LINT_RULES_REVERTED_OK=1 LINT_JSON="$WORK/lint.json" bash bin/lint-gate.sh --update-baseline --reason "x" 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [ "$(cat "$P/.claude/lint-baseline.json")" = "$before" ] && ok "override does not get past the --update-baseline refusal" \
+  || bad "stock counts baselined under the override (rc $rc)" "$out"
 
 echo "T6 the remedy is not blocked and clears it (the installer sync-project.sh runs)"
 out=$(install_rules)
@@ -143,11 +147,19 @@ out=$(gate2 "$P9" 2>&1); rc=$?
   && ok "lint-gate: BLIND, names $EBK" || bad "lint-gate did not flag the unknown-hash re-seed (rc $rc)" "$out"
 case "$out" in *"--upgrade-lint-rules all"*) ok "message carries the LOCALLY MODIFIED fallback" ;; *) bad "no --upgrade-lint-rules fallback" "$out" ;; esac
 out=$(inst2 "$P9")
-case "$out" in *"REVERTED TO STOCK"*"$EBK"*) ok "installer restores it (not LOCALLY MODIFIED)" ;; *) bad "installer did not restore it" "$out" ;; esac
+case "$out" in *"$EBK — header missing — restored from toolkit, your copy kept as $EBK.reseeded-"*) ok "installer restores it, labelled 'header missing', copy named" ;; *) bad "installer did not restore it" "$out" ;; esac
+case "$out" in *"REVERTED TO STOCK"*) bad "a body matching no known stock hash called REVERTED TO STOCK" "$out" ;; *) ok "not labelled REVERTED TO STOCK (body matches no known stock hash)" ;; esac
 cmp -s "$TK2/lint-rules/$EBK" "$P9/.claude/lint-rules/$EBK" && ok "file is the toolkit version again" || bad "file not restored"
 ls "$P9/.claude/lint-rules/$EBK".reseeded-* >/dev/null 2>&1 && ok "found copy kept beside it" || bad "found copy not kept"
 out=$(gate2 "$P9" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "after sync: rc 0 (remedy clears it)" || bad "still blind after sync (rc $rc)" "$out"
+# Backups are capped: with 5 older copies already there, one more re-seed leaves the newest 3.
+for i in 1 2 3 4 5; do printf 'old %s\n' "$i" > "$P9/.claude/lint-rules/$EBK.reseeded-2020010100000$i"; done
+cp "$STOCK" "$P9/.claude/lint-rules/$EBK"; inst2 "$P9" >/dev/null
+n=$(ls "$P9/.claude/lint-rules/$EBK".reseeded-* 2>/dev/null | wc -l | tr -d ' ')
+[ "$n" -eq 3 ] && ok "backups capped at 3" || bad "backups not capped ($n)"
+kept_old=""; for i in 1 2 3; do [ -f "$P9/.claude/lint-rules/$EBK.reseeded-2020010100000$i" ] && kept_old="$kept_old $i"; done
+[ -z "$kept_old" ] && ok "the oldest backups are the ones removed" || bad "oldest backups kept:$kept_old"
 
 echo "T10 opt-out: a non-stock rule removed by the user's decision, with a reason"
 P10=$(newproj p10); inst2 "$P10" >/dev/null
@@ -159,7 +171,8 @@ case "$out" in *"$T2F has no '# reason: ...' — ignored"*"BLIND — lint rules 
 out=$(inst2 "$P10")
 case "$out" in *"$T2F has no '# reason: …' — IGNORED"*) ok "installer warns about the reasonless line" ;; *) bad "no installer warning" "$out" ;; esac
 [ -f "$P10/.claude/lint-rules/$T2F" ] && ok "reasonless opt-out: sync restores the rule" || bad "reasonless opt-out honoured by sync"
-printf '# decided with the user 2026-10-13\n%s  # reason: display standard is dd/MM/yyyy (PROJECT.md decision D-14)\n' "$T2F" > "$P10/.claude/lint-rules-disabled.txt"
+# `#reason:` with no blank: both tools must accept the same syntax.
+printf '# decided with the user 2026-10-13\n%s  #reason: display standard is dd/MM/yyyy (PROJECT.md decision D-14)\n' "$T2F" > "$P10/.claude/lint-rules-disabled.txt"
 rm -f "$P10/.claude/lint-rules/$T2F"
 out=$(gate2 "$P10" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "with a reason: lint-gate rc 0, no alarm before any sync" || bad "reasoned opt-out read as a re-seed (rc $rc)" "$out"

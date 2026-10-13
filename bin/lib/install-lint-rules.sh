@@ -139,8 +139,9 @@ _mxtk_lint_receipt_set() {
 # _mxtk_lint_is_disabled answers for one rule; _mxtk_lint_disabled_audit warns once per bad line.
 _mxtk_lint_dis_ok() {  # $1 = rule, $2 = rest of the line -> 0 when the line is a valid opt-out
   case " ${MXTK_LINT_RULES_STOCK:-} " in *" $1 "*) return 1 ;; esac
-  _dis_why="${2#*# reason:}"
-  [ "$_dis_why" != "$2" ] || return 1
+  # Same syntax lint-gate.sh accepts (Python `#\s*reason:\s*(\S.*)`): `#`, optional blanks,
+  # `reason:`, then non-blank text.
+  _dis_why="$(printf '%s\n' "$2" | sed -n 's/^.*#[[:space:]]*reason:[[:space:]]*//p')"
   [ -n "$(printf '%s' "$_dis_why" | tr -d '[:space:]')" ]
 }
 _mxtk_lint_is_disabled() {
@@ -336,14 +337,18 @@ mxtk_install_lint_rules() {
       # and falls through to the LOCALLY MODIFIED / configured branches below, never overwritten.
       # The found file is kept beside it; lint loads *.star only.
       if [ -n "$_rec" ] && [ "$(_mxtk_lint_kind "$_f")" = stock ] && ! grep -q '^# mxtk-lint-rule:' "$_dst"; then
-        _why="REVERTED TO STOCK — header gone; this mxcli's stock hash is not in STOCK-HASHES.txt yet. Restoring it"
+        # Not "REVERTED TO STOCK": its body matches no known stock hash, so it is either a
+        # newer mxcli's seed or a hand edit that also lost the header. The two look the same
+        # from here, which is why the copy is kept. Backups are capped at the newest 3 per rule
+        # (the name sorts by time), so a project that re-seeds on every init does not pile up.
         if [ "$_dry" -eq 1 ]; then
-          echo "Would install: .claude/lint-rules/$_f ($_why)"
+          echo "Would install: .claude/lint-rules/$_f (header missing — would restore from toolkit and keep your copy)"
         else
           _bak="$_dst.reseeded-$(date +%Y%m%d%H%M%S)"
           cp "$_dst" "$_bak"
           cp "$_src" "$_dst" && _mxtk_lint_receipt_set "$_receipt" "$_f" "$_srcmd5"
-          echo "Lint rule: $_why — .claude/lint-rules/$_f (the file found is kept at $(basename "$_bak"))"
+          ls "$_dst".reseeded-* 2>/dev/null | sort -r | sed -n '4,$p' | while IFS= read -r _old; do rm -f "$_old"; done
+          echo "Lint rule: .claude/lint-rules/$_f — header missing — restored from toolkit, your copy kept as $(basename "$_bak")"
         fi
         MXTK_LINT_CHANGES=$((MXTK_LINT_CHANGES + 1))
         continue

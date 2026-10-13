@@ -39,7 +39,7 @@
 # not. No receipt, or a row without a kind = no check (the next sync writes kinds). A non-stock
 # rule removed by the user's decision is listed, with a reason, in .claude/lint-rules-disabled.txt
 # (see lint-rules/README.md "Opting out of a rule"). LINT_RULES_REVERTED_OK=1 runs anyway, with
-# the warning.
+# the warning (a check run only: --update-baseline stays refused).
 #
 # ACCEPTING DEBT IS RECORDED, NOT SILENT (2026-10-12). Three toolkit-built apps re-baselined
 # 61 times in four days — every acceptance made by the agent whose script caused the rise,
@@ -218,12 +218,14 @@ PY
     echo "     ${TKR:-<toolkit-root>}/bin/sync-project.sh $ROOT"
     echo "   If sync reports a rule LOCALLY MODIFIED instead of restoring it:"
     echo "     ${TKR:-<toolkit-root>}/bin/sync-project.sh $ROOT --upgrade-lint-rules all"
-    if [ "${LINT_RULES_REVERTED_OK:-}" = "1" ]; then
-      echo "   LINT_RULES_REVERTED_OK=1 — linting anyway; counts below are from the files on disk."
-      echo ""
-    elif [ "$UPDATE" -eq 1 ]; then
+    if [ "$UPDATE" -eq 1 ]; then
+      # Refused even under LINT_RULES_REVERTED_OK: the override is for looking at counts, and
+      # baselining stock counts is exactly how the five-day field case went in.
       echo "lint-gate: REFUSED — --update-baseline over reverted rules would baseline stock counts." >&2
       exit 2
+    elif [ "${LINT_RULES_REVERTED_OK:-}" = "1" ]; then
+      echo "   LINT_RULES_REVERTED_OK=1 — linting anyway; counts below are from the files on disk."
+      echo ""
     else
       echo "BLIND — lint rules reverted to stock; lint not run, nothing compared against the baseline."
       # lint-last.json gets the verdict but no total: lint did not run, and a stale total from

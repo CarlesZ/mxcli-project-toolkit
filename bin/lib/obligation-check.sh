@@ -19,6 +19,7 @@
 #   FAULT    a mark exists but cannot be read as evidence (no denominator on a pass that owes one)
 #   WAIVED   the register says this one is out of scope, with a reason
 #   ADOPTED  the project joined the pipeline above this obligation's stage
+#   NOT YET DUE  a project/cluster row whose from-stage the register's Current stage has not reached
 #   N/A      this project is not running the pipeline at all (a-la-carte; existing-app-assurance.md)
 
 set -uo pipefail
@@ -162,6 +163,27 @@ _ob_adopted_stage() {
 }
 
 _ob_rank() { case "$1" in P|p) echo 0 ;; [0-7]) echo $(( $1 + 1 )) ;; *) echo 99 ;; esac; }
+
+# _ob_current_stage <register>  → prints P or 0-7 from the register's "## Current stage" line, or
+# nothing when it cannot be read (no section, or a hand-written line that names no stage).
+#
+# Why: the from-stage column was read only against --adopt, so a project/cluster row was owed
+# from the day PROJECT.md existed. final-look (from-stage 6, the whole-app LOOK run LAST) read
+# PENDING on a project still at Stage P — an obligation reported before it can be performed is
+# noise, and noise teaches people to skip the obligation lines (review of #303, 2026-10-13).
+# The readout is gate-check's own ("**Stage N — Title**, …", or "**All gates passed**"); the
+# scaffold line init-project.sh writes ("**Stage P — Kickoff**") parses the same way.
+# Unreadable → empty → the caller keeps the old behaviour (owed): "could not tell the stage"
+# must never read as "not due yet".
+_ob_current_stage() {
+  local reg="$1" line
+  [ -f "$reg" ] || return 0
+  line="$(awk '/^## Current stage/{f=1;next} f && /^## /{exit} f && /^\*\*/{print;exit}' "$reg" 2>/dev/null | tr -d '\r')"
+  case "$line" in
+    "**All gates passed"*) printf '7'; return 0 ;;
+  esac
+  printf '%s' "$line" | sed -nE 's/^\*\*Stage[[:space:]]+([Pp0-7])([^0-9A-Za-z].*)?$/\1/p' | tr 'p' 'P'
+}
 
 # The scope unit set. A module is IN SCOPE once it has been opened for work — a brief directory
 # under architecture/modules/, or a verify run. NOT every module in the MPR: an app that predates
@@ -414,6 +436,10 @@ mxtk_obligations_report() {
   local adopted_rank=0
   [ -n "$adopted" ] && adopted_rank="$(_ob_rank "$adopted")"
 
+  local current; current="$(_ob_current_stage "$reg")"
+  local current_rank=99
+  [ -n "$current" ] && current_rank="$(_ob_rank "$current")"
+
   local modules; modules="$(_ob_modules "$root")"
   local ob performer scope match artifact denom degradable from_stage skill
 
@@ -423,6 +449,15 @@ mxtk_obligations_report() {
     if [ "$(_ob_rank "$from_stage")" -lt "$adopted_rank" ]; then
       printf 'Obligation %-10s ADOPTED — project joined at stage %s, above this pass'"'"'s stage %s (%s)\n' \
         "$ob" "$adopted" "$from_stage" "$skill"
+      continue
+    fi
+
+    # Not yet due: a project/cluster row whose stage the register has not reached. Module rows
+    # are not touched — they are owed by a module being OPENED FOR WORK (_ob_modules), which is
+    # its own "due" test, and their verdicts stay exactly as before.
+    if [ "$scope" != "module" ] && [ "$(_ob_rank "$from_stage")" -gt "$current_rank" ]; then
+      printf 'Obligation %-10s NOT YET DUE — owed from stage %s; the register'"'"'s Current stage is %s (%s)\n' \
+        "$ob" "$from_stage" "$current" "$skill"
       continue
     fi
 
@@ -439,7 +474,14 @@ mxtk_obligations_report() {
       continue
     fi
 
-    local total=0 done_n=0 waived_n=0 pending="" faulted="" stale="" noproof="" u hit reason stale_at proof_why candidates c newest
+    # The two LOOK rows share the pixel rule: module-review.md's per-module LOOK and its "final
+    # LOOK" both require PROOF-OF-LOOK lines, and the final one must also be stamped (VALID AT is
+    # what makes it "final" — an unstamped whole-app report could never go stale, so it would
+    # discharge the pass forever after any later change). Review of #303, 2026-10-13.
+    local is_look=0 needs_stamp=0
+    case "$ob" in look|final-look) is_look=1 ;; esac
+    [ "$ob" = "final-look" ] && needs_stamp=1
+    local total=0 done_n=0 waived_n=0 pending="" faulted="" stale="" noproof="" unstamped="" u hit reason stale_at proof_why candidates c newest
     while IFS= read -r u; do
       [ -n "$u" ] || continue
       total=$((total+1))
@@ -468,7 +510,8 @@ mxtk_obligations_report() {
         [ -n "$c" ] || continue
         [ -n "$newest" ] || newest="$c"
         if [ "$denom" = "yes" ] && ! _ob_has_denominator "$c"; then continue; fi
-        if [ "$ob" = "look" ] && _ob_look_proof_broken "$root" "$c" >/dev/null; then continue; fi
+        if [ "$needs_stamp" = 1 ] && [ -z "$(_ob_valid_at_stamps "$c")" ]; then continue; fi
+        if [ "$is_look" = 1 ] && _ob_look_proof_broken "$root" "$c" >/dev/null; then continue; fi
         if _ob_stale "$root" "$c" >/dev/null; then continue; fi
         hit="$c"; break
       done <<< "$candidates"
@@ -482,7 +525,9 @@ mxtk_obligations_report() {
       # would send them to the wrong place.
       elif [ "$denom" = "yes" ] && ! _ob_has_denominator "$newest"; then
         faulted="$faulted $u"
-      elif [ "$ob" = "look" ] && proof_why="$(_ob_look_proof_broken "$root" "$newest")"; then
+      elif [ "$needs_stamp" = 1 ] && [ -z "$(_ob_valid_at_stamps "$newest")" ]; then
+        unstamped="$unstamped $u"
+      elif [ "$is_look" = 1 ] && proof_why="$(_ob_look_proof_broken "$root" "$newest")"; then
         # A LOOK whose screenshots cannot be verified is a CSS review — treated as no report.
         noproof="$noproof $u($proof_why)"
       elif stale_at="$(_ob_stale "$root" "$newest")"; then
@@ -496,9 +541,10 @@ mxtk_obligations_report() {
 
     local scoped=$((total - waived_n)) tail=""
     [ "$waived_n" -gt 0 ] && tail=" ($waived_n waived)"
-    if [ -n "$faulted" ] || [ -n "$noproof" ]; then
+    if [ -n "$faulted" ] || [ -n "$noproof" ] || [ -n "$unstamped" ]; then
       local why_bits=""
       [ -n "$faulted" ] && why_bits="NO DENOMINATOR:$faulted — a pass that cannot say what it covered has not covered it"
+      [ -n "$unstamped" ] && why_bits="${why_bits:+$why_bits; }NO VALID AT:$unstamped — an unstamped final LOOK can never go stale, so it is treated as no report (stamp it with the commit it was true at)"
       [ -n "$noproof" ] && why_bits="${why_bits:+$why_bits; }NO PROOF-OF-LOOK — a visual verdict with no verifiable screenshot is a CSS review, treated as no report"
       printf 'Obligation %-10s FAULT — %d of %d discharged%s; %s (%s)\n' \
         "$ob" "$done_n" "$scoped" "$tail" "$why_bits" "$skill"

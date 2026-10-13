@@ -1078,17 +1078,26 @@ function preflight(journeys, { env = process.env, probe = runAdminProbe, admin =
     rows.push({ rung: 'setup', name: `preflight: ${name}`, verdict: 'INVALID', detail, requirement: '' });
   };
 
-  // 0. login credential (#278). Unset TEST_PASS means the run would submit project.config's
-  // default and then the admin fallback. Each rejected submit counts toward Mendix's
-  // 3-attempt lockout, and in the field two demo accounts were locked for ~5 min each. So no
-  // login is attempted at all. The override exists for a project whose config default IS its
-  // real demo password.
-  if (!admin.passFromEnv && env.ALLOW_CONFIG_CREDENTIALS !== '1') {
+  // 0. login credential (#278). A run that would submit the TEMPLATE PLACEHOLDER password
+  // (nobody set TEST_PASS, nobody edited project.config.js's DEFAULT_PASS) then tries the admin
+  // fallback; each rejected submit counts toward Mendix's 3-attempt lockout, and in the field
+  // two demo accounts were locked for ~5 min each. So no login is attempted at all.
+  // A password the PROJECT set in project.config.js is accepted: the template tells every
+  // project to put its real demo password there, and nothing in the toolkit loads an env file
+  // before verify-module runs the journeys — refusing it (#302 as first shipped) faulted every
+  // journeys rung after the next sync. ALLOW_CONFIG_CREDENTIALS=1 overrides when the
+  // placeholder really is the demo password. An admin object without passSource (older
+  // config.js) keeps the #302 rule: refuse unless the password came from the env.
+  const placeholder = admin.passSource !== undefined
+    ? admin.passSource === 'template placeholder'
+    : !admin.passFromEnv;
+  if (placeholder && env.ALLOW_CONFIG_CREDENTIALS !== '1') {
     setup('credentials', `TEST_PASS is unset — the run would log in as "${admin.user}" with ` +
-      "project.config.js's default password and then try the fallback account, and each rejected " +
-      'attempt counts toward the account lockout. Load the project env first (export TEST_USER / ' +
+      "project.config.template.js's placeholder password and then try the fallback account, and each " +
+      'rejected attempt counts toward the account lockout. Put the real demo password in ' +
+      "project.config.js's DEFAULT_PASS, or load the project env first (export TEST_USER / " +
       'TEST_PASS, e.g. `set -a; . ./.env; set +a`), or set ALLOW_CONFIG_CREDENTIALS=1 if the ' +
-      'config default is the real demo password. Suite ABORTED before any login');
+      'placeholder is the real demo password. Suite ABORTED before any login');
     return { lines, rows, skip, abort: 2 };
   }
 
@@ -1355,8 +1364,29 @@ function armRelease(page, li) {
     if (!ok) console.log('  ⚠ logout NOT confirmed — this run\'s session may still be open on the runtime ' +
                          '(trial licences cap live sessions; a restart clears them)');
   };
+}
+
+// An interrupted run (SIGINT/SIGTERM) writes its findings slot as aborted, with whatever it
+// measured so far. Exiting without writing left the PREVIOUS run's file in the slot, reading
+// as this run — the same stale-slot defect the preflight abort already guards against.
+function writeAbortedFindings(reason, extra = {}) {
+  try {
+    fs.mkdirSync(cfg.artifactsDir, { recursive: true });
+    fs.writeFileSync(findingsFile(), JSON.stringify({
+      capturedAt: new Date().toISOString(), aborted: reason,
+      configuredUser: cfg.user, actualUser: extra.actualUser ?? null, usedFallback: !!extra.usedFallback,
+      baseUrl: cfg.baseUrl, positiveControl: POSITIVE_CONTROL, results, walks,
+    }, null, 2));
+  } catch (e) { console.error(`  ⚠ could not write the aborted findings file: ${e.message}`); }
+}
+let SIGNAL_CTX = {};
+function armSignals() {
   for (const sig of ['SIGINT', 'SIGTERM']) {
-    process.once(sig, () => { RELEASE().finally(() => process.exit(2)); });
+    process.once(sig, () => {
+      console.log(`\n  ABORTED by ${sig} — findings written as aborted; this run is not a result.`);
+      writeAbortedFindings(`signal ${sig}`, SIGNAL_CTX);
+      RELEASE().finally(() => process.exit(2));
+    });
   }
 }
 
@@ -1383,20 +1413,17 @@ const findingsFile = () => path.join(cfg.artifactsDir,
     console.log(`  ABORTED at preflight — 0 of ${journeys.length} journeys walked. Fix the SETUP line(s) above.`);
     // Written, not skipped: an aborted run must not leave the previous run's file in the slot
     // reading as this one.
-    fs.mkdirSync(cfg.artifactsDir, { recursive: true });
-    fs.writeFileSync(findingsFile(), JSON.stringify({
-      capturedAt: new Date().toISOString(), aborted: 'preflight',
-      configuredUser: cfg.user, actualUser: null, usedFallback: false,
-      baseUrl: cfg.baseUrl, positiveControl: POSITIVE_CONTROL, results, walks,
-    }, null, 2));
+    writeAbortedFindings('preflight');
     console.log(`  findings → ${path.relative(cfg.root, findingsFile())}`);
     process.exit(pf.abort);
   }
 
+  armSignals();
   const { browser, page } = await H.launchBrowser();
 
   const li = await H.login(page);
   armRelease(page, li);
+  SIGNAL_CTX = { actualUser: li.user, usedFallback: li.usedFallback };
 
   // Landing check: once per run, right after login, before any click. One run signs in as
   // one role, so "N of N roles" is the count over the per-role runs.

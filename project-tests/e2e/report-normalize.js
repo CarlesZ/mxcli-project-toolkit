@@ -118,7 +118,9 @@ const INPUTS = {
   wireframeDir:    'design/wireframes',
 };
 
-const KINDS = new Set(['ui', 'trace', 'data', 'outcome', 'control',
+// 'setup': journey-runner's preflight / precondition / APP-DOWN rows (rung 'setup'). They are
+// not UI checks; before 2026-10-13 they fell back to 'ui' and read as a screen finding.
+const KINDS = new Set(['ui', 'trace', 'data', 'outcome', 'control', 'setup',
                        'build', 'lint', 'coverage', 'conformance', 'stack']);
 
 // ── Verdict maps — one table per source dialect, nothing inline ──────────────
@@ -2599,6 +2601,13 @@ function selftest() {
   t('a control run in the real slot faults journey-runner', inst(jCtl, 'journey-runner').verdict, 'fault');
   t('and emits no product checks from it',
     jCtl.checks.filter(c => c.instrument === 'journey-runner').length, 0);
+
+  // A setup row (preflight, precondition, APP-DOWN) keeps its own kind, never 'ui'.
+  const jSetup = normalize({ ...base, journeyFindings: { status: 'ok', path: 'journey-findings.json',
+    data: { capturedAt: '2026-01-01T00:00:00Z', positiveControl: false,
+            results: [{ rung: 'setup', name: 'preflight: admin', verdict: 'INVALID', detail: 'x', requirement: '' }] } } });
+  t('a setup row is kind "setup", not "ui"',
+    jSetup.checks.filter(c => c.id === 'journey/_/preflight-admin').map(c => c.kind), ['setup']);
 
   // ---- 3b. the control instrument is per-rung, and a copied real run is not one ----
   const ctlRow = (rung, verdict) => ({

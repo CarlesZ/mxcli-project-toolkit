@@ -81,6 +81,22 @@ const PORT = STACK.port;
 // and page-audit.js cannot end up running as two different identities.
 const CREDS = PROJ.credentials();
 
+// Where the test password came from, never the password itself (#278, #302 follow-up).
+//   env                  — TEST_PASS (or its APP_PASS alias)
+//   project.config.js    — a password the project set there (the template tells every
+//                          project to put its real demo password in DEFAULT_PASS)
+//   template placeholder — the value the shipped template carries, i.e. nobody set one
+// Only the last is refused by journey-runner's preflight. Refusing every non-env password
+// (as #302 first did) broke every project whose real password lives in project.config.js,
+// because nothing in the toolkit loads an env file before verify-module runs the journeys.
+// A credentials() that reports `source: 'template default'` is honoured as well.
+const TEMPLATE_PASSWORDS = ['Demo2025!'];   // project.config.template.js DEFAULT_PASS
+function passwordSource({ env = process.env, creds = CREDS } = {}) {
+  if (env.TEST_PASS || env.APP_PASS) return 'env';
+  if (creds.source === 'template default' || TEMPLATE_PASSWORDS.includes(creds.pass)) return 'template placeholder';
+  return 'project.config.js';
+}
+
 // ── M2EE admin credential: where it came from, never what it is ──────────────
 // Every data rung, seed and outcome query goes through `mxcli oql --direct` with this
 // token. It used to be `M2EE_ADMIN_PASS || '1'`: a literal default that silently differed
@@ -156,11 +172,13 @@ const cfg = {
   // is wrong: the login page shows the same generic message either way.
   user: CREDS.user,
   pass: CREDS.pass,
-  // Whether the test password came from the environment (TEST_PASS, or its APP_PASS alias)
-  // rather than project.config.js's default. journey-runner's preflight refuses to log in on a
-  // default (#278): a runner started without the project's env-loading step submitted the
-  // template password, then the admin fallback, and locked two demo accounts for ~5 min each.
+  // Whether the test password came from the environment (TEST_PASS, or its APP_PASS alias),
+  // and passSource (see passwordSource above). journey-runner's preflight refuses to log in on
+  // the TEMPLATE PLACEHOLDER only (#278): a runner started without the project's env-loading
+  // step submitted the template password, then the admin fallback, and locked two demo
+  // accounts for ~5 min each. A password the project set in project.config.js is accepted.
   passFromEnv: !!(process.env.TEST_PASS || process.env.APP_PASS),
+  passSource: passwordSource(),
   // Last-resort identity so a credential problem degrades to a reported finding
   // instead of a zero-coverage run. Set FALLBACK_USER='' to disable.
   fallbackUser: CREDS.fallbackUser,
@@ -213,4 +231,4 @@ function resolveTarget() {
   return t;
 }
 
-module.exports = { cfg, NAV, TARGETS, resolveTarget, resolveAdmin };
+module.exports = { cfg, NAV, TARGETS, resolveTarget, resolveAdmin, passwordSource, TEMPLATE_PASSWORDS };

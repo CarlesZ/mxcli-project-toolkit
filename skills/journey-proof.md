@@ -86,7 +86,7 @@ each one was knowable before the first click.
 
 | Line | Meaning | Do |
 |---|---|---|
-| `SETUP  credentials: TEST_PASS is unset` | aborted, exit 2, **no login attempted** | load the project env (`TEST_USER`/`TEST_PASS`). A run without it submitted the config default and then the admin fallback, and locked two demo accounts for ~5 min each (#278). `ALLOW_CONFIG_CREDENTIALS=1` only when the config default is the real password |
+| `SETUP  credentials: TEST_PASS is unset … placeholder password` | aborted, exit 2, **no login attempted** | the run would submit the **template placeholder** (nobody set `TEST_PASS` and `project.config.js`'s `DEFAULT_PASS` is still the template value), then the admin fallback. That locked two demo accounts for ~5 min each (#278). Put the real demo password in `DEFAULT_PASS`, or export `TEST_PASS`. A password the project set in `project.config.js` is accepted. `ALLOW_CONFIG_CREDENTIALS=1` only when the placeholder really is the demo password |
 | `SETUP  admin: … refused the credential (HTTP 403); credential from <source>` | suite **aborted**, exit 2, nothing walked | fix the credential at the named source. Resolution order: `M2EE_ADMIN_PASS` env → this app's `.mxcli/run-local.json` (`mxcli run --local`) → `.docker/.env` → a labelled guess. The value is never printed |
 | `SETUP  admin: admin API unreachable at host:port` | aborted, exit 2 | app down, or set `M2EE_ADMIN_PORT`. `ALLOW_NO_DATA_RUNG=1` runs anyway with every data rung INVALID |
 | `SETUP  env: missing MOCK_X (needed by J1, J3)` | **one** line, those journeys not walked | export the vars a journey names in `requiresEnv` |

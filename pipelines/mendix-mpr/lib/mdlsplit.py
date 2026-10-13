@@ -7,8 +7,9 @@ end in ';', and the plain column-0 rule cut those flows into fragments that were
 Text is passed through byte-for-byte: no newline translation (CRLF inside literals is load-bearing)."""
 import re
 OPENER = re.compile(r'^(create|grant|revoke|alter|drop|delete|mdl|@|/\*|--)')
-# after an INDENTED terminator only a keyword opener closes the statement (never a comment or @)
-STRONG = re.compile(r'^(create|grant|revoke|alter|drop|delete) ')
+# after an INDENTED terminator only a keyword, an annotation or a doc comment at column 0 closes the
+# statement (`  );` then `@Position(380, 130)` + `create … entity`: ChatCompletions_FunctionCalling)
+STRONG = re.compile(r'^(create |grant |revoke |alter |drop |delete |@[A-Za-z]|/\*\*)')
 def split_statements(text):
     stmts, cur, state, pending = [], [], 'code', None       # state: code | str | dollar | block
     for ln in text.split('\n'):

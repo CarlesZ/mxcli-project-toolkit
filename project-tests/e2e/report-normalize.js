@@ -1366,7 +1366,7 @@ function collectLoop(summaries) {
 }
 
 // ============================================================================
-// SOURCE 4 — docs/conformance/report-<date>.tsv (newest by filename)
+// SOURCE 4 — docs/conformance/report-<date>[-<BRD>].tsv (newest date by filename, all BRDs)
 // ============================================================================
 function collectConformance(input, ctx) {
   const checks = [];
@@ -1428,6 +1428,17 @@ function collectConformance(input, ctx) {
                   log: input.path, source: input.path, rowsRead: rows,
                   canExpressFault: true, evidenceStrength: 'strong' },
   };
+}
+
+// Which conformance files make up the newest run: the newest date among report-<date>.tsv
+// and report-<date>-<BRD>.tsv, and every file of that date (sorted). A per-BRD run and an
+// older single-file run never mix: only the newest date is read.
+function pickConformanceFiles(names) {
+  const re = /^report-(\d{4}-\d{2}-\d{2})(?:-[A-Za-z0-9_.-]+)?\.tsv$/;
+  const hits = names.map(n => [n, re.exec(n)]).filter(([, m]) => m);
+  if (!hits.length) return { date: null, files: [] };
+  const date = hits.map(([, m]) => m[1]).sort().pop();
+  return { date, files: hits.filter(([, m]) => m[1] === date).map(([n]) => n).sort() };
 }
 
 // ============================================================================
@@ -2440,21 +2451,24 @@ function loadInputs(outFile) {
     return { module: mod, file: readFileInput(rel), mtime };
   });
 
-  // Newest conformance report BY FILENAME — the names are ISO dates, so lexical sort
-  // is chronological, and mtime would reorder on a git checkout.
-  let confRel = null, confDate = null;
-  try {
-    const files = fs.readdirSync(abs(INPUTS.conformanceDir))
-      .filter(f => /^report-\d{4}-\d{2}-\d{2}\.tsv$/.test(f)).sort();
-    if (files.length) {
-      confRel = `${INPUTS.conformanceDir}/${files[files.length - 1]}`;
-      confDate = files[files.length - 1].slice(7, 17);
-    }
-  } catch { /* handled below */ }
-  const conformance = confRel
-    ? readFileInput(confRel)
-    : { status: 'missing', path: `${INPUTS.conformanceDir}/report-<date>.tsv`,
-        error: 'no report-<date>.tsv found' };
+  // Newest conformance report date BY FILENAME — the names are ISO dates, so lexical sort
+  // is chronological, and mtime would reorder on a git checkout. Every file of that date is
+  // read: the single report-<date>.tsv and/or the per-BRD report-<date>-<BRD>.tsv files
+  // conformance-check writes (one per BRD); their rows are concatenated.
+  let confPick = { date: null, files: [] };
+  try { confPick = pickConformanceFiles(fs.readdirSync(abs(INPUTS.conformanceDir))); }
+  catch { /* handled below */ }
+  const confDate = confPick.date;
+  let conformance;
+  if (!confPick.files.length) {
+    conformance = { status: 'missing', path: `${INPUTS.conformanceDir}/report-<date>.tsv`,
+                    error: 'no report-<date>.tsv or report-<date>-<BRD>.tsv found' };
+  } else {
+    const parts = confPick.files.map(n => readFileInput(`${INPUTS.conformanceDir}/${n}`));
+    const broken = parts.find(p => p.status !== 'ok');
+    conformance = broken || (parts.length === 1 ? parts[0]
+      : { status: 'ok', path: parts.map(p => p.path).join(', '), text: parts.map(p => p.text).join('\n') });
+  }
 
   const ledgers = listDirs(INPUTS.modulesDir)
     .map(mod => ({ module: mod, file: readFileInput(`${INPUTS.modulesDir}/${mod}/coverage-ledger.md`) }))
@@ -2621,6 +2635,19 @@ function selftest() {
             results: [{ rung: 'setup', name: 'preflight: admin', verdict: 'INVALID', detail: 'x', requirement: '' }] } } });
   t('a setup row is kind "setup", not "ui"',
     jSetup.checks.filter(c => c.id === 'journey/_/preflight-admin').map(c => c.kind), ['setup']);
+
+  // Conformance: newest date wins; per-BRD files of that date are all read; single file unchanged.
+  t('one base file → that file', pickConformanceFiles(['report-2026-10-01.tsv', 'notes.md']),
+    { date: '2026-10-01', files: ['report-2026-10-01.tsv'] });
+  t('per-BRD files of the newest date, all of them; a stale older base file is ignored',
+    pickConformanceFiles(['report-2026-09-30.tsv', 'report-2026-10-12-F002.tsv', 'report-2026-10-12-F001.tsv', 'report-2026-10-01-F001.tsv']),
+    { date: '2026-10-12', files: ['report-2026-10-12-F001.tsv', 'report-2026-10-12-F002.tsv'] });
+  t('no report files → none', pickConformanceFiles(['readme.txt']), { date: null, files: [] });
+  const confMulti = normalize({ ...base, conformance: { status: 'ok', path: 'a, b',
+    text: 'module\tpointer\tstored\tobserved\tverdict\nOrders\t/x\t1\t1\tOK\n' +
+          '\nmodule\tpointer\tstored\tobserved\tverdict\nBilling\t/y\t2\t3\tSTALE\n' } });
+  t('concatenated per-BRD reports yield both modules',
+    confMulti.checks.filter(c => c.instrument === 'conformance' && c.kind === 'conformance').map(c => c.module).sort(), ['Billing', 'Orders']);
 
   // An aborted run (preflight / signal) is kept but is never a result.
   const jAb = normalize({ ...base, journeyFindings: { status: 'ok', path: 'journey-findings.json',
@@ -3122,5 +3149,5 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { normalize, normReq, declaredChecks, parseLedger,
+module.exports = { normalize, normReq, declaredChecks, parseLedger, pickConformanceFiles,
                    V_JOURNEY, V_LOOP, V_WALK, V_CONF, selftest };

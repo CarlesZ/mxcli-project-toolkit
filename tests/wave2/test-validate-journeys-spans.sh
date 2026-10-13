@@ -58,18 +58,18 @@ for c in negonly negempty negdecl positive; do
   [ "$RC" -eq 0 ] && ok "$c → no problems" || bad "$c rejected" "$OUT"
 done
 run negonly
-printf '%s' "$OUT" | grep -q 'NEVER checked' && bad "still claims the negative-only claim is never checked" "$OUT" || ok "no 'NEVER checked' message"
+grep -q 'NEVER checked' <<< "$OUT" && bad "still claims the negative-only claim is never checked" "$OUT" || ok "no 'NEVER checked' message"
 
 echo "== T2: what the runner cannot read is still a problem =="
-run nothing; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'declares nothing the runner reads'; } \
+run nothing; { [ "$RC" -eq 1 ] && grep -q 'declares nothing the runner reads' <<< "$OUT"; } \
   && ok "empty spans block → problem, says the runner records it INVALID" || bad "empty spans block accepted" "$OUT"
-printf '%s' "$OUT" | grep -q 'records it INVALID' && ok "message matches the runner's loud INVALID" || bad "message does not mention INVALID" "$OUT"
-run legacy; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'is an array — the old shape'; } && ok "array-shaped spans → problem naming the old shape" || bad "legacy array shape accepted or not named" "$OUT"
-run livenum; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'liveness: must be a non-empty string'; } \
+grep -q 'records it INVALID' <<< "$OUT" && ok "message matches the runner's loud INVALID" || bad "message does not mention INVALID" "$OUT"
+run legacy; { [ "$RC" -eq 1 ] && grep -q 'is an array — the old shape' <<< "$OUT"; } && ok "array-shaped spans → problem naming the old shape" || bad "legacy array shape accepted or not named" "$OUT"
+run livenum; { [ "$RC" -eq 1 ] && grep -q 'liveness: must be a non-empty string' <<< "$OUT"; } \
   && ok "liveness of the wrong type → problem" || bad "bad liveness accepted" "$OUT"
-run livepos; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'only read for a negative-only claim'; } \
+run livepos; { [ "$RC" -eq 1 ] && grep -q 'only read for a negative-only claim' <<< "$OUT"; } \
   && ok "liveness beside ordered → problem (never read)" || bad "unread liveness accepted" "$OUT"
-run badre; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'not a valid regex'; } \
+run badre; { [ "$RC" -eq 1 ] && grep -q 'not a valid regex' <<< "$OUT"; } \
   && ok "mustNotFire that is not a regex → problem" || bad "invalid regex accepted" "$OUT"
 
 echo "== T3: the validator's own selftest =="

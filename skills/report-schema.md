@@ -143,6 +143,9 @@ any real project. The **Deriving the values** section says where each one actual
     { "name": "positive-control", "verdict": "fault",   "reason": "not requested (--positive-control absent)" },
     { "name": "monkey",           "verdict": "skipped", "reason": "--skip-monkey" },
     { "name": "conformance",      "verdict": "pass",    "log": "docs/conformance/report-<date>.tsv" }
+      // conformance reads the NEWEST date among report-<date>.tsv and the per-BRD
+      // report-<date>-<BRD>.tsv files, and every file of that date (rows concatenated;
+      // "log" then lists them comma-separated). An older date is never mixed in.
   ],
 
   // Rollups have denominators, so they are not checks.

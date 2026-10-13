@@ -9,7 +9,8 @@
 # step then showed 8 of 9 instruments FAULT ("design-audit.json does not exist", "no
 # coverage-ledger.md under architecture/modules/*/") over artefacts that were on disk, and wrote
 # the report into a stray app/docs/report.json — so the render step found nothing to render.
-# Case 1 is that shape in miniature; case 2 is the single-tree regression guard.
+# Case 1 is that shape in miniature; case 2 is the single-tree regression guard; case 3 reads
+# per-BRD conformance reports (report-<date>-<BRD>.tsv, PR #307).
 #
 # The artefacts here are SYNTHETIC and minimal. That is deliberate and allowed: the field-proof
 # rule's "golden input is captured" governs parsers of tool output, and nothing below exercises a
@@ -89,6 +90,23 @@ if [ -s "$S/docs/report.json" ]; then
                 *) ok "single tree: report at docs/, design-audit.json found" ;; esac
 else
   bad "single tree: no docs/report.json" "$(tr '\n' ' ' < "$WORK/out2" | cut -c1-300)"
+fi
+
+# --- 3. per-BRD conformance reports (conformance-check writes report-<date>-<BRD>.tsv) ---------
+# The newest date wins and every BRD file of that date is read; an older single-file report is
+# not mixed in (it used to be the ONLY file read, shown as measured although stale).
+P="$WORK/perbrd"; lay_out "$P" "$P"
+rm -f "$P/docs/conformance/"report-*.tsv
+printf 'module\tclaim\tstored\tobserved\tverdict\nStale\t/old\t1\t1\tOK\n' > "$P/docs/conformance/report-2026-09-26.tsv"
+printf 'module\tclaim\tstored\tobserved\tverdict\nOrders\t/useCases\t3\t3\tOK\n' > "$P/docs/conformance/report-2026-10-12-F001.tsv"
+printf 'module\tclaim\tstored\tobserved\tverdict\nBilling\t/pages\t2\t4\tUNDERSTATED\n' > "$P/docs/conformance/report-2026-10-12-F002.tsv"
+( cd "$P/tests/e2e" && node report-normalize.js --out docs/report.json ) >"$WORK/out3" 2>&1
+if [ -s "$P/docs/report.json" ]; then
+  mods="$(node -e 'const r=require(process.argv[1]); console.log(r.checks.filter(c=>c.instrument==="conformance"&&c.kind==="conformance").map(c=>c.module).sort().join(","))' "$P/docs/report.json")"
+  [ "$mods" = "Billing,Orders" ] && ok "per-BRD reports of the newest date are all read (Billing, Orders); the older single file is not" \
+    || bad "per-BRD conformance reports not aggregated" "$mods"
+else
+  bad "per-BRD: no docs/report.json" "$(tr '\n' ' ' < "$WORK/out3" | cut -c1-300)"
 fi
 
 echo ""

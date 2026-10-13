@@ -396,7 +396,7 @@ PROJ_CFG="$WORK/tests/e2e/project.config.js"; cp "$PROJ_CFG" "$WORK/cfg.bak"
 sed -e "s/^const DEFAULT_PASS = '.*';/const DEFAULT_PASS = 'fixture-project-pass';/" "$WORK/cfg.bak" > "$PROJ_CFG"
 E2EOUT="$(cd "$WORK/tests/e2e" && env -u TEST_PASS -u APP_PASS -u ALLOW_CONFIG_CREDENTIALS -u M2EE_ADMIN_PORT APP_PORT=1 M2EE_ADMIN_PASS="$MARK" \
           MXCLI="$WORK/stub/mxcli" STUB_ARGV="$WORK/argv" node journey-runner.js "$J/J-one.journey.json" 2>&1)"; RC=$?
-printf '%s\n' "$E2EOUT" | grep -q 'SETUP  credentials' && bad "project-set password refused" "$E2EOUT" || ok "no credentials refusal"
+grep -q 'SETUP  credentials' <<< "$E2EOUT" && bad "project-set password refused" "$E2EOUT" || ok "no credentials refusal"
 [ -f "$WORK/argv" ] && ok "went on to the admin probe (the stub answers 403 → exit $RC)" || bad "probe never ran" "$E2EOUT"
 cp "$WORK/cfg.bak" "$PROJ_CFG"
 

@@ -336,7 +336,15 @@ async function act(page, a, vars, note) {
 async function traceRung(step, { t0, since, rec, capture = null, live = O.liveness }) {
   const claimed = (step.spans && step.spans.ordered) || [];
   const mustNot = (step.spans && step.spans.mustNotFire) || [];
-  if (!claimed.length && !mustNot.length) return;
+  if (!step.spans) return;
+  // A spans block that declares nothing this rung reads reads as a trace claim in the journey
+  // file and proves nothing — said out loud, never skipped (#150 item 3).
+  if (!claimed.length && !mustNot.length) {
+    rec(`${step.name}: spans`, 'INVALID',
+        'spans block declares neither `ordered` nor `mustNotFire` — nothing to evaluate; trace rung did NOT run. ' +
+        'Declare the claim or remove the block.');
+    return;
+  }
   const negOnly = !claimed.length;
   const probe = (step.spans && step.spans.liveness) || null;
   const has = (sp, n) => O.microflowNames(sp).includes(n) || sp.some(x => x.op === n);

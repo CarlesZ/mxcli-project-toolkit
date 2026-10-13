@@ -3,7 +3,8 @@
 #
 # Fixture for the journey runner's liveness checks: rung 2's negative-only span claim
 # (traceRung + otel.js liveness, the trace-negative positive-control mutant — #150) and the
-# app probe between journeys (probeApp / appGate / flagAppDown — #285).
+# app probe between journeys (probeApp / appGate / flagAppDown — #285), and the loud INVALID
+# for a spans block that declares neither `ordered` nor `mustNotFire` (#150 item 3).
 #
 # #150 (card-disbursement requirements-driven build, 2026-09-26): a step whose whole proof is
 # "the reset microflow did NOT run" (Cancel on a confirmation) captures zero spans. The runner
@@ -109,6 +110,10 @@ if (typeof R.traceRung !== 'function' || typeof O.liveness !== 'function') { con
   out('T_DECL_MISS', await run(negDeclMiss, noMf, undefined));
   const pos = { name: 'Arm', spans: { ordered: ['MockServices.ACT_MockScenario_Arm'] } };
   out('T_POS_EMPTY', await run(pos, [], true));                      // positive claim: empty is INVALID, liveness not consulted
+  // #150 item 3: a spans block declaring nothing is a loud INVALID, never a silent skip
+  out('T_NOTHING', await run({ name: 'Save', spans: { ordered: [] } }, goldSpans, true));
+  out('T_LEGACY', await run({ name: 'Save', spans: [{ mf: 'M.ACT_Save', status: 'OK' }] }, goldSpans, true));
+  out('T_NOSPANS', await run({ name: 'Save' }, goldSpans, true));
   out('T_POS_OK', (await run(pos, goldSpans, false)).map(r => r.split(' :: ')[0]));
 
   // the trace-negative mutant for a negative-only journey
@@ -175,6 +180,10 @@ case "$(line T_DECL_MISS)" in '["INVALID Cancel: spans :: '*'declared liveness s
   && ok "positive claim with zero spans → INVALID as before" || bad "positive-claim behaviour changed" "$(line T_POS_EMPTY)"
 [ "$(line T_POS_OK)" = '["PASS [GUARD] Arm: capture non-empty","PASS [MF] Arm: ordered","PASS [MF] Arm: no ERROR at any level"]' ] \
   && ok "positive claim over the golden → unchanged rows" || bad "positive-claim rows changed" "$(line T_POS_OK)"
+
+case "$(line T_NOTHING)" in '["INVALID Save: spans :: spans block declares neither `ordered` nor `mustNotFire`'*) ok "spans block with neither field → loud INVALID (#150 item 3)" ;; *) bad "empty spans block skipped silently" "$(line T_NOTHING)" ;; esac
+case "$(line T_LEGACY)" in '["INVALID Save: spans :: '*) ok "array-shaped spans (a shape the runner does not read) → INVALID" ;; *) bad "unreadable spans shape skipped" "$(line T_LEGACY)" ;; esac
+[ "$(line T_NOSPANS)" = '[]' ] && ok "no spans block → no trace rows (nothing claimed)" || bad "a step without spans produced trace rows" "$(line T_NOSPANS)"
 
 echo "== T3: trace-negative positive control for a negative-only claim =="
 [ "$(line M_SUPPORTED)" = '{"supported":true,"inject":["ACT_Settings_ResetAll"]}' ] && ok "mutant supported, injects the forbidden name" || bad "negative-only journey still has no trace-negative mutant" "$(line M_SUPPORTED)"

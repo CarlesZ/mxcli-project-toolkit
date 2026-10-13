@@ -14,7 +14,7 @@
 // rule below encodes a way a journey can be wrong that the runner cannot tell
 // apart from a defect: a placeholder that reaches the page as the literal string
 // "{{supplierCode}}", an OQL check with no bar that is recorded INVALID forever, a
-// `mustNotFire` the runner never evaluates.
+// `spans` block that declares nothing the runner reads.
 //
 // WHAT IT IS NOT
 // It cannot tell you whether a selector, entity, microflow or requirement pointer
@@ -107,13 +107,27 @@ function validate(j, brds) {
         if (typeof t !== 'string')
           add(`${at}.ui.${key}`, 'contains a non-string — comment objects inside these arrays become assertions');
 
+    // A negative-only claim (`mustNotFire` with no `ordered`) is evaluated since #150: the
+    // runner judges it once tracing is shown live — the step's `liveness` span, or any span from
+    // the service since the journey began. `liveness` is read only for such a claim.
     const sp = st.spans;
     if (sp) {
       const ordered = sp.ordered || [];
-      if (!Array.isArray(ordered) || !ordered.length) {
-        if ((sp.mustNotFire || []).length)
-          add(`${at}.spans`, 'declares `mustNotFire` with no non-empty `ordered` — the runner evaluates the whole trace block only when `ordered` is non-empty, so this claim is NEVER checked');
-        else add(`${at}.spans`, 'is present but declares nothing the runner reads');
+      const mustNot = sp.mustNotFire || [];
+      if (!Array.isArray(ordered)) add(`${at}.spans.ordered`, 'must be an array');
+      if (!Array.isArray(mustNot)) add(`${at}.spans.mustNotFire`, 'must be an array');
+      const hasOrdered = Array.isArray(ordered) && ordered.length > 0;
+      const hasMustNot = Array.isArray(mustNot) && mustNot.length > 0;
+      if (!hasOrdered && !hasMustNot)
+        add(`${at}.spans`, 'is present but declares nothing the runner reads (neither `ordered` nor `mustNotFire`) — the runner records it INVALID');
+      for (const n of hasMustNot ? mustNot : []) {
+        try { new RegExp(n); } catch (e) { add(`${at}.spans.mustNotFire`, `"${n}" is not a valid regex — the runner compiles it with new RegExp()`); }
+      }
+      if (sp.liveness !== undefined) {
+        if (typeof sp.liveness !== 'string' || !sp.liveness.trim())
+          add(`${at}.spans.liveness`, 'must be a non-empty string: a microflow name or span operation the step is known to produce');
+        else if (hasOrdered)
+          add(`${at}.spans.liveness`, 'is only read for a negative-only claim (`mustNotFire` with no `ordered`) — with `ordered`, the claimed microflows are the liveness evidence');
       }
       for (const n of ordered)
         if (!String(n).includes('.'))
@@ -206,7 +220,12 @@ function selftest() {
     ['outcome with no sql', j => { delete j.outcome.sql; return j; }, 'reads `outcome.sql`'],
     ['ready given a bare widget name', j => { j.steps[0].ui.ready = 'dvThing'; return j; }, 'is not a CSS selector'],
     ['checks given a selector', j => { j.steps[0].ui.checks = ['.mx-name-btnGo']; return j; }, 'looks like a selector'],
-    ['mustNotFire with no ordered', j => { j.steps[0].spans = { mustNotFire: ['ACT_Del'] }; return j; }, 'NEVER checked'],
+    ['negative-only spans claim is accepted', j => { j.steps[0].spans = { mustNotFire: ['ACT_Del'] }; return j; }, null],
+    ['negative-only claim with liveness is accepted', j => { j.steps[0].spans = { ordered: [], mustNotFire: ['ACT_Del'], liveness: 'M.DS_Page' }; return j; }, null],
+    ['spans block declaring nothing', j => { j.steps[0].spans = { ordered: [] }; return j; }, 'declares nothing the runner reads'],
+    ['liveness not a string', j => { j.steps[0].spans = { mustNotFire: ['ACT_Del'], liveness: 5 }; return j; }, 'must be a non-empty string'],
+    ['liveness beside ordered', j => { j.steps[0].spans.liveness = 'M.DS_Page'; return j; }, 'only read for a negative-only claim'],
+    ['mustNotFire not a regex', j => { j.steps[0].spans.mustNotFire = ['ACT_(Del']; return j; }, 'not a valid regex'],
     ['unqualified ordered span', j => { j.steps[0].spans.ordered = ['ACT_Go']; return j; }, 'is unqualified'],
     ['unknown action', j => { j.steps[0].actions[0].do = 'swipe'; return j; }, 'unknown action'],
     ['wait using settleMs', j => { j.steps[0].actions = [{ do: 'wait', settleMs: 500 }]; return j; }, 'reads `ms`'],
@@ -224,7 +243,7 @@ function selftest() {
     console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : `\n       got: ${problems.join('\n            ') || '(no problems reported)'}`}`);
   }
   console.log(bad ? `\n${bad} rule(s) could not be shown failing — do not trust a green from this tool.`
-                  : `\n${cases.length - 1} rules each watched going red; the clean case stays green.`);
+                  : `\n${cases.filter(c => c[2] !== null).length} rules each watched going red; ${cases.filter(c => c[2] === null).length} clean case(s) stay green.`);
   return bad ? 1 : 0;
 }
 

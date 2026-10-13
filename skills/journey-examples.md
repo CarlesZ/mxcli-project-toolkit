@@ -172,10 +172,27 @@ and landing guard, before text/trace/data.
 |---|---|
 | `ordered[]` | Matched **exactly** against the `mx.microflow.name` tag, so **module-qualified**. Subsequence check over span start time: incidental flows between them are tolerated, a reorder or a skip is not. Spans sharing a start time are treated as concurrent. |
 | `mustNotFire[]` | Compiled with `new RegExp(n)` against the same tag, so an unqualified name works as a substring. |
+| `liveness` | Optional, read **only for a negative-only claim** (`mustNotFire` with no `ordered`). It names a microflow (`mx.microflow.name`) or a span operation that the step is known to produce, such as the page's data-source retrieve. |
 
-**Verified trap: the entire trace block runs only when `ordered` is present and non-empty.** Capture,
-the non-empty guard, `assertNoErrors` *and* `mustNotFire` all live inside that `if`. A step declaring
-only `mustNotFire` is silently never checked. Always pair them. `validate-journeys.js` fails on it.
+**A negative-only claim is judged only when tracing is shown to be live (#150).** A step whose whole
+proof is "X did not run" declares `mustNotFire` alone. Cancel on a reset confirmation is one such step:
+
+```json
+"spans": { "mustNotFire": ["ACT_Settings_ResetAll"], "liveness": "Settings.DS_Settings_Get" }
+```
+
+The step can rightly capture zero spans, and so does Jaeger down. So the runner waits the full
+capture window and then needs one piece of evidence that tracing was live:
+- the `liveness` span was captured; or, with no `liveness` declared,
+- any span from the service since the journey began.
+
+With no evidence the step is `INVALID`, never a pass. If the step's capture is non-empty and no
+`liveness` is declared, those spans count as the evidence. Declare `liveness` whenever the step has
+a span it always produces; it is the stronger reference.
+
+**A `spans` block that declares neither `ordered` nor `mustNotFire` is `INVALID`.** The array
+shape `[{ "mf": …, "status": … }]` is one example. The runner no longer skips it, and
+`validate-journeys.js` reports it.
 
 Declaring `ordered` buys `assertNoErrors` for free, and that is the check worth having: it walks
 **activity** spans, so it sees a caught error that leaves the microflow span `OK` while the work did
@@ -258,7 +275,8 @@ Each of these is either an error path in the runner or a correction recorded in 
 | Mistake | How it presents | Fix |
 |---|---|---|
 | `checks` given a selector, or `ready` given a bare widget name | a missing-button `FAIL` that sends you to the page instead of the contract | `ready` = selector, `checks` = bare names |
-| `mustNotFire` with no `ordered` | silence — the claim is never evaluated and nothing says so | pair it with a non-empty `ordered` |
+| `mustNotFire` with no `ordered`, on an app whose tracing is down | `INVALID — negative-only claim … with no liveness evidence` | fix Jaeger/OTel, or declare `spans.liveness` with a span the step always produces |
+| `spans` block with neither `ordered` nor `mustNotFire` | `INVALID — spans block declares neither …` | declare the claim, or remove the block |
 | Unqualified name in `ordered` | `FAIL` on a microflow that did run | qualify it; `ordered` is an exact match on `mx.microflow.name` |
 | `ready` guessing where a commit lands | one real journey expected the commit to return to the home page; it stays put and updates in place. The guard failed loudly and marked the rest `INVALID` | that is the guard working — fix the contract, not the app |
 | `oql` / `outcome` with no `expect` or `atLeast` | `INVALID` on every run, forever | declare a bar; prefer `atLeast` on a fixture with history |
@@ -297,7 +315,8 @@ Stated so a reader is not surprised, and so whoever owns the spec can decide whi
 2. **Rung numbering does not agree.** `journey-proof.md` numbers landing/text/spans/data/outcome 1–5;
    the runner's header says "four rungs" and its inline comments label spans as rung 2, data as 3 and
    outcome as 4. The emitted `rung` field is a string enum (`ui`/`trace`/`data`/`outcome`/`control`).
-3. **`mustNotFire` is gated on `ordered`.** The spec presents it as an independent rung-3 claim.
+3. ~~**`mustNotFire` is gated on `ordered`.**~~ Resolved (#150): a negative-only claim is evaluated
+   against a liveness reference (see `spans` above).
 4. **Rung 4's queries are whole-table**, so `mustPointAt` is a weaker claim than "the row this run
    created points at the seed" unless the fixture is reset.
 5. **A journey that bails early emits no outcome row at all** — silence, where the spec's discipline

@@ -33,17 +33,27 @@
 #                                             whether O sorts before S (S is a new restatement
 #                                             that needs a supersedes header) or after it
 #                                             (S is an older script being replayed)
-# Run order is the path order under mdlsource/ (LC_ALL=C sort), which is how numbered scripts
-# are run. A script outside mdlsource/ (a scratch file) owns nothing; every owner is "other".
+# Run order is the path order under mdlsource/ (LC_ALL=C sort) with a leading `done-` taken off
+# the file name: iterative-build-loop.md renames an executed script `done-<name>`, and a raw sort
+# put done-05-x.mdl after 09-y.mdl, so a NEW 09 was reported as "replaying reverts done-05" —
+# backwards. Header names match the same way: `-- supersedes: 05-x.mdl` still names
+# done-05-x.mdl after the rename. A script outside mdlsource/ (a scratch file) owns nothing.
+#
+# REPLAY IN RUN ORDER IS NOT A CONFLICT. On a rebuild every older script runs before the script
+# that supersedes it; warning there trains people to ignore the warning. So the two "replaying
+# reverts O" verdicts ask the model first (describe-baseline.sh live / applied-by, siblings):
+# the document absent → nothing to revert; its live body recorded as applied by this script or
+# an older one → O's work is not live yet. Anything else, or no ./mxcli to ask, stays a CONFLICT.
 #
 # Not a parser: the same comment/string/$$-body blanking and bracket depth as exec.sh's change
 # class lexer, then only statement heads at depth 0 are read, so a caption saying "create page"
 # or a widget line never counts. Unlike that lexer, a string literal may span lines (a real
 # `find($Clean, '<newline>')` in skills/agents-examples/single-call.example.mdl hid the next
-# microflow from a per-line lexer: the open quote left the bracket depth at 1). Golden input is real MDL: mxcli v0.23.0 DESCRIBE captures
-# (tests/wave2/fixtures/context-pack/capture/describe/), the shipped StyleGallery mdlsource tree
-# and skills/agents-examples/*.mdl (tests/wave2/test-script-owners.sh). `*.test.mdl` files are
-# skipped: they are microflow tests, not build steps.
+# microflow from a per-line lexer: the open quote left the bracket depth at 1). Golden input is
+# real MDL: mxcli v0.23.0 DESCRIBE captures (tests/wave2/fixtures/context-pack/capture/describe/),
+# the shipped StyleGallery mdlsource tree and skills/agents-examples/*.mdl
+# (tests/wave2/test-restatement-guard.sh). `*.test.mdl` files are skipped: they are microflow
+# tests, not build steps.
 #
 # Producer for every consumer (CLAUDE.md "Shipping an instrument" rule 5): the input is the
 # project's own mdlsource/, written by every build step; the consumers are exec.sh (check, every
@@ -105,11 +115,18 @@ so_docs() {  # $1 = script
   awk "$_SO_AWK" "$1"
 }
 
-# Header values: `-- supersedes: a.mdl, b.mdl` → one basename per line.
+# A script's identity: its file name without a leading done- (the executed-script rename).
+so_key() { basename "$1" | sed 's/^done-//'; }
+# Sort key: the path with that prefix removed from the file name.
+so_sortkey() { printf '%s/%s\n' "$(dirname "$1")" "$(so_key "$1")"; }
+# True when path $1 runs before path $2.
+so_before() { [ "$(printf '%s\n%s\n' "$(so_sortkey "$1")" "$(so_sortkey "$2")" | LC_ALL=C sort | head -1)" = "$(so_sortkey "$1")" ]; }
+
+# Header values: `-- supersedes: a.mdl, b.mdl` → one name per line, done- taken off.
 so_header() {  # $1 = script, $2 = supersedes|superseded-by
   sed -nE "s/^[[:space:]]*--[[:space:]]*$2:[[:space:]]*(.*)$/\1/p" "$1" 2>/dev/null \
     | tr ',' '\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]].*$//' \
-    | sed -E 's#.*/##' | grep -v '^$' || true
+    | sed -E 's#.*/##; s/^done-//' | grep -v '^$' || true
 }
 
 so_root() {  # $1 = optional project root
@@ -121,7 +138,9 @@ so_root() {  # $1 = optional project root
 
 so_scripts() {  # $1 = root → every build script under mdlsource/, run order, root-relative
   [ -d "$1/mdlsource" ] || return 0
-  ( cd "$1" && find mdlsource -type f -name '*.mdl' ! -name '*.test.mdl' 2>/dev/null | LC_ALL=C sort )
+  ( cd "$1" && find mdlsource -type f -name '*.mdl' ! -name '*.test.mdl' 2>/dev/null ) \
+    | awk '{ k = $0; n = split(k, a, "/"); sub(/^done-/, "", a[n]); k = a[1]; for (i = 2; i <= n; i++) k = k "/" a[i]; print k "\t" $0 }' \
+    | LC_ALL=C sort | cut -f2
 }
 
 so_index() {  # $1 = root → "doc <tab> script" for every owner, run order
@@ -166,7 +185,25 @@ case "$cmd" in
     S_ABS="$(cd "$(dirname "$S")" && pwd)/$(basename "$S")"
     S_REL="${S_ABS#"$ROOT"/}"
     [ "$S_REL" = "$S_ABS" ] && S_REL=""
-    S_BASE="$(basename "$S")"
+    S_KEY="$(so_key "$S")"
+    DBL="$(dirname "$0")/describe-baseline.sh"
+    # 0 when O's work on doc $1 ("KIND Module.Name") is not live, so replaying S reverts nothing.
+    not_live() {
+      local kind="${1%% *}" doc="${1#* }" live keys k
+      [ -f "$DBL" ] || return 1
+      live="$(PROJECT_ROOT="$ROOT" bash "$DBL" live "$kind" "$doc" 2>/dev/null)" || return 1
+      [ "$live" = absent ] && return 0
+      keys="$(PROJECT_ROOT="$ROOT" bash "$DBL" applied-by "$doc" "$live" 2>/dev/null)"
+      [ -n "$keys" ] || return 1
+      while IFS= read -r k; do   # applied-by prints root-relative paths, done- already removed
+        [ -n "$k" ] || continue
+        [ "$k" = "$(so_sortkey "${S_REL:-$S}")" ] && continue
+        so_before "$k" "${S_REL:-$S}" || return 1
+      done <<KEYS
+$keys
+KEYS
+      return 0
+    }
     MY_SUP="$(so_header "$S" supersedes)"
     MY_SUPBY="$(so_header "$S" superseded-by)"
     DOCS="$(so_docs "$S" | awk -F'\t' '{ print $1 " " $2 }' | LC_ALL=C sort -u)"
@@ -176,18 +213,18 @@ case "$cmd" in
       [ -n "$d" ] || continue
       printf '%s\n' "$IDX" | awk -F'\t' -v d="$d" '$1 == d { print $2 }' | while IFS= read -r o; do
         [ "$o" = "$S_REL" ] && continue
-        ob="$(basename "$o")"
-        if printf '%s\n' "$MY_SUP" | grep -qxF "$ob" || so_header "$ROOT/$o" superseded-by | grep -qxF "$S_BASE"; then
+        ob="$(so_key "$o")"
+        if printf '%s\n' "$MY_SUP" | grep -qxF "$ob" || so_header "$ROOT/$o" superseded-by | grep -qxF "$S_KEY"; then
           continue
         fi
-        if printf '%s\n' "$MY_SUPBY" | grep -qxF "$ob" || so_header "$ROOT/$o" supersedes | grep -qxF "$S_BASE"; then
-          echo "CONFLICT	$d	$o	superseded: $o supersedes this script — replaying it reverts $o"
+        if printf '%s\n' "$MY_SUPBY" | grep -qxF "$ob" || so_header "$ROOT/$o" supersedes | grep -qxF "$S_KEY"; then
+          not_live "$d" || echo "CONFLICT	$d	$o	superseded: $o supersedes this script — replaying it reverts $o"
         elif [ -z "$S_REL" ]; then
           echo "CONFLICT	$d	$o	owned by $o; this script is outside mdlsource/"
-        elif [ "$(printf '%s\n%s\n' "$o" "$S_REL" | LC_ALL=C sort | head -1)" = "$o" ]; then
+        elif so_before "$o" "$S_REL"; then
           echo "CONFLICT	$d	$o	older owner $o — a new restatement needs '-- supersedes: $ob'"
         else
-          echo "CONFLICT	$d	$o	newer owner $o — replaying this script reverts it"
+          not_live "$d" || echo "CONFLICT	$d	$o	newer owner $o — replaying this script reverts it"
         fi
       done
     done <<EOF

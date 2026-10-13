@@ -83,6 +83,18 @@ cp "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" "$O/mdlsource/09-reject-f
 { echo "-- superseded-by: 09-reject-fix.mdl"; cat "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out"; } > "$O/mdlsource/05-reject.mdl"
 OUT="$(bash "$OWNERS" check "$O/mdlsource/09-reject-fix.mdl" "$O" 2>&1)"; RC=$?
 [ "$RC" -eq 0 ] && ok "-- superseded-by: in the old script settles it too" || bad "superseded-by ignored (rc $RC): $OUT"
+# iterative-build-loop.md renames an executed script done-<name>; run order and header names
+# must survive that (a raw sort put done-05 after 09 and called the NEW script a replay).
+cp "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" "$O/mdlsource/done-05-reject.mdl"; rm -f "$O/mdlsource/05-reject.mdl"
+cp "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" "$O/mdlsource/09-reject-fix.mdl"
+OUT="$(bash "$OWNERS" check "$O/mdlsource/09-reject-fix.mdl" "$O" 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && has "done-05 still runs before 09: older owner, not 'newer'" "$OUT" "older owner mdlsource/done-05-reject.mdl" || bad "done- ordering rc $RC: $OUT"
+hasnt "  and the new script is not called a replay" "$OUT" "newer owner"
+OUT="$(bash "$OWNERS" report "$O" 2>&1)"
+has "report keeps run order across the rename" "$OUT" "2 scripts: mdlsource/done-05-reject.mdl, mdlsource/09-reject-fix.mdl"
+{ echo "-- supersedes: 05-reject.mdl"; cat "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out"; } > "$O/mdlsource/09-reject-fix.mdl"
+OUT="$(bash "$OWNERS" check "$O/mdlsource/09-reject-fix.mdl" "$O" 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && ok "'-- supersedes: 05-reject.mdl' still names done-05-reject.mdl" || bad "supersedes lost after rename (rc $RC): $OUT"
 
 # ── fixture project for baseline + exec.sh ───────────────────────────────────
 P="$WORK/proj"
@@ -100,19 +112,27 @@ D=".mpr-snapshots/$(date +%Y%m%d-%H%M%S)-$$"
 mkdir -p "$D"; cp Fixture.mpr "$D/"; cp -r mprcontents "$D/"
 echo "Snapshot saved: $D"
 SNAP
-# Fake mxcli: check passes, exec appends to the model, DESCRIBE replays live/<KIND>__<Name>.out
-# (copies of the v0.23.0 captures) and answers "not found" for anything else, as the real one did.
+# Fake mxcli: check passes, exec appends to the model (and, with FAKE_APPLY="<src>=<dst>", puts
+# the script's body into live/ the way a real exec changes what DESCRIBE prints). DESCRIBE replays
+# live/<KIND>__<Name>.out (copies of the v0.23.0 captures). A missing document answers in the
+# recorded shape "Error: entity not found: ZKT35.Widget (duration: 1.022958ms)", exit 1
+# (a 2026-08-07 retest log under bug-logs/), with this kind and name; Bad.Parse answers
+# the verbatim v0.24.0 "no describable document named" refusal (conformance-check.sh).
 cat > "$P/mxcli" <<'MXCLI'
 #!/usr/bin/env bash
 D="$(cd "$(dirname "$0")" && pwd)"
 case "${1:-}" in
   check) exit 0 ;;
-  exec)  echo "fake mxcli exec"; echo "written by the script" >> "$D/Fixture.mpr"; exit 0 ;;
+  exec)  echo "fake mxcli exec"; echo "written by the script" >> "$D/Fixture.mpr"
+         [ -n "${FAKE_APPLY:-}" ] && cp "${FAKE_APPLY%%=*}" "$D/live/${FAKE_APPLY#*=}"; exit 0 ;;
 esac
 q="${4:-}"; q="${q#DESCRIBE }"; name="${q##* }"; kind="${q% *}"
 f="$D/live/${kind}__${name}.out"
 [ -f "$f" ] && { cat "$f"; exit 0; }
-echo "Error: $(printf '%s' "$kind" | tr 'A-Z' 'a-z') not found: $name" >&2; exit 1
+if [ "$name" = Bad.Parse ]; then
+  echo "Error: no describable document named \"Bad.Parse\" found in the project; specify the type explicitly" >&2; exit 1
+fi
+echo "Error: $(printf '%s' "$kind" | tr 'A-Z' 'a-z') not found: $name (duration: 1.022958ms)" >&2; exit 1
 MXCLI
 cat > "$WORK/mxbuild" <<'MXB'
 #!/usr/bin/env bash
@@ -158,6 +178,34 @@ has "the diff shows the live message the script would revert" "$OUT" "+    valid
 has "absent at draft, present now" "$OUT" "DRIFT	Sales.ACT_ApprovalStep_Hold	created since the script was drafted"
 hasnt "the unchanged microflow is not reported" "$OUT" "DRIFT	Sales.ACT_ApprovalStep_Approve"
 rm -f "$P/live/MICROFLOW__Sales.ACT_ApprovalStep_Hold.out"
+
+echo "-- baseline: re-run after a clean exec, and a rebuild onto a fresh model, are not drift"
+B="$P/mdlsource/11-reject-own.mdl"
+sed "s/A comment is required to reject./A reason is required./" "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" > "$B"
+( cd "$P" && bash bin/describe-baseline.sh stamp "$B" ) >/dev/null 2>&1
+LIVE_BEFORE="$(cat "$P/live/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out")"
+grep -v '^-- baseline:' "$B" > "$P/live/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out"   # the exec wrote B's body
+OUT="$(cd "$P" && bash bin/describe-baseline.sh verify "$B" 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && ok "[control] without an applied record the script's own write reads as drift" || bad "[control] rc $RC — the applied cases below prove nothing"
+OUT="$(cd "$P" && bash bin/describe-baseline.sh record-applied "$B" 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && has "record-applied records the written document" "$OUT" "recorded 1 applied" || bad "record-applied rc $RC: $OUT"
+OUT="$(cd "$P" && bash bin/describe-baseline.sh verify "$B" 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && has "re-run: live body is the script's own write → SAME" "$OUT" "own recorded write" || bad "re-run after exec rc $RC: $OUT"
+mv "$B" "$P/mdlsource/done-11-reject-own.mdl"
+OUT="$(cd "$P" && bash bin/describe-baseline.sh verify "$P/mdlsource/done-11-reject-own.mdl" 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && ok "  still SAME after the done- rename" || bad "done- rename broke the applied match (rc $RC): $OUT"
+rm -f "$P/live/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out"
+OUT="$(cd "$P" && bash bin/describe-baseline.sh verify "$P/mdlsource/done-11-reject-own.mdl" 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && has "fresh model: absent → SAME (the script creates it)" "$OUT" "absent: this script creates it" || bad "rebuild rc $RC: $OUT"
+cp "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" "$P/live/"   # neither the draft-time body nor B's
+OUT="$(cd "$P" && bash bin/describe-baseline.sh verify "$P/mdlsource/done-11-reject-own.mdl" 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && ok "someone else's body is still drift" || bad "foreign body rc $RC: $OUT"
+rm -f "$P/mdlsource/done-11-reject-own.mdl"
+OUT="$(cd "$P" && bash bin/describe-baseline.sh live MICROFLOW Bad.Parse 2>&1)"; RC=$?
+[ "$RC" -eq 3 ] && ok "'no describable document' is a failed call, never 'absent'" || bad "refusal read as rc $RC: $OUT"
+OUT="$(cd "$P" && bash bin/describe-baseline.sh live MICROFLOW Sales.Nope 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && [ "$OUT" = absent ] && ok "the recorded not-found shape reads absent" || bad "not-found rc $RC: $OUT"
+printf '%s\n' "$LIVE_BEFORE" > "$P/live/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out"   # the drifted body again
 
 # ── exec.sh: warn / refuse / ask / off ───────────────────────────────────────
 run() {  # env... ; runs exec.sh on $S; prints output; rc in $WORK/rc
@@ -209,6 +257,48 @@ OUT="$(run)"; RC=$(cat "$WORK/rc")
 [ "$RC" -eq 0 ] && hasnt "re-stamped + supersedes: no warning" "$OUT" "⚠ Restatement" || bad "rc $RC"
 hasnt "  and no stale-draft warning" "$OUT" "Stale draft"
 reset_model
+
+# ── replay in run order (a rebuild) is quiet; replaying after the newer owner landed is not ──
+echo "-- owners: replay in run order with supersedes headers"
+R="$WORK/rebuild"; mkdir -p "$R/bin" "$R/live" "$R/mdlsource"
+cp "$P/bin/"*.sh "$R/bin/"; cp "$P/mxcli" "$R/"; printf 'not a real model\n' > "$R/Fixture.mpr"
+cp "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" "$R/mdlsource/05-reject.mdl"
+{ echo "-- supersedes: 05-reject.mdl"; sed "s/A comment is required to reject./A reason is required./" "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out"; } > "$R/mdlsource/09-reject-fix.mdl"
+own() { ( cd "$R" && PROJECT_ROOT="$R" bash bin/script-owners.sh check "$1" "$R" ) 2>&1; }
+applied() { cp "$1" "$R/live/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out"; ( cd "$R" && PROJECT_ROOT="$R" bash bin/describe-baseline.sh record-applied "$1" ) >/dev/null 2>&1; }
+OUT="$(own mdlsource/05-reject.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && ok "fresh model: replaying 05 before 09 is quiet" || bad "rebuild step 05 warned (rc $RC): $OUT"
+applied "$R/mdlsource/05-reject.mdl"
+OUT="$(own mdlsource/05-reject.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && ok "05's own write is live: re-running 05 is quiet" || bad "re-run of 05 warned (rc $RC): $OUT"
+OUT="$(own mdlsource/09-reject-fix.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && ok "then 09 (supersedes 05) is quiet" || bad "rebuild step 09 warned (rc $RC): $OUT"
+grep -v '^-- supersedes' "$R/mdlsource/09-reject-fix.mdl" > "$WORK/09.body"; applied "$R/mdlsource/09-reject-fix.mdl"
+cp "$WORK/09.body" "$R/live/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out"
+( cd "$R" && PROJECT_ROOT="$R" bash bin/describe-baseline.sh record-applied mdlsource/09-reject-fix.mdl ) >/dev/null 2>&1
+OUT="$(own mdlsource/05-reject.mdl)"; RC=$?
+[ "$RC" -eq 1 ] && has "09's write is live: replaying 05 now is the conflict" "$OUT" "superseded: mdlsource/09-reject-fix.mdl" || bad "replay over 09 rc $RC: $OUT"
+rm -rf "$R/live"/*; rm -f "$R/mxcli"
+OUT="$(own mdlsource/05-reject.mdl)"; RC=$?
+[ "$RC" -eq 1 ] && ok "no ./mxcli to ask: stays a conflict (never quiet by default)" || bad "no-mxcli rc $RC: $OUT"
+
+# ── exec.sh records what it wrote (proposed exec.sh line, see the PR) ────────
+echo "-- exec.sh: a clean exec records its write, so the re-run is not stale"
+if grep -q 'describe-baseline.sh" record-applied' "$SUBJECT"; then
+  E="$P/mdlsource/12-reject-again.mdl"
+  sed "s/A comment is required to reject./Say why./" "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" > "$E"
+  ( cd "$P" && bash bin/describe-baseline.sh stamp "$E" ) >/dev/null 2>&1
+  { echo "-- supersedes: 05-reject.mdl, 10-reject-msg.mdl"; cat "$E"; } > "$E.t" && mv "$E.t" "$E"
+  grep -v '^--' "$E" > "$WORK/12.body"; commit_model
+  OUT="$(FAKE_APPLY="$WORK/12.body=MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" RUN_SCRIPT=mdlsource/12-reject-again.mdl run)"; RC=$(cat "$WORK/rc")
+  [ "$RC" -eq 0 ] && hasnt "first exec: no stale-draft warning" "$OUT" "Stale draft" || bad "first exec rc $RC"
+  commit_model
+  OUT="$(RUN_SCRIPT=mdlsource/12-reject-again.mdl MXTK_ROOT="$TOOLKIT" CLAUDE_EXEC_APPROVAL=ask run)"; RC=$(cat "$WORK/rc")
+  [ "$RC" -eq 0 ] && hasnt "re-run under ask: no stale-draft refusal" "$OUT" "Stale draft" || bad "re-run under ask rc $RC: $(tail -4 "$WORK/out")"
+  printf 'not a real model\n' > "$P/Fixture.mpr"; cp "$CAP/MICROFLOW__Sales.ACT_ApprovalStep_Reject.out" "$P/live/"; rm -f "$E"; commit_model
+else
+  echo "  NOT RUN — this exec.sh does not call 'describe-baseline.sh record-applied' after a gate pass yet"
+fi
 
 # ── crash: mxbuild ran on the baseline, crashed after the write ──────────────
 echo "-- crash: mxbuild crashes on the written model"

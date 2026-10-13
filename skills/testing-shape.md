@@ -241,13 +241,10 @@ is measured and wrong (the feature is broken), `INVALID` means **the instrument 
 absent, not green. "The test could not run" and "the feature is broken" send you to different
 people; blending them is how a week gets spent debugging a page that was never reached. In the
 report/exit-code dialect these become `pass` / `fail` / `fault`, and **`fault` is never amber** —
-amber means "ran, degraded". Corollary, applied everywhere in this toolkit: an empty result set is
-never a pass — guard non-emptiness first, then assert (`[].every()` is `true`).
+amber means "ran, degraded".
 
-**Two verdicts, never collapsed.** When a §4 shape is present the correct report is ***the test is
-invalid***, not *the feature failed*. Collapsing them is what sends people diagnosing the wrong
-subsystem. Refuse to report green on a zero-span trace assertion, an unguarded navigation, or a
-bare-existence DB assertion — regardless of what the runner printed.
+**A §4 shape means the test is *invalid*, not that the feature *failed*** — never report green on
+a zero-span trace assertion, an unguarded navigation or a bare-existence DB assertion.
 
 **An assertion is also too weak if it lacks a fixture, an observable, and an exact expected value.**
 Not "correct", not "as specified". The register says how a part lies; this says when the assertion
@@ -506,6 +503,9 @@ Data:   <ran | n/a>  — delta-not-existence: <y/n>                             
 Unit:   <ran | n/a>  — --list count matches file: <y/n>    every @expect visible: <y/n>
 Trace:  <ran | n/a>  — non-empty span check: <y/n>         activity granularity: <y/n>
 Stack:  docker | sp-local, APP_URL=<url>, docker status verified: <y/n>
+Refusals: <N of N> restricted pairs probed server-side (not a hidden menu item)
+HTTP:   undeclared 4xx/5xx: <0 of M> requests — each fails its step
+Final:  one clean-DB run <id>: <N of N> scenarios incl. timers, not stitched
 Invalid tests: <any §4 shape found — reported separately from feature failures, or "none">
 ```
 

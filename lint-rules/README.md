@@ -6,6 +6,7 @@ and configure the marked constants — **after** running `mxcli init`, never bef
 
 | Rule | What it catches | Configure? |
 |---|---|---|
+| `conv009_max_microflow_objects.star` | CONV009 — a microflow over the object threshold. Replaces the stock rule, which hard-codes 15 and ignores the `maxObjects` option its own generated `lint-config.yaml` advertises | in `.claude/lint-config.yaml`, never in the file: `rules: CONV009: options: maxObjects: 20`, `countLoopBodies: true` (default 15 / false) |
 | `conv010_act_microflow_content.star` | `ACT_` page-action microflows holding business logic instead of delegating to `SUB_` | if your prefixes differ — `ACTION_PREFIX`, `DELEGATE_PREFIX` |
 | `conv020_action_user_feedback.star` | Page-triggered microflows that commit / import / delete but tell the user nothing | no — `PROJECT_MODULES` defaults to `"*"` (all modules the lint run includes, minus `.claude/lint-vendor-modules.txt`); `ACTION_PREFIX` if your prefixes differ |
 | `data_change_microflows.star` | ARCH002 — persistent entities written from pages instead of microflows | no |
@@ -20,6 +21,7 @@ and configure the marked constants — **after** running `mxcli init`, never bef
 | `txt001_build_words_in_user_text.star` | TXT001 — user-visible text (titles, captions, templates, messages, menu items) holding build-process words: `Stage N`, `BR-10`, `F004`, TODO, a version tag, "(local, …)" | `PROJECT_WORDS` (sibling-app and project code names); `LEAK_PATTERNS` if "Stage N" is a real domain word |
 | `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no — delete it deliberately if the project's display standard is not ISO |
 | `ui001_widget_layout_traps.star` | UI001 — a list view inside a Data grid 2 column (its own "Load more" / "No items found" in every cell); an inline `width` on an Atlas input without `flex` (ignored) | `DATAGRID_TYPES`, `LISTVIEW_TYPES`, `INPUT_TYPES` (widget_type vocabulary: probe first) |
+| `sec014_external_role_write.star` | SEC014 — an external user role (partner, customer, portal) that can write every member, a state enumeration (`Status`, `State`, …), an audit attribute (`…At` / `…By`) or the association its own XPath uses for ownership: the client API lets it skip the approval microflow | **yes, required**, in `.claude/lint-config.yaml`: `rules: SEC014: options: external_roles: "Partner, Customer"` (one text, not a YAML list), or `"none"`. Unset is a `_rule` finding, so the gate reports PASS-BLIND until it is set |
 
 `err001` and `loop001` first field count (2026-10-12, mxcli 0.26.0, 21-module Mendix 11.12 model,
 876 microflows): ERR001 8 (3 true, 5 debatable — flows that return an error payload instead of
@@ -52,6 +54,26 @@ mxcli >= 0.25.0. On an older binary the file does not load at all (an undefined 
 Starlark compile error): mxcli prints "rule file skipped" on stderr and no `_rule` finding can be
 emitted, so pin the binary rather than trusting the count (`tests/lint-rules/test-batch3-rules.sh`,
 23 cases; the harness gained a `strings()` mock).
+
+`conv009` and `sec014` (Lint Batch 4, issues #267 / #268) first field run (2026-10-13, official
+mxcli 0.26.0 release binary, two scratch model copies: the 21-module Mendix 11.12 model used for
+Batches 2 and 3, and a 9-module one; catalog FULL, 0.2 s each, no load errors).
+CONV009 on the first model's own modules: 5 findings with no option, **still 5 from the stock rule
+with `maxObjects: 20`** (the bug, reproduced), 10 with ours at `maxObjects: 10` (the option reaches
+the rule), 5 at 20 (every offender is above 25), 6 at 20 with `countLoopBodies`; a YAML list as
+the value gives one `_rule` finding. The second model: 0 at every setting (its app modules hold no
+flow over 10 objects). SEC014 with the model's one external-style role configured: **1 finding** —
+write on all 7 attributes of a decision entity, one of them an audit attribute, plus the ownership
+association its own XPath scopes on; a true positive by the rule's definition, the same shape as
+#268. Positive control with every user role configured: 7 findings across 6 entities, and a SQL
+replay of the same logic over `.mxcli/catalog.db` gives the same 7 (0 on the second model, which
+has no external role; `"none"` there gives 0 and no `_rule`). Unset, a list, or a misspelt role
+each give exactly one `_rule` finding. Both files also load and give the same counts on mxcli
+0.17.0 and 0.24.0 (SEC014 avoids `associations()`, which does not exist before 0.25.0 and would
+make the file fail to load). Vocabulary landed in SEC014's header: `MEMBER_WRITE` rows carry
+qualified member and module-role names, attribute `data_type` for an enum is `Enumeration`.
+Unit cases: `tests/lint-rules/test-batch4-rules.sh` (26; the harness gained `get_option`,
+`permissions_for`, `attributes_for`, `user_roles`, `role_mappings` mocks).
 
 `data_change_microflows` and `entity_business_key` are **repaired copies of rules `mxcli init`
 already seeds**, not new ones. Both shipped comparing `entity.entity_type` to `"PERSISTENT"`
@@ -122,6 +144,12 @@ project's file still matches it, nobody here edited it; if the toolkit's file st
 the template has not moved. The receipt lives outside `lint-rules/`, which is what makes it
 survive `mxcli init` — and surviving matters, because init wipes every in-file marker at once,
 which would otherwise make a genuine revert indistinguishable from a first install.
+
+**Tuning a toolkit rule never means editing it.** `conv009` and `sec014` read their settings
+with `get_option()` from `.claude/lint-config.yaml` (`rules: <RULE_ID>: options:`), so the file
+stays byte-identical to the toolkit's and keeps refreshing. mxcli passes an option to Starlark
+only as a bool, a number or a text; a YAML list or map arrives as `None`. Both rules report that
+as a `_rule` finding instead of quietly using their default.
 
 ## `mxcli init` overwrites these without asking
 

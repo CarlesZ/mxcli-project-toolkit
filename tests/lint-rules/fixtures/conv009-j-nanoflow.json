@@ -1,0 +1,24 @@
+{
+ "microflows": [
+  {
+   "activity_count": 17,
+   "document_noun": "nanoflow",
+   "document_noun_title": "Nanoflow",
+   "microflow_type": "NANOFLOW",
+   "module_name": "Sales",
+   "name": "NF_Big",
+   "qualified_name": "Sales.NF_Big",
+   "total_activity_count": 17
+  },
+  {
+   "activity_count": 3,
+   "document_noun": "microflow",
+   "document_noun_title": "Microflow",
+   "microflow_type": "MICROFLOW",
+   "module_name": "Sales",
+   "name": "ACT_Small",
+   "qualified_name": "Sales.ACT_Small",
+   "total_activity_count": 3
+  }
+ ]
+}

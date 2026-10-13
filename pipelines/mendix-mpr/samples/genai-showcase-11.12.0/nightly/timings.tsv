@@ -1,0 +1,56 @@
+# per-module seconds, nightly run (out-nightly2, REHOST_REUSE_MDL=1 over this run's own fresh nightly describes; describe_s ~0 here — fresh describe timings are in the phases block below)
+module	describe_s	topo_s	check_s	exec_s	describe_target_s
+AgentEditor	0.0	0.1	1.2	in_check	1.9
+GenAICommons	0.0	1.6	64.2	in_check	63.1
+MCPServer	0.0	0.1	5.6	in_check	5.6
+EchoConnector	0.0	0.2	9.7	in_check	6.7
+MxGenAIConnector	0.0	1.7	86.2	in_check	64.5
+OpenAIConnector	0.0	1.4	59.9	in_check	55.7
+PgVectorKnowledgeBase	0.0	0.6	86.6	in_check	27.7
+AmazonBedrockConnector	0.0	5.2	314.3	in_check	95.4
+GoogleGeminiConnector	0.0	0.2	31.3	in_check	8.1
+MistralConnector	0.0	0.3	37.2	in_check	9.7
+AgentCommons	0.0	8.2	550.0	in_check	125.7
+AgentEditorCommons	0.0	0.3	35.1	in_check	18.5
+ChatCompletions_ComplexityReduction	0.0	0.1	9.1	in_check	4.2
+ChatCompletions_ConversationalUI	0.0	0.2	14.3	in_check	10.0
+ChatCompletions_DocumentChat	0.0	0.2	26.2	in_check	8.2
+ChatCompletions_FunctionCalling	0.0	0.5	39.8	in_check	10.0
+ChatCompletions_JsonModeDemoData	0.0	0.1	12.7	in_check	6.1
+ChatCompletions_JsonModeText	0.0	0.1	8.3	in_check	3.5
+ChatCompletions_ProductDescription	0.0	0.3	22.4	in_check	19.7
+ChatCompletions_Vision_Webcam	0.0	0.1	12.9	in_check	5.4
+ComputerUse_AmazonBedrock	0.0	0.4	15.4	in_check	4.8
+DEV_Development	0.0	0.1	6.2	in_check	2.8
+Embeddings_Clustering	0.0	0.3	30.1	in_check	13.1
+Embeddings_RAG	0.0	0.4	20.2	in_check	8.2
+Embeddings_RawResponse	0.0	0.2	12.3	in_check	6.8
+Embeddings_SemanticSearch	0.0	0.6	20.7	in_check	8.8
+Embeddings_SemanticSearchMultiColumn	0.0	0.8	37.5	in_check	14.9
+ExampleMicroflows	0.0	0.4	49.5	in_check	5.4
+General	0.0	13.5	88.6	in_check	21.4
+ImageGenerations_Postcards	0.0	0.2	14.0	in_check	5.7
+MCPClient	0.0	0.4	69.1	in_check	23.0
+MCPClient_ConnectToServer	0.0	0.4	165.4	in_check	30.3
+MCPServer_ExposeToolsPrompts	0.0	0.9	48.5	in_check	16.9
+MultiAgentPatterns	0.0	0.4	80.0	in_check	6.0
+RAG_Knowledgebase_AmazonBedrock	0.0	2.4	78.5	in_check	30.7
+ConversationalUI	0.0	4.9	828.9	in_check	110.0
+
+# phases, run 2 (describes reused from attempt 1 of the same nightly run)
+phase	seconds
+inventory	129.4
+describe_topo_userroles	56.9
+check_exec	2992.9
+deferred_retries_settings	5296.8
+target_describe_ledger	864.4
+
+# phases, attempt 1 (fresh nightly describes; killed in check_exec after the splitter defect E1b' was found, see FINDINGS)
+phase	seconds
+inventory	128.2
+describe_topo_userroles	1688.5
+
+# gates (after the run)
+mx_check	18.4
+mxbuild_as_left	23
+mxbuild_unblocked	21

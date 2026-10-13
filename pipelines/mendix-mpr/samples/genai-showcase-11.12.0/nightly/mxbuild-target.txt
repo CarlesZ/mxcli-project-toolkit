@@ -1,0 +1,108 @@
+# mxbuild --target=deploy (~/.mxcli/mxbuild/11.12.0/modeler/mxbuild via project-bin/_common.sh find_mxbuild, --java-home=/usr/lib/jvm/java-21-openjdk-amd64)
+# 1) target as left: model fails to load (exit 1; first 30 lines verbatim)
+
+   __  __      ____        _ _     _
+  |  \/  |    |  _ \      (_) |   | |
+  | \  / |_  _| |_) |_   _ _| | __| |
+  | |\/| \ \/ /  _ <| | | | | |/ _` |
+  | |  | |>  <| |_) | |_| | | | (_| |
+  |_|  |_/_/\_\____/ \__,_|_|_|\__,_|
+
+   v11.12.0
+
+Preparing the web extensibility environment...
+[WebExtensionsRunner] > [Web Socket] Connection established in 0ms!
+[WebExtensionsRunner] > [Component Host] Initializing component host
+[WebExtensionsRunner] > Download http://localhost:36227/component/ui-dependencies/worker-loader.js?worker=%2Fcomponent%2Fcomponent-host%2Fcomponents.worker.js
+[WebExtensionsRunner] > [Component Worker] Web Worker started! Running in mode: internal
+[WebExtensionsRunner] > [Component Worker] Found built-in components: ["mapping-editor","ide-foundation","workflow-editor","domain-model-editor","page-editor","custom-blob-documents","model-foundation","microflow-editor"]
+Starting build for Mendix Project file: <lab>/target-nightly/GenAITarget.mpr
+Using the following options:
+ * Build target: Deploy
+Reading project file...
+2026-10-13 13:21:31.7908 ERROR lambda_method10 [2c7b0fb0] An error occurred while applying changes to MPR file: <lab>/target-nightly/GenAITarget.mpr
+System.InvalidOperationException: An error occurred when trying to set the 'Attribute' property of a Attribute in a Snippet with ID 7215e844-3181-4f24-ae77-1c1b323206f0.
+ ---> System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation.
+ ---> System.ArgumentNullException: Value cannot be null. (Parameter 'value')
+   at Mendix.Modeler.DomainModels.Refs.AttributeRef.set_AttributeId(AttributeIdentifier value) in Mendix.Modeler.Core\DomainModels\Refs\AttributeRef.Generated.cs:line 40
+   at InvokeStub_AttributeRef.set_AttributeId(Object, Span`1)
+   at System.Reflection.RuntimePropertyInfo.SetValue(Object obj, Object value, BindingFlags invokeAttr, Binder binder, Object[] index, CultureInfo culture)
+   --- End of inner exception stack trace ---
+   at System.Reflection.RuntimePropertyInfo.SetValue(Object obj, Object value, BindingFlags invokeAttr, Binder binder, Object[] index, CultureInfo culture)
+   at System.Reflection.RuntimePropertyInfo.SetValue(Object obj, Object value, Object[] index)
+   [... 231 lines total ...]
+
+# 2) unblocked copy (see mx-check-target.txt §2): exit 3, verbatim
+
+   __  __      ____        _ _     _
+  |  \/  |    |  _ \      (_) |   | |
+  | \  / |_  _| |_) |_   _ _| | __| |
+  | |\/| \ \/ /  _ <| | | | | |/ _` |
+  | |  | |>  <| |_) | |_| | | | (_| |
+  |_|  |_/_/\_\____/ \__,_|_|_|\__,_|
+
+   v11.12.0
+
+Preparing the web extensibility environment...
+[WebExtensionsRunner] > [Web Socket] Connection established in 0ms!
+[WebExtensionsRunner] > [Component Host] Initializing component host
+[WebExtensionsRunner] > Download http://localhost:38273/component/ui-dependencies/worker-loader.js?worker=%2Fcomponent%2Fcomponent-host%2Fcomponents.worker.js
+[WebExtensionsRunner] > [Component Worker] Web Worker started! Running in mode: internal
+[WebExtensionsRunner] > [Component Worker] Found built-in components: ["mapping-editor","ide-foundation","workflow-editor","domain-model-editor","page-editor","custom-blob-documents","model-foundation","microflow-editor"]
+Starting build for Mendix Project file: <lab>/target-nightly-unblocked/GenAITarget.mpr
+Using the following options:
+ * Build target: Deploy
+Reading project file...
+Building project...
+Executing step 'Synchronize with file system'
+Synchronizing with file system...
+Executing step 'Initialize'
+Preparing deployment...
+Executing step 'Check prerequisites'
+Checking for errors...
+Executing step 'Clean up'
+Cleaning up...
+ERROR: The project cannot be deployed, because it contains errors.
+ERROR at MxGenAIConnector, Java action 'KnowledgeBaseChunkList_Delete_ByMxObject', Property 'Entity' of Java action parameter 'MxObject': The selected entity '.Entity' no longer exists.
+ERROR at MxGenAIConnector, Microflow 'KnowledgeBaseRetrieval_Retrieve', Export with mapping activity 'Export': The selected export mapping 'GenAICommons.EM_Reference' no longer exists.
+ERROR at MCPServer_ExposeToolsPrompts, Microflow 'Ticket_GetTicketByID', Export with mapping activity 'Export': The selected export mapping 'MCPServer_ExposeToolsPrompts.EM_MCPServer_Ticket' no longer exists.
+ERROR at MCPServer_ExposeToolsPrompts, Microflow 'Ticket_GetNewestTicket', Export with mapping activity 'Export': The selected export mapping 'MCPServer_ExposeToolsPrompts.EM_MCPServer_Ticket' no longer exists.
+ERROR at PgVectorKnowledgeBase, Java action 'KnowledgeBaseChunkList_Retrieve', Property 'Entity' of Java action parameter 'MxObject': The selected entity '.Entity' no longer exists.
+ERROR at MxGenAIConnector, Java action 'KnowledgeBaseChunkList_Delete_ByMxObjectList', Property 'Entity' of Java action parameter 'MxObjectList': The selected entity '.Entity' no longer exists.
+ERROR at AgentEditorCommons, Java action 'Agent_CallDocument_WithHistory', Property 'Entity' of Java action parameter 'OptionalContextObject': The selected entity '.ContextObject' no longer exists.
+ERROR at AgentEditorCommons, Java action 'ChatContext_Create_ForAgentDocument', Property 'Entity' of Java action parameter 'ContextObject': The selected entity '.ContextObject' no longer exists.
+ERROR at AgentEditorCommons, Java action 'Agent_CallDocument_WithoutHistory', Property 'Entity' of Java action parameter 'OptionalContextObject': The selected entity '.ContextObject' no longer exists.
+ERROR at AgentCommons, Java action 'PromptToUse_GetAndReplace', Property 'Entity' of Java action parameter 'ContextObject': The selected entity '.ContextObject' no longer exists.
+ERROR at AgentCommons, Java action 'ChatContext_Create_ForAgent', Property 'Entity' of Java action parameter 'ContextObject': The selected entity '.ContextObject' no longer exists.
+ERROR at AgentCommons, Microflow 'ACT_Agent_SelectInUseVersion_Reopen', Property 'Page' of show page activity 'Show page 'Version_Overview'': The selected page 'AgentCommons.Version_Overview' no longer exists.
+ERROR at AgentCommons, Microflow 'ACT_Agent_SelectInUseVersion_Reopen', Property 'Parameter' of show page activity 'Show page 'Version_Overview'': The selected page parameter 'AgentCommons.Version_Overview.Agent' no longer exists.
+ERROR at AgentCommons, Microflow 'ACT_Agent_SelectInUseVersion_Reopen', Property 'Parameter' of show page activity 'Show page 'Version_Overview'': The selected page parameter 'AgentCommons.Version_Overview.PageHelper' no longer exists.
+ERROR at AgentCommons, Microflow 'ACT_Agent_SelectInUseVersion_Reopen', Property 'Parameter' of show page activity 'Show page 'Version_Overview'': The selected page parameter 'AgentCommons.Version_Overview.Version_InUse_Current' no longer exists.
+ERROR at PgVectorKnowledgeBase, Java action 'KnowledgeBaseChunkList_Delete_ByMxObject', Property 'Entity' of Java action parameter 'MxObject': The selected entity '.Entity' no longer exists.
+ERROR at AgentCommons, Java action 'Agent_Call_WithHistory', Property 'Entity' of Java action parameter 'OptionalContextObject': The selected entity '.ContextObject' no longer exists.
+ERROR at GenAICommons, Java action 'ChunkCollection_AddKnowledgeBaseChunk', Property 'Entity' of Java action parameter 'MxObject': The selected entity '.Entity' no longer exists.
+ERROR at ConversationalUI, Page 'Trace_Agent_SlideIn', Property 'Attribute' of markdown viewer 'markdownViewer3': The selected attribute 'ConversationalUI.CopyHelper.SystemPrompt' no longer exists.
+ERROR at ConversationalUI, Page 'Trace_Agent_SlideIn', Property 'Attribute' of markdown viewer 'markdownViewer2': The selected attribute 'ConversationalUI.CopyHelper.Input' no longer exists.
+ERROR at ConversationalUI, Page 'Trace_Agent_SlideIn', Property 'Attribute' of markdown viewer 'markdownViewer1': The selected attribute 'ConversationalUI.CopyHelper.Output' no longer exists.
+ERROR at ExampleMicroflows, Import mapping 'IM_Ticket', Property 'Entity' of object mapping element 'JsonObject': The selected entity 'ExampleMicroflows.Ticket' no longer exists.
+ERROR at ExampleMicroflows, Import mapping 'IM_Ticket', Property 'Attribute' of value mapping element 'Identifier': The selected attribute 'ExampleMicroflows.Ticket.Identifier' no longer exists.
+ERROR at ExampleMicroflows, Import mapping 'IM_Ticket', Property 'Attribute' of value mapping element 'Subject': The selected attribute 'ExampleMicroflows.Ticket.Subject' no longer exists.
+ERROR at ExampleMicroflows, Import mapping 'IM_Ticket', Property 'Attribute' of value mapping element 'Description': The selected attribute 'ExampleMicroflows.Ticket.Description' no longer exists.
+ERROR at ExampleMicroflows, Import mapping 'IM_Ticket', Property 'Attribute' of value mapping element 'ReproductionSteps': The selected attribute 'ExampleMicroflows.Ticket.ReproductionSteps' no longer exists.
+ERROR at ExampleMicroflows, Import mapping 'IM_Ticket', Property 'Attribute' of value mapping element 'Solution': The selected attribute 'ExampleMicroflows.Ticket.Solution' no longer exists.
+ERROR at ExampleMicroflows, Import mapping 'IM_Ticket', Property 'Attribute' of value mapping element 'Status': The selected attribute 'ExampleMicroflows.Ticket.Status' no longer exists.
+ERROR at ExampleMicroflows, Import mapping 'IM_Ticket', Property 'Attribute' of value mapping element 'Category': The selected attribute 'ExampleMicroflows.Ticket.Category' no longer exists.
+ERROR at ExampleMicroflows, Export mapping 'EM_Ticket', Property 'Entity' of object mapping element 'JsonObject': The selected entity 'ExampleMicroflows.Ticket' no longer exists.
+ERROR at ExampleMicroflows, Export mapping 'EM_Ticket', Property 'Attribute' of value mapping element 'Identifier': The selected attribute 'ExampleMicroflows.Ticket.Identifier' no longer exists.
+ERROR at ExampleMicroflows, Export mapping 'EM_Ticket', Property 'Attribute' of value mapping element 'Subject': The selected attribute 'ExampleMicroflows.Ticket.Subject' no longer exists.
+ERROR at ExampleMicroflows, Export mapping 'EM_Ticket', Property 'Attribute' of value mapping element 'Description': The selected attribute 'ExampleMicroflows.Ticket.Description' no longer exists.
+ERROR at ExampleMicroflows, Export mapping 'EM_Ticket', Property 'Attribute' of value mapping element 'ReproductionSteps': The selected attribute 'ExampleMicroflows.Ticket.ReproductionSteps' no longer exists.
+ERROR at ExampleMicroflows, Export mapping 'EM_Ticket', Property 'Attribute' of value mapping element 'Solution': The selected attribute 'ExampleMicroflows.Ticket.Solution' no longer exists.
+ERROR at ExampleMicroflows, Export mapping 'EM_Ticket', Property 'Attribute' of value mapping element 'Status': The selected attribute 'ExampleMicroflows.Ticket.Status' no longer exists.
+ERROR at ExampleMicroflows, Export mapping 'EM_Ticket', Property 'Attribute' of value mapping element 'Category': The selected attribute 'ExampleMicroflows.Ticket.Category' no longer exists.
+ERROR at ChatCompletions_FunctionCalling, Microflow 'Ticket_GetNewestTicket_FunctionMicroflow', Export with mapping activity 'Export': The selected export mapping 'ChatCompletions_FunctionCalling.EM_FunctionCalling_Ticket' no longer exists.
+ERROR at ChatCompletions_FunctionCalling, Microflow 'Ticket_GetTicketByID_FunctionMicroflow', Export with mapping activity 'Export': The selected export mapping 'ChatCompletions_FunctionCalling.EM_FunctionCalling_Ticket' no longer exists.
+ERROR at PgVectorKnowledgeBase, Java action 'KnowledgeBaseChunkList_Delete_ByMxObjectList', Property 'Entity' of Java action parameter 'MxObjectList': The selected entity '.Entity' no longer exists.
+ERROR at AgentCommons, Java action 'Agent_Call_WithoutHistory', Property 'Entity' of Java action parameter 'OptionalContextObject': The selected entity '.ContextObject' no longer exists.
+ERROR at MxGenAIConnector, Java action 'KnowledgeBaseChunkList_Retrieve', Property 'Entity' of Java action parameter 'MxObject': The selected entity '.Entity' no longer exists.
+BUILD FAILED

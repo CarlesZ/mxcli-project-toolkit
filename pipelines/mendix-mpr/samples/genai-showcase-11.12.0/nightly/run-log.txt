@@ -1,0 +1,991 @@
+own modules: AgentCommons AgentEditor AgentEditorCommons ChatCompletions_ComplexityReduction ChatCompletions_ConversationalUI ChatCompletions_DocumentChat ChatCompletions_FunctionCalling ChatCompletions_JsonModeDemoData ChatCompletions_JsonModeText ChatCompletions_ProductDescription ChatCompletions_Vision_Webcam ComputerUse_AmazonBedrock DEV_Development EchoConnector Embeddings_Clustering Embeddings_RAG Embeddings_RawResponse Embeddings_SemanticSearch Embeddings_SemanticSearchMultiColumn ExampleMicroflows GenAICommons General GoogleGeminiConnector ImageGenerations_Postcards MCPClient MCPClient_ConnectToServer MCPServer MCPServer_ExposeToolsPrompts MistralConnector MultiAgentPatterns MxGenAIConnector RAG_Knowledgebase_AmazonBedrock OpenAIConnector PgVectorKnowledgeBase AmazonBedrockConnector ConversationalUI
+reusing mdl/AgentCommons.mdl
+reusing mdl/AgentEditor.mdl
+reusing mdl/AgentEditorCommons.mdl
+reusing mdl/ChatCompletions_ComplexityReduction.mdl
+reusing mdl/ChatCompletions_ConversationalUI.mdl
+reusing mdl/ChatCompletions_DocumentChat.mdl
+reusing mdl/ChatCompletions_FunctionCalling.mdl
+reusing mdl/ChatCompletions_JsonModeDemoData.mdl
+reusing mdl/ChatCompletions_JsonModeText.mdl
+reusing mdl/ChatCompletions_ProductDescription.mdl
+reusing mdl/ChatCompletions_Vision_Webcam.mdl
+reusing mdl/ComputerUse_AmazonBedrock.mdl
+reusing mdl/DEV_Development.mdl
+reusing mdl/EchoConnector.mdl
+reusing mdl/Embeddings_Clustering.mdl
+reusing mdl/Embeddings_RAG.mdl
+reusing mdl/Embeddings_RawResponse.mdl
+reusing mdl/Embeddings_SemanticSearch.mdl
+reusing mdl/Embeddings_SemanticSearchMultiColumn.mdl
+reusing mdl/ExampleMicroflows.mdl
+reusing mdl/GenAICommons.mdl
+reusing mdl/General.mdl
+reusing mdl/GoogleGeminiConnector.mdl
+reusing mdl/ImageGenerations_Postcards.mdl
+reusing mdl/MCPClient.mdl
+reusing mdl/MCPClient_ConnectToServer.mdl
+reusing mdl/MCPServer.mdl
+reusing mdl/MCPServer_ExposeToolsPrompts.mdl
+reusing mdl/MistralConnector.mdl
+reusing mdl/MultiAgentPatterns.mdl
+reusing mdl/MxGenAIConnector.mdl
+reusing mdl/RAG_Knowledgebase_AmazonBedrock.mdl
+reusing mdl/OpenAIConnector.mdl
+reusing mdl/PgVectorKnowledgeBase.mdl
+reusing mdl/AmazonBedrockConnector.mdl
+reusing mdl/ConversationalUI.mdl
+module cycle among: AgentCommons, AgentEditorCommons, ChatCompletions_ComplexityReduction, ChatCompletions_ConversationalUI, ChatCompletions_DocumentChat, ChatCompletions_FunctionCalling, ChatCompletions_JsonModeDemoData, ChatCompletions_JsonModeText, ChatCompletions_ProductDescription, ChatCompletions_Vision_Webcam, ComputerUse_AmazonBedrock, DEV_Development, Embeddings_Clustering, Embeddings_RAG, Embeddings_RawResponse, Embeddings_SemanticSearch, Embeddings_SemanticSearchMultiColumn, ExampleMicroflows, General, ImageGenerations_Postcards, MCPClient, MCPClient_ConnectToServer, MCPServer_ExposeToolsPrompts, MultiAgentPatterns, RAG_Knowledgebase_AmazonBedrock, ConversationalUI (left in catalog order)
+replay order: AgentEditor GenAICommons MCPServer EchoConnector MxGenAIConnector OpenAIConnector PgVectorKnowledgeBase AmazonBedrockConnector GoogleGeminiConnector MistralConnector AgentCommons AgentEditorCommons ChatCompletions_ComplexityReduction ChatCompletions_ConversationalUI ChatCompletions_DocumentChat ChatCompletions_FunctionCalling ChatCompletions_JsonModeDemoData ChatCompletions_JsonModeText ChatCompletions_ProductDescription ChatCompletions_Vision_Webcam ComputerUse_AmazonBedrock DEV_Development Embeddings_Clustering Embeddings_RAG Embeddings_RawResponse Embeddings_SemanticSearch Embeddings_SemanticSearchMultiColumn ExampleMicroflows General ImageGenerations_Postcards MCPClient MCPClient_ConnectToServer MCPServer_ExposeToolsPrompts MultiAgentPatterns RAG_Knowledgebase_AmazonBedrock ConversationalUI
+check GenAICommons: 9 statement(s) deferred (round 1)
+exec GenAICommons: 1 statement deferred, resuming after it (round 2)
+check EchoConnector: 21 statement(s) deferred (round 1)
+check MxGenAIConnector: 10 statement(s) deferred (round 1)
+exec MxGenAIConnector: 1 statement deferred, resuming after it (round 2)
+check MxGenAIConnector: 6 statement(s) deferred (round 3)
+check OpenAIConnector: 43 statement(s) deferred (round 1)
+check PgVectorKnowledgeBase: 3 statement(s) deferred (round 1)
+exec PgVectorKnowledgeBase: 1 statement deferred, resuming after it (round 2)
+check PgVectorKnowledgeBase: 14 statement(s) deferred (round 3)
+exec PgVectorKnowledgeBase: 1 statement deferred, resuming after it (round 4)
+check PgVectorKnowledgeBase: 1 statement(s) deferred (round 5)
+exec PgVectorKnowledgeBase: 1 statement deferred, resuming after it (round 6)
+check PgVectorKnowledgeBase: 1 statement(s) deferred (round 7)
+exec PgVectorKnowledgeBase: 1 statement deferred, resuming after it (round 8)
+exec PgVectorKnowledgeBase: 1 statement deferred, resuming after it (round 9)
+check AmazonBedrockConnector: 8 statement(s) deferred (round 1)
+exec AmazonBedrockConnector: 1 statement deferred, resuming after it (round 2)
+exec AmazonBedrockConnector: 1 statement deferred, resuming after it (round 3)
+check AmazonBedrockConnector: 1 statement(s) deferred (round 4)
+check GoogleGeminiConnector: 26 statement(s) deferred (round 1)
+exec GoogleGeminiConnector: 1 statement deferred, resuming after it (round 2)
+check GoogleGeminiConnector: 4 statement(s) deferred (round 3)
+check MistralConnector: 26 statement(s) deferred (round 1)
+exec MistralConnector: 1 statement deferred, resuming after it (round 2)
+check MistralConnector: 4 statement(s) deferred (round 3)
+check AgentCommons: 190 statement(s) deferred (round 1)
+exec AgentCommons: 1 statement deferred, resuming after it (round 2)
+check AgentCommons: 2 statement(s) deferred (round 3)
+check AgentCommons: 1 statement(s) deferred (round 4)
+exec AgentCommons: 1 statement deferred, resuming after it (round 5)
+check AgentCommons: 1 statement(s) deferred (round 6)
+exec AgentCommons: 1 statement deferred, resuming after it (round 7)
+check AgentCommons: 1 statement(s) deferred (round 8)
+check AgentEditorCommons: 20 statement(s) deferred (round 1)
+check ChatCompletions_ComplexityReduction: 6 statement(s) deferred (round 1)
+check ChatCompletions_ConversationalUI: 26 statement(s) deferred (round 1)
+check ChatCompletions_DocumentChat: 14 statement(s) deferred (round 1)
+exec ChatCompletions_DocumentChat: 1 statement deferred, resuming after it (round 2)
+check ChatCompletions_DocumentChat: 1 statement(s) deferred (round 3)
+check ChatCompletions_FunctionCalling: 28 statement(s) deferred (round 1)
+exec ChatCompletions_FunctionCalling: 1 statement deferred, resuming after it (round 2)
+check ChatCompletions_FunctionCalling: 1 statement(s) deferred (round 3)
+exec ChatCompletions_FunctionCalling: 1 statement deferred, resuming after it (round 4)
+check ChatCompletions_JsonModeDemoData: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeText: 7 statement(s) deferred (round 1)
+check ChatCompletions_ProductDescription: 32 statement(s) deferred (round 1)
+check ChatCompletions_Vision_Webcam: 8 statement(s) deferred (round 1)
+check ComputerUse_AmazonBedrock: 6 statement(s) deferred (round 1)
+check DEV_Development: 2 statement(s) deferred (round 1)
+check Embeddings_Clustering: 27 statement(s) deferred (round 1)
+check Embeddings_Clustering: 4 statement(s) deferred (round 2)
+exec Embeddings_Clustering: 1 statement deferred, resuming after it (round 3)
+exec Embeddings_Clustering: 1 statement deferred, resuming after it (round 4)
+check Embeddings_RAG: 41 statement(s) deferred (round 1)
+check Embeddings_RawResponse: 5 statement(s) deferred (round 1)
+check Embeddings_SemanticSearch: 25 statement(s) deferred (round 1)
+check Embeddings_SemanticSearchMultiColumn: 62 statement(s) deferred (round 1)
+check ExampleMicroflows: 24 statement(s) deferred (round 1)
+exec ExampleMicroflows: 1 statement deferred, resuming after it (round 2)
+check ExampleMicroflows: 1 statement(s) deferred (round 3)
+exec ExampleMicroflows: 1 statement deferred, resuming after it (round 4)
+check ExampleMicroflows: 3 statement(s) deferred (round 5)
+check General: 30 statement(s) deferred (round 1)
+check ImageGenerations_Postcards: 3 statement(s) deferred (round 1)
+check MCPClient: 9 statement(s) deferred (round 1)
+exec MCPClient: 1 statement deferred, resuming after it (round 2)
+check MCPClient: 1 statement(s) deferred (round 3)
+check MCPClient_ConnectToServer: 40 statement(s) deferred (round 1)
+exec MCPClient_ConnectToServer: 1 statement deferred, resuming after it (round 2)
+exec MCPClient_ConnectToServer: 1 statement deferred, resuming after it (round 3)
+check/exec MCPClient_ConnectToServer: error not mappable to a statement — executing one statement at a time (captures/exec-each-MCPClient_ConnectToServer.txt)
+exec-each MCPClient_ConnectToServer: 22 landed, 2 deferred
+check MCPServer_ExposeToolsPrompts: 12 statement(s) deferred (round 1)
+exec MCPServer_ExposeToolsPrompts: 1 statement deferred, resuming after it (round 2)
+check MultiAgentPatterns: 59 statement(s) deferred (round 1)
+exec MultiAgentPatterns: 1 statement deferred, resuming after it (round 2)
+check MultiAgentPatterns: 1 statement(s) deferred (round 3)
+exec MultiAgentPatterns: 1 statement deferred, resuming after it (round 4)
+check MultiAgentPatterns: 7 statement(s) deferred (round 5)
+check RAG_Knowledgebase_AmazonBedrock: 17 statement(s) deferred (round 1)
+check ConversationalUI: 1 statement(s) deferred (round 1)
+check ConversationalUI: 13 statement(s) deferred (round 2)
+check ConversationalUI: 2 statement(s) deferred (round 3)
+check ConversationalUI: 2 statement(s) deferred (round 4)
+check ConversationalUI: 2 statement(s) deferred (round 5)
+check ConversationalUI: 4 statement(s) deferred (round 6)
+check ConversationalUI: 69 statement(s) deferred (round 7)
+check/exec ConversationalUI: error not mappable to a statement — executing one statement at a time (captures/exec-each-ConversationalUI.txt)
+exec-each ConversationalUI: 320 landed, 1 deferred
+check GenAICommons.retry1: 3 statement(s) deferred (round 1)
+exec GenAICommons.retry1: 1 statement deferred, resuming after it (round 2)
+deferred GenAICommons: 10 tried, 4 still deferred (pass 1)
+check EchoConnector.retry1: 21 statement(s) deferred (round 1)
+check EchoConnector.retry1: nothing left to execute
+deferred EchoConnector: 21 tried, 21 still deferred (pass 1)
+check MxGenAIConnector.retry1: 10 statement(s) deferred (round 1)
+exec MxGenAIConnector.retry1: 1 statement deferred, resuming after it (round 2)
+check MxGenAIConnector.retry1: 6 statement(s) deferred (round 3)
+check MxGenAIConnector.retry1: nothing left to execute
+deferred MxGenAIConnector: 17 tried, 17 still deferred (pass 1)
+check OpenAIConnector.retry1: 43 statement(s) deferred (round 1)
+check OpenAIConnector.retry1: nothing left to execute
+deferred OpenAIConnector: 43 tried, 43 still deferred (pass 1)
+check PgVectorKnowledgeBase.retry1: 4 statement(s) deferred (round 1)
+exec PgVectorKnowledgeBase.retry1: 1 statement deferred, resuming after it (round 2)
+check PgVectorKnowledgeBase.retry1: 14 statement(s) deferred (round 3)
+exec PgVectorKnowledgeBase.retry1: 1 statement deferred, resuming after it (round 4)
+check PgVectorKnowledgeBase.retry1: 1 statement(s) deferred (round 5)
+exec PgVectorKnowledgeBase.retry1: 1 statement deferred, resuming after it (round 6)
+exec PgVectorKnowledgeBase.retry1: 1 statement deferred, resuming after it (round 7)
+exec PgVectorKnowledgeBase.retry1: 1 statement deferred, resuming after it (round 8)
+deferred PgVectorKnowledgeBase: 24 tried, 24 still deferred (pass 1)
+check AmazonBedrockConnector.retry1: 8 statement(s) deferred (round 1)
+exec AmazonBedrockConnector.retry1: 1 statement deferred, resuming after it (round 2)
+exec AmazonBedrockConnector.retry1: 1 statement deferred, resuming after it (round 3)
+check AmazonBedrockConnector.retry1: 1 statement(s) deferred (round 4)
+check AmazonBedrockConnector.retry1: nothing left to execute
+deferred AmazonBedrockConnector: 11 tried, 11 still deferred (pass 1)
+check GoogleGeminiConnector.retry1: 26 statement(s) deferred (round 1)
+exec GoogleGeminiConnector.retry1: 1 statement deferred, resuming after it (round 2)
+check GoogleGeminiConnector.retry1: 4 statement(s) deferred (round 3)
+check GoogleGeminiConnector.retry1: nothing left to execute
+deferred GoogleGeminiConnector: 31 tried, 31 still deferred (pass 1)
+check MistralConnector.retry1: 26 statement(s) deferred (round 1)
+exec MistralConnector.retry1: 1 statement deferred, resuming after it (round 2)
+check MistralConnector.retry1: 4 statement(s) deferred (round 3)
+check MistralConnector.retry1: nothing left to execute
+deferred MistralConnector: 31 tried, 31 still deferred (pass 1)
+check AgentCommons.retry1: 72 statement(s) deferred (round 1)
+check AgentCommons.retry1: 7 statement(s) deferred (round 2)
+exec AgentCommons.retry1: 1 statement deferred, resuming after it (round 3)
+check AgentCommons.retry1: 1 statement(s) deferred (round 4)
+exec AgentCommons.retry1: 1 statement deferred, resuming after it (round 5)
+check AgentCommons.retry1: 1 statement(s) deferred (round 6)
+exec AgentCommons.retry1: 1 statement deferred, resuming after it (round 7)
+check AgentCommons.retry1: 1 statement(s) deferred (round 8)
+exec AgentCommons.retry1: 1 statement deferred, resuming after it (round 9)
+check AgentCommons.retry1: 1 statement(s) deferred (round 10)
+check/exec AgentCommons.retry1: error not mappable to a statement — executing one statement at a time (captures/exec-each-AgentCommons.retry1.txt)
+exec-each AgentCommons.retry1: 6 landed, 4 deferred
+deferred AgentCommons: 198 tried, 91 still deferred (pass 1)
+check AgentEditorCommons.retry1: 12 statement(s) deferred (round 1)
+deferred AgentEditorCommons: 20 tried, 12 still deferred (pass 1)
+check ChatCompletions_ComplexityReduction.retry1: 6 statement(s) deferred (round 1)
+check ChatCompletions_ComplexityReduction.retry1: nothing left to execute
+deferred ChatCompletions_ComplexityReduction: 6 tried, 6 still deferred (pass 1)
+check ChatCompletions_ConversationalUI.retry1: 23 statement(s) deferred (round 1)
+deferred ChatCompletions_ConversationalUI: 26 tried, 23 still deferred (pass 1)
+check ChatCompletions_DocumentChat.retry1: 7 statement(s) deferred (round 1)
+deferred ChatCompletions_DocumentChat: 16 tried, 7 still deferred (pass 1)
+check ChatCompletions_FunctionCalling.retry1: 26 statement(s) deferred (round 1)
+exec ChatCompletions_FunctionCalling.retry1: 1 statement deferred, resuming after it (round 2)
+deferred ChatCompletions_FunctionCalling: 31 tried, 27 still deferred (pass 1)
+check ChatCompletions_JsonModeDemoData.retry1: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeDemoData.retry1: nothing left to execute
+deferred ChatCompletions_JsonModeDemoData: 7 tried, 7 still deferred (pass 1)
+check ChatCompletions_JsonModeText.retry1: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeText.retry1: nothing left to execute
+deferred ChatCompletions_JsonModeText: 7 tried, 7 still deferred (pass 1)
+check ChatCompletions_ProductDescription.retry1: 9 statement(s) deferred (round 1)
+deferred ChatCompletions_ProductDescription: 32 tried, 9 still deferred (pass 1)
+check ChatCompletions_Vision_Webcam.retry1: 8 statement(s) deferred (round 1)
+check ChatCompletions_Vision_Webcam.retry1: nothing left to execute
+deferred ChatCompletions_Vision_Webcam: 8 tried, 8 still deferred (pass 1)
+check ComputerUse_AmazonBedrock.retry1: 6 statement(s) deferred (round 1)
+check ComputerUse_AmazonBedrock.retry1: nothing left to execute
+deferred ComputerUse_AmazonBedrock: 6 tried, 6 still deferred (pass 1)
+deferred DEV_Development: 2 tried, 0 still deferred (pass 1)
+check Embeddings_Clustering.retry1: 27 statement(s) deferred (round 1)
+check Embeddings_Clustering.retry1: 1 statement(s) deferred (round 2)
+exec Embeddings_Clustering.retry1: 1 statement deferred, resuming after it (round 3)
+exec Embeddings_Clustering.retry1: 1 statement deferred, resuming after it (round 4)
+deferred Embeddings_Clustering: 33 tried, 30 still deferred (pass 1)
+check Embeddings_RAG.retry1: 37 statement(s) deferred (round 1)
+deferred Embeddings_RAG: 41 tried, 37 still deferred (pass 1)
+deferred Embeddings_RawResponse: 5 tried, 0 still deferred (pass 1)
+check Embeddings_SemanticSearch.retry1: 25 statement(s) deferred (round 1)
+check Embeddings_SemanticSearch.retry1: nothing left to execute
+deferred Embeddings_SemanticSearch: 25 tried, 25 still deferred (pass 1)
+check Embeddings_SemanticSearchMultiColumn.retry1: 58 statement(s) deferred (round 1)
+deferred Embeddings_SemanticSearchMultiColumn: 62 tried, 58 still deferred (pass 1)
+check ExampleMicroflows.retry1: 27 statement(s) deferred (round 1)
+deferred ExampleMicroflows: 30 tried, 27 still deferred (pass 1)
+check General.retry1: 20 statement(s) deferred (round 1)
+check/exec General.retry1: error not mappable to a statement — executing one statement at a time (captures/exec-each-General.retry1.txt)
+exec-each General.retry1: 9 landed, 1 deferred
+deferred General: 30 tried, 21 still deferred (pass 1)
+check ImageGenerations_Postcards.retry1: 3 statement(s) deferred (round 1)
+check ImageGenerations_Postcards.retry1: nothing left to execute
+deferred ImageGenerations_Postcards: 3 tried, 3 still deferred (pass 1)
+check MCPClient.retry1: 3 statement(s) deferred (round 1)
+exec MCPClient.retry1: 1 statement deferred, resuming after it (round 2)
+exec MCPClient.retry1: 1 statement deferred, resuming after it (round 3)
+check MCPClient.retry1: 1 statement(s) deferred (round 4)
+check MCPClient.retry1: nothing left to execute
+deferred MCPClient: 11 tried, 6 still deferred (pass 1)
+check MCPClient_ConnectToServer.retry1: 18 statement(s) deferred (round 1)
+exec MCPClient_ConnectToServer.retry1: 1 statement deferred, resuming after it (round 2)
+exec MCPClient_ConnectToServer.retry1: 1 statement deferred, resuming after it (round 3)
+check/exec MCPClient_ConnectToServer.retry1: error not mappable to a statement — executing one statement at a time (captures/exec-each-MCPClient_ConnectToServer.retry1.txt)
+exec-each MCPClient_ConnectToServer.retry1: 0 landed, 2 deferred
+deferred MCPClient_ConnectToServer: 44 tried, 22 still deferred (pass 1)
+check MCPServer_ExposeToolsPrompts.retry1: 12 statement(s) deferred (round 1)
+exec MCPServer_ExposeToolsPrompts.retry1: 1 statement deferred, resuming after it (round 2)
+deferred MCPServer_ExposeToolsPrompts: 13 tried, 13 still deferred (pass 1)
+check MultiAgentPatterns.retry1: 54 statement(s) deferred (round 1)
+exec MultiAgentPatterns.retry1: 1 statement deferred, resuming after it (round 2)
+check MultiAgentPatterns.retry1: 7 statement(s) deferred (round 3)
+check MultiAgentPatterns.retry1: nothing left to execute
+deferred MultiAgentPatterns: 69 tried, 62 still deferred (pass 1)
+check RAG_Knowledgebase_AmazonBedrock.retry1: 17 statement(s) deferred (round 1)
+check RAG_Knowledgebase_AmazonBedrock.retry1: nothing left to execute
+deferred RAG_Knowledgebase_AmazonBedrock: 17 tried, 17 still deferred (pass 1)
+check ConversationalUI.retry1: 1 statement(s) deferred (round 1)
+check ConversationalUI.retry1: 13 statement(s) deferred (round 2)
+check ConversationalUI.retry1: 2 statement(s) deferred (round 3)
+check ConversationalUI.retry1: 2 statement(s) deferred (round 4)
+check ConversationalUI.retry1: 2 statement(s) deferred (round 5)
+check ConversationalUI.retry1: 4 statement(s) deferred (round 6)
+check ConversationalUI.retry1: 31 statement(s) deferred (round 7)
+check/exec ConversationalUI.retry1: error not mappable to a statement — executing one statement at a time (captures/exec-each-ConversationalUI.retry1.txt)
+exec-each ConversationalUI.retry1: 35 landed, 4 deferred
+deferred ConversationalUI: 94 tried, 59 still deferred (pass 1)
+check GenAICommons.retry2: 3 statement(s) deferred (round 1)
+exec GenAICommons.retry2: 1 statement deferred, resuming after it (round 2)
+deferred GenAICommons: 4 tried, 4 still deferred (pass 2)
+check EchoConnector.retry2: 21 statement(s) deferred (round 1)
+check EchoConnector.retry2: nothing left to execute
+deferred EchoConnector: 21 tried, 21 still deferred (pass 2)
+check MxGenAIConnector.retry2: 10 statement(s) deferred (round 1)
+exec MxGenAIConnector.retry2: 1 statement deferred, resuming after it (round 2)
+check MxGenAIConnector.retry2: 6 statement(s) deferred (round 3)
+check MxGenAIConnector.retry2: nothing left to execute
+deferred MxGenAIConnector: 17 tried, 17 still deferred (pass 2)
+check OpenAIConnector.retry2: 43 statement(s) deferred (round 1)
+check OpenAIConnector.retry2: nothing left to execute
+deferred OpenAIConnector: 43 tried, 43 still deferred (pass 2)
+check PgVectorKnowledgeBase.retry2: 4 statement(s) deferred (round 1)
+exec PgVectorKnowledgeBase.retry2: 1 statement deferred, resuming after it (round 2)
+check PgVectorKnowledgeBase.retry2: 14 statement(s) deferred (round 3)
+exec PgVectorKnowledgeBase.retry2: 1 statement deferred, resuming after it (round 4)
+check PgVectorKnowledgeBase.retry2: 1 statement(s) deferred (round 5)
+exec PgVectorKnowledgeBase.retry2: 1 statement deferred, resuming after it (round 6)
+exec PgVectorKnowledgeBase.retry2: 1 statement deferred, resuming after it (round 7)
+exec PgVectorKnowledgeBase.retry2: 1 statement deferred, resuming after it (round 8)
+deferred PgVectorKnowledgeBase: 24 tried, 24 still deferred (pass 2)
+check AmazonBedrockConnector.retry2: 8 statement(s) deferred (round 1)
+exec AmazonBedrockConnector.retry2: 1 statement deferred, resuming after it (round 2)
+exec AmazonBedrockConnector.retry2: 1 statement deferred, resuming after it (round 3)
+check AmazonBedrockConnector.retry2: 1 statement(s) deferred (round 4)
+check AmazonBedrockConnector.retry2: nothing left to execute
+deferred AmazonBedrockConnector: 11 tried, 11 still deferred (pass 2)
+check GoogleGeminiConnector.retry2: 26 statement(s) deferred (round 1)
+exec GoogleGeminiConnector.retry2: 1 statement deferred, resuming after it (round 2)
+check GoogleGeminiConnector.retry2: 4 statement(s) deferred (round 3)
+check GoogleGeminiConnector.retry2: nothing left to execute
+deferred GoogleGeminiConnector: 31 tried, 31 still deferred (pass 2)
+check MistralConnector.retry2: 26 statement(s) deferred (round 1)
+exec MistralConnector.retry2: 1 statement deferred, resuming after it (round 2)
+check MistralConnector.retry2: 4 statement(s) deferred (round 3)
+check MistralConnector.retry2: nothing left to execute
+deferred MistralConnector: 31 tried, 31 still deferred (pass 2)
+check AgentCommons.retry2: 70 statement(s) deferred (round 1)
+check AgentCommons.retry2: 7 statement(s) deferred (round 2)
+exec AgentCommons.retry2: 1 statement deferred, resuming after it (round 3)
+check AgentCommons.retry2: 1 statement(s) deferred (round 4)
+exec AgentCommons.retry2: 1 statement deferred, resuming after it (round 5)
+check AgentCommons.retry2: 1 statement(s) deferred (round 6)
+exec AgentCommons.retry2: 1 statement deferred, resuming after it (round 7)
+check AgentCommons.retry2: 1 statement(s) deferred (round 8)
+exec AgentCommons.retry2: 1 statement deferred, resuming after it (round 9)
+check AgentCommons.retry2: 1 statement(s) deferred (round 10)
+check/exec AgentCommons.retry2: error not mappable to a statement — executing one statement at a time (captures/exec-each-AgentCommons.retry2.txt)
+exec-each AgentCommons.retry2: 0 landed, 4 deferred
+deferred AgentCommons: 91 tried, 89 still deferred (pass 2)
+check AgentEditorCommons.retry2: 12 statement(s) deferred (round 1)
+check AgentEditorCommons.retry2: nothing left to execute
+deferred AgentEditorCommons: 12 tried, 12 still deferred (pass 2)
+check ChatCompletions_ComplexityReduction.retry2: 6 statement(s) deferred (round 1)
+check ChatCompletions_ComplexityReduction.retry2: nothing left to execute
+deferred ChatCompletions_ComplexityReduction: 6 tried, 6 still deferred (pass 2)
+check ChatCompletions_ConversationalUI.retry2: 20 statement(s) deferred (round 1)
+deferred ChatCompletions_ConversationalUI: 23 tried, 20 still deferred (pass 2)
+check ChatCompletions_DocumentChat.retry2: 7 statement(s) deferred (round 1)
+check ChatCompletions_DocumentChat.retry2: nothing left to execute
+deferred ChatCompletions_DocumentChat: 7 tried, 7 still deferred (pass 2)
+check ChatCompletions_FunctionCalling.retry2: 24 statement(s) deferred (round 1)
+exec ChatCompletions_FunctionCalling.retry2: 1 statement deferred, resuming after it (round 2)
+deferred ChatCompletions_FunctionCalling: 27 tried, 25 still deferred (pass 2)
+check ChatCompletions_JsonModeDemoData.retry2: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeDemoData.retry2: nothing left to execute
+deferred ChatCompletions_JsonModeDemoData: 7 tried, 7 still deferred (pass 2)
+check ChatCompletions_JsonModeText.retry2: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeText.retry2: nothing left to execute
+deferred ChatCompletions_JsonModeText: 7 tried, 7 still deferred (pass 2)
+check ChatCompletions_ProductDescription.retry2: 9 statement(s) deferred (round 1)
+check ChatCompletions_ProductDescription.retry2: nothing left to execute
+deferred ChatCompletions_ProductDescription: 9 tried, 9 still deferred (pass 2)
+check ChatCompletions_Vision_Webcam.retry2: 8 statement(s) deferred (round 1)
+check ChatCompletions_Vision_Webcam.retry2: nothing left to execute
+deferred ChatCompletions_Vision_Webcam: 8 tried, 8 still deferred (pass 2)
+check ComputerUse_AmazonBedrock.retry2: 6 statement(s) deferred (round 1)
+check ComputerUse_AmazonBedrock.retry2: nothing left to execute
+deferred ComputerUse_AmazonBedrock: 6 tried, 6 still deferred (pass 2)
+check Embeddings_Clustering.retry2: 27 statement(s) deferred (round 1)
+check Embeddings_Clustering.retry2: 1 statement(s) deferred (round 2)
+exec Embeddings_Clustering.retry2: 1 statement deferred, resuming after it (round 3)
+exec Embeddings_Clustering.retry2: 1 statement deferred, resuming after it (round 4)
+deferred Embeddings_Clustering: 30 tried, 30 still deferred (pass 2)
+check Embeddings_RAG.retry2: 37 statement(s) deferred (round 1)
+check Embeddings_RAG.retry2: nothing left to execute
+deferred Embeddings_RAG: 37 tried, 37 still deferred (pass 2)
+check Embeddings_SemanticSearch.retry2: 25 statement(s) deferred (round 1)
+check Embeddings_SemanticSearch.retry2: nothing left to execute
+deferred Embeddings_SemanticSearch: 25 tried, 25 still deferred (pass 2)
+check Embeddings_SemanticSearchMultiColumn.retry2: 58 statement(s) deferred (round 1)
+check Embeddings_SemanticSearchMultiColumn.retry2: nothing left to execute
+deferred Embeddings_SemanticSearchMultiColumn: 58 tried, 58 still deferred (pass 2)
+check ExampleMicroflows.retry2: 27 statement(s) deferred (round 1)
+check ExampleMicroflows.retry2: nothing left to execute
+deferred ExampleMicroflows: 27 tried, 27 still deferred (pass 2)
+check General.retry2: 20 statement(s) deferred (round 1)
+check/exec General.retry2: error not mappable to a statement — executing one statement at a time (captures/exec-each-General.retry2.txt)
+exec-each General.retry2: 0 landed, 1 deferred
+deferred General: 21 tried, 21 still deferred (pass 2)
+check ImageGenerations_Postcards.retry2: 3 statement(s) deferred (round 1)
+check ImageGenerations_Postcards.retry2: nothing left to execute
+deferred ImageGenerations_Postcards: 3 tried, 3 still deferred (pass 2)
+check MCPClient.retry2: 3 statement(s) deferred (round 1)
+exec MCPClient.retry2: 1 statement deferred, resuming after it (round 2)
+exec MCPClient.retry2: 1 statement deferred, resuming after it (round 3)
+check MCPClient.retry2: 1 statement(s) deferred (round 4)
+check MCPClient.retry2: nothing left to execute
+deferred MCPClient: 6 tried, 6 still deferred (pass 2)
+check MCPClient_ConnectToServer.retry2: 18 statement(s) deferred (round 1)
+exec MCPClient_ConnectToServer.retry2: 1 statement deferred, resuming after it (round 2)
+exec MCPClient_ConnectToServer.retry2: 1 statement deferred, resuming after it (round 3)
+check/exec MCPClient_ConnectToServer.retry2: error not mappable to a statement — executing one statement at a time (captures/exec-each-MCPClient_ConnectToServer.retry2.txt)
+exec-each MCPClient_ConnectToServer.retry2: 0 landed, 2 deferred
+deferred MCPClient_ConnectToServer: 22 tried, 22 still deferred (pass 2)
+check MCPServer_ExposeToolsPrompts.retry2: 12 statement(s) deferred (round 1)
+exec MCPServer_ExposeToolsPrompts.retry2: 1 statement deferred, resuming after it (round 2)
+deferred MCPServer_ExposeToolsPrompts: 13 tried, 13 still deferred (pass 2)
+check MultiAgentPatterns.retry2: 54 statement(s) deferred (round 1)
+exec MultiAgentPatterns.retry2: 1 statement deferred, resuming after it (round 2)
+check MultiAgentPatterns.retry2: 7 statement(s) deferred (round 3)
+check MultiAgentPatterns.retry2: nothing left to execute
+deferred MultiAgentPatterns: 62 tried, 62 still deferred (pass 2)
+check RAG_Knowledgebase_AmazonBedrock.retry2: 17 statement(s) deferred (round 1)
+check RAG_Knowledgebase_AmazonBedrock.retry2: nothing left to execute
+deferred RAG_Knowledgebase_AmazonBedrock: 17 tried, 17 still deferred (pass 2)
+check ConversationalUI.retry2: 1 statement(s) deferred (round 1)
+check ConversationalUI.retry2: 13 statement(s) deferred (round 2)
+check ConversationalUI.retry2: 2 statement(s) deferred (round 3)
+check ConversationalUI.retry2: 2 statement(s) deferred (round 4)
+check ConversationalUI.retry2: 2 statement(s) deferred (round 5)
+check ConversationalUI.retry2: 4 statement(s) deferred (round 6)
+check ConversationalUI.retry2: 31 statement(s) deferred (round 7)
+check/exec ConversationalUI.retry2: error not mappable to a statement — executing one statement at a time (captures/exec-each-ConversationalUI.retry2.txt)
+exec-each ConversationalUI.retry2: 0 landed, 4 deferred
+deferred ConversationalUI: 59 tried, 59 still deferred (pass 2)
+check GenAICommons.retry3: 3 statement(s) deferred (round 1)
+exec GenAICommons.retry3: 1 statement deferred, resuming after it (round 2)
+deferred GenAICommons: 4 tried, 4 still deferred (pass 3)
+check EchoConnector.retry3: 21 statement(s) deferred (round 1)
+check EchoConnector.retry3: nothing left to execute
+deferred EchoConnector: 21 tried, 21 still deferred (pass 3)
+check MxGenAIConnector.retry3: 10 statement(s) deferred (round 1)
+exec MxGenAIConnector.retry3: 1 statement deferred, resuming after it (round 2)
+check MxGenAIConnector.retry3: 6 statement(s) deferred (round 3)
+check MxGenAIConnector.retry3: nothing left to execute
+deferred MxGenAIConnector: 17 tried, 17 still deferred (pass 3)
+check OpenAIConnector.retry3: 43 statement(s) deferred (round 1)
+check OpenAIConnector.retry3: nothing left to execute
+deferred OpenAIConnector: 43 tried, 43 still deferred (pass 3)
+check PgVectorKnowledgeBase.retry3: 4 statement(s) deferred (round 1)
+exec PgVectorKnowledgeBase.retry3: 1 statement deferred, resuming after it (round 2)
+check PgVectorKnowledgeBase.retry3: 14 statement(s) deferred (round 3)
+exec PgVectorKnowledgeBase.retry3: 1 statement deferred, resuming after it (round 4)
+check PgVectorKnowledgeBase.retry3: 1 statement(s) deferred (round 5)
+exec PgVectorKnowledgeBase.retry3: 1 statement deferred, resuming after it (round 6)
+exec PgVectorKnowledgeBase.retry3: 1 statement deferred, resuming after it (round 7)
+exec PgVectorKnowledgeBase.retry3: 1 statement deferred, resuming after it (round 8)
+deferred PgVectorKnowledgeBase: 24 tried, 24 still deferred (pass 3)
+check AmazonBedrockConnector.retry3: 8 statement(s) deferred (round 1)
+exec AmazonBedrockConnector.retry3: 1 statement deferred, resuming after it (round 2)
+exec AmazonBedrockConnector.retry3: 1 statement deferred, resuming after it (round 3)
+check AmazonBedrockConnector.retry3: 1 statement(s) deferred (round 4)
+check AmazonBedrockConnector.retry3: nothing left to execute
+deferred AmazonBedrockConnector: 11 tried, 11 still deferred (pass 3)
+check GoogleGeminiConnector.retry3: 26 statement(s) deferred (round 1)
+exec GoogleGeminiConnector.retry3: 1 statement deferred, resuming after it (round 2)
+check GoogleGeminiConnector.retry3: 4 statement(s) deferred (round 3)
+check GoogleGeminiConnector.retry3: nothing left to execute
+deferred GoogleGeminiConnector: 31 tried, 31 still deferred (pass 3)
+check MistralConnector.retry3: 26 statement(s) deferred (round 1)
+exec MistralConnector.retry3: 1 statement deferred, resuming after it (round 2)
+check MistralConnector.retry3: 4 statement(s) deferred (round 3)
+check MistralConnector.retry3: nothing left to execute
+deferred MistralConnector: 31 tried, 31 still deferred (pass 3)
+check AgentCommons.retry3: 70 statement(s) deferred (round 1)
+check AgentCommons.retry3: 7 statement(s) deferred (round 2)
+exec AgentCommons.retry3: 1 statement deferred, resuming after it (round 3)
+check AgentCommons.retry3: 1 statement(s) deferred (round 4)
+exec AgentCommons.retry3: 1 statement deferred, resuming after it (round 5)
+check AgentCommons.retry3: 1 statement(s) deferred (round 6)
+exec AgentCommons.retry3: 1 statement deferred, resuming after it (round 7)
+check AgentCommons.retry3: 1 statement(s) deferred (round 8)
+exec AgentCommons.retry3: 1 statement deferred, resuming after it (round 9)
+check AgentCommons.retry3: 1 statement(s) deferred (round 10)
+check/exec AgentCommons.retry3: error not mappable to a statement — executing one statement at a time (captures/exec-each-AgentCommons.retry3.txt)
+exec-each AgentCommons.retry3: 0 landed, 4 deferred
+deferred AgentCommons: 89 tried, 89 still deferred (pass 3)
+check AgentEditorCommons.retry3: 12 statement(s) deferred (round 1)
+check AgentEditorCommons.retry3: nothing left to execute
+deferred AgentEditorCommons: 12 tried, 12 still deferred (pass 3)
+check ChatCompletions_ComplexityReduction.retry3: 6 statement(s) deferred (round 1)
+check ChatCompletions_ComplexityReduction.retry3: nothing left to execute
+deferred ChatCompletions_ComplexityReduction: 6 tried, 6 still deferred (pass 3)
+check ChatCompletions_ConversationalUI.retry3: 20 statement(s) deferred (round 1)
+check ChatCompletions_ConversationalUI.retry3: nothing left to execute
+deferred ChatCompletions_ConversationalUI: 20 tried, 20 still deferred (pass 3)
+check ChatCompletions_DocumentChat.retry3: 7 statement(s) deferred (round 1)
+check ChatCompletions_DocumentChat.retry3: nothing left to execute
+deferred ChatCompletions_DocumentChat: 7 tried, 7 still deferred (pass 3)
+check ChatCompletions_FunctionCalling.retry3: 24 statement(s) deferred (round 1)
+exec ChatCompletions_FunctionCalling.retry3: 1 statement deferred, resuming after it (round 2)
+deferred ChatCompletions_FunctionCalling: 25 tried, 25 still deferred (pass 3)
+check ChatCompletions_JsonModeDemoData.retry3: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeDemoData.retry3: nothing left to execute
+deferred ChatCompletions_JsonModeDemoData: 7 tried, 7 still deferred (pass 3)
+check ChatCompletions_JsonModeText.retry3: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeText.retry3: nothing left to execute
+deferred ChatCompletions_JsonModeText: 7 tried, 7 still deferred (pass 3)
+check ChatCompletions_ProductDescription.retry3: 9 statement(s) deferred (round 1)
+check ChatCompletions_ProductDescription.retry3: nothing left to execute
+deferred ChatCompletions_ProductDescription: 9 tried, 9 still deferred (pass 3)
+check ChatCompletions_Vision_Webcam.retry3: 8 statement(s) deferred (round 1)
+check ChatCompletions_Vision_Webcam.retry3: nothing left to execute
+deferred ChatCompletions_Vision_Webcam: 8 tried, 8 still deferred (pass 3)
+check ComputerUse_AmazonBedrock.retry3: 6 statement(s) deferred (round 1)
+check ComputerUse_AmazonBedrock.retry3: nothing left to execute
+deferred ComputerUse_AmazonBedrock: 6 tried, 6 still deferred (pass 3)
+check Embeddings_Clustering.retry3: 27 statement(s) deferred (round 1)
+check Embeddings_Clustering.retry3: 1 statement(s) deferred (round 2)
+exec Embeddings_Clustering.retry3: 1 statement deferred, resuming after it (round 3)
+exec Embeddings_Clustering.retry3: 1 statement deferred, resuming after it (round 4)
+deferred Embeddings_Clustering: 30 tried, 30 still deferred (pass 3)
+check Embeddings_RAG.retry3: 37 statement(s) deferred (round 1)
+check Embeddings_RAG.retry3: nothing left to execute
+deferred Embeddings_RAG: 37 tried, 37 still deferred (pass 3)
+check Embeddings_SemanticSearch.retry3: 25 statement(s) deferred (round 1)
+check Embeddings_SemanticSearch.retry3: nothing left to execute
+deferred Embeddings_SemanticSearch: 25 tried, 25 still deferred (pass 3)
+check Embeddings_SemanticSearchMultiColumn.retry3: 58 statement(s) deferred (round 1)
+check Embeddings_SemanticSearchMultiColumn.retry3: nothing left to execute
+deferred Embeddings_SemanticSearchMultiColumn: 58 tried, 58 still deferred (pass 3)
+check ExampleMicroflows.retry3: 27 statement(s) deferred (round 1)
+check ExampleMicroflows.retry3: nothing left to execute
+deferred ExampleMicroflows: 27 tried, 27 still deferred (pass 3)
+check General.retry3: 20 statement(s) deferred (round 1)
+check/exec General.retry3: error not mappable to a statement — executing one statement at a time (captures/exec-each-General.retry3.txt)
+exec-each General.retry3: 0 landed, 1 deferred
+deferred General: 21 tried, 21 still deferred (pass 3)
+check ImageGenerations_Postcards.retry3: 3 statement(s) deferred (round 1)
+check ImageGenerations_Postcards.retry3: nothing left to execute
+deferred ImageGenerations_Postcards: 3 tried, 3 still deferred (pass 3)
+check MCPClient.retry3: 3 statement(s) deferred (round 1)
+exec MCPClient.retry3: 1 statement deferred, resuming after it (round 2)
+exec MCPClient.retry3: 1 statement deferred, resuming after it (round 3)
+check MCPClient.retry3: 1 statement(s) deferred (round 4)
+check MCPClient.retry3: nothing left to execute
+deferred MCPClient: 6 tried, 6 still deferred (pass 3)
+check MCPClient_ConnectToServer.retry3: 18 statement(s) deferred (round 1)
+exec MCPClient_ConnectToServer.retry3: 1 statement deferred, resuming after it (round 2)
+exec MCPClient_ConnectToServer.retry3: 1 statement deferred, resuming after it (round 3)
+check/exec MCPClient_ConnectToServer.retry3: error not mappable to a statement — executing one statement at a time (captures/exec-each-MCPClient_ConnectToServer.retry3.txt)
+exec-each MCPClient_ConnectToServer.retry3: 0 landed, 2 deferred
+deferred MCPClient_ConnectToServer: 22 tried, 22 still deferred (pass 3)
+check MCPServer_ExposeToolsPrompts.retry3: 12 statement(s) deferred (round 1)
+exec MCPServer_ExposeToolsPrompts.retry3: 1 statement deferred, resuming after it (round 2)
+deferred MCPServer_ExposeToolsPrompts: 13 tried, 13 still deferred (pass 3)
+check MultiAgentPatterns.retry3: 54 statement(s) deferred (round 1)
+exec MultiAgentPatterns.retry3: 1 statement deferred, resuming after it (round 2)
+check MultiAgentPatterns.retry3: 7 statement(s) deferred (round 3)
+check MultiAgentPatterns.retry3: nothing left to execute
+deferred MultiAgentPatterns: 62 tried, 62 still deferred (pass 3)
+check RAG_Knowledgebase_AmazonBedrock.retry3: 17 statement(s) deferred (round 1)
+check RAG_Knowledgebase_AmazonBedrock.retry3: nothing left to execute
+deferred RAG_Knowledgebase_AmazonBedrock: 17 tried, 17 still deferred (pass 3)
+check ConversationalUI.retry3: 1 statement(s) deferred (round 1)
+check ConversationalUI.retry3: 13 statement(s) deferred (round 2)
+check ConversationalUI.retry3: 2 statement(s) deferred (round 3)
+check ConversationalUI.retry3: 2 statement(s) deferred (round 4)
+check ConversationalUI.retry3: 2 statement(s) deferred (round 5)
+check ConversationalUI.retry3: 4 statement(s) deferred (round 6)
+check ConversationalUI.retry3: 31 statement(s) deferred (round 7)
+check/exec ConversationalUI.retry3: error not mappable to a statement — executing one statement at a time (captures/exec-each-ConversationalUI.retry3.txt)
+exec-each ConversationalUI.retry3: 0 landed, 4 deferred
+deferred ConversationalUI: 59 tried, 59 still deferred (pass 3)
+check GenAICommons.retry4: 3 statement(s) deferred (round 1)
+exec GenAICommons.retry4: 1 statement deferred, resuming after it (round 2)
+deferred GenAICommons: 4 tried, 4 still deferred (pass 4)
+check EchoConnector.retry4: 21 statement(s) deferred (round 1)
+check EchoConnector.retry4: nothing left to execute
+deferred EchoConnector: 21 tried, 21 still deferred (pass 4)
+check MxGenAIConnector.retry4: 10 statement(s) deferred (round 1)
+exec MxGenAIConnector.retry4: 1 statement deferred, resuming after it (round 2)
+check MxGenAIConnector.retry4: 6 statement(s) deferred (round 3)
+check MxGenAIConnector.retry4: nothing left to execute
+deferred MxGenAIConnector: 17 tried, 17 still deferred (pass 4)
+check OpenAIConnector.retry4: 43 statement(s) deferred (round 1)
+check OpenAIConnector.retry4: nothing left to execute
+deferred OpenAIConnector: 43 tried, 43 still deferred (pass 4)
+check PgVectorKnowledgeBase.retry4: 4 statement(s) deferred (round 1)
+exec PgVectorKnowledgeBase.retry4: 1 statement deferred, resuming after it (round 2)
+check PgVectorKnowledgeBase.retry4: 14 statement(s) deferred (round 3)
+exec PgVectorKnowledgeBase.retry4: 1 statement deferred, resuming after it (round 4)
+check PgVectorKnowledgeBase.retry4: 1 statement(s) deferred (round 5)
+exec PgVectorKnowledgeBase.retry4: 1 statement deferred, resuming after it (round 6)
+exec PgVectorKnowledgeBase.retry4: 1 statement deferred, resuming after it (round 7)
+exec PgVectorKnowledgeBase.retry4: 1 statement deferred, resuming after it (round 8)
+deferred PgVectorKnowledgeBase: 24 tried, 24 still deferred (pass 4)
+check AmazonBedrockConnector.retry4: 8 statement(s) deferred (round 1)
+exec AmazonBedrockConnector.retry4: 1 statement deferred, resuming after it (round 2)
+exec AmazonBedrockConnector.retry4: 1 statement deferred, resuming after it (round 3)
+check AmazonBedrockConnector.retry4: 1 statement(s) deferred (round 4)
+check AmazonBedrockConnector.retry4: nothing left to execute
+deferred AmazonBedrockConnector: 11 tried, 11 still deferred (pass 4)
+check GoogleGeminiConnector.retry4: 26 statement(s) deferred (round 1)
+exec GoogleGeminiConnector.retry4: 1 statement deferred, resuming after it (round 2)
+check GoogleGeminiConnector.retry4: 4 statement(s) deferred (round 3)
+check GoogleGeminiConnector.retry4: nothing left to execute
+deferred GoogleGeminiConnector: 31 tried, 31 still deferred (pass 4)
+check MistralConnector.retry4: 26 statement(s) deferred (round 1)
+exec MistralConnector.retry4: 1 statement deferred, resuming after it (round 2)
+check MistralConnector.retry4: 4 statement(s) deferred (round 3)
+check MistralConnector.retry4: nothing left to execute
+deferred MistralConnector: 31 tried, 31 still deferred (pass 4)
+check AgentCommons.retry4: 70 statement(s) deferred (round 1)
+check AgentCommons.retry4: 7 statement(s) deferred (round 2)
+exec AgentCommons.retry4: 1 statement deferred, resuming after it (round 3)
+check AgentCommons.retry4: 1 statement(s) deferred (round 4)
+exec AgentCommons.retry4: 1 statement deferred, resuming after it (round 5)
+check AgentCommons.retry4: 1 statement(s) deferred (round 6)
+exec AgentCommons.retry4: 1 statement deferred, resuming after it (round 7)
+check AgentCommons.retry4: 1 statement(s) deferred (round 8)
+exec AgentCommons.retry4: 1 statement deferred, resuming after it (round 9)
+check AgentCommons.retry4: 1 statement(s) deferred (round 10)
+check/exec AgentCommons.retry4: error not mappable to a statement — executing one statement at a time (captures/exec-each-AgentCommons.retry4.txt)
+exec-each AgentCommons.retry4: 0 landed, 4 deferred
+deferred AgentCommons: 89 tried, 89 still deferred (pass 4)
+check AgentEditorCommons.retry4: 12 statement(s) deferred (round 1)
+check AgentEditorCommons.retry4: nothing left to execute
+deferred AgentEditorCommons: 12 tried, 12 still deferred (pass 4)
+check ChatCompletions_ComplexityReduction.retry4: 6 statement(s) deferred (round 1)
+check ChatCompletions_ComplexityReduction.retry4: nothing left to execute
+deferred ChatCompletions_ComplexityReduction: 6 tried, 6 still deferred (pass 4)
+check ChatCompletions_ConversationalUI.retry4: 20 statement(s) deferred (round 1)
+check ChatCompletions_ConversationalUI.retry4: nothing left to execute
+deferred ChatCompletions_ConversationalUI: 20 tried, 20 still deferred (pass 4)
+check ChatCompletions_DocumentChat.retry4: 7 statement(s) deferred (round 1)
+check ChatCompletions_DocumentChat.retry4: nothing left to execute
+deferred ChatCompletions_DocumentChat: 7 tried, 7 still deferred (pass 4)
+check ChatCompletions_FunctionCalling.retry4: 24 statement(s) deferred (round 1)
+exec ChatCompletions_FunctionCalling.retry4: 1 statement deferred, resuming after it (round 2)
+deferred ChatCompletions_FunctionCalling: 25 tried, 25 still deferred (pass 4)
+check ChatCompletions_JsonModeDemoData.retry4: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeDemoData.retry4: nothing left to execute
+deferred ChatCompletions_JsonModeDemoData: 7 tried, 7 still deferred (pass 4)
+check ChatCompletions_JsonModeText.retry4: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeText.retry4: nothing left to execute
+deferred ChatCompletions_JsonModeText: 7 tried, 7 still deferred (pass 4)
+check ChatCompletions_ProductDescription.retry4: 9 statement(s) deferred (round 1)
+check ChatCompletions_ProductDescription.retry4: nothing left to execute
+deferred ChatCompletions_ProductDescription: 9 tried, 9 still deferred (pass 4)
+check ChatCompletions_Vision_Webcam.retry4: 8 statement(s) deferred (round 1)
+check ChatCompletions_Vision_Webcam.retry4: nothing left to execute
+deferred ChatCompletions_Vision_Webcam: 8 tried, 8 still deferred (pass 4)
+check ComputerUse_AmazonBedrock.retry4: 6 statement(s) deferred (round 1)
+check ComputerUse_AmazonBedrock.retry4: nothing left to execute
+deferred ComputerUse_AmazonBedrock: 6 tried, 6 still deferred (pass 4)
+check Embeddings_Clustering.retry4: 27 statement(s) deferred (round 1)
+check Embeddings_Clustering.retry4: 1 statement(s) deferred (round 2)
+exec Embeddings_Clustering.retry4: 1 statement deferred, resuming after it (round 3)
+exec Embeddings_Clustering.retry4: 1 statement deferred, resuming after it (round 4)
+deferred Embeddings_Clustering: 30 tried, 30 still deferred (pass 4)
+check Embeddings_RAG.retry4: 37 statement(s) deferred (round 1)
+check Embeddings_RAG.retry4: nothing left to execute
+deferred Embeddings_RAG: 37 tried, 37 still deferred (pass 4)
+check Embeddings_SemanticSearch.retry4: 25 statement(s) deferred (round 1)
+check Embeddings_SemanticSearch.retry4: nothing left to execute
+deferred Embeddings_SemanticSearch: 25 tried, 25 still deferred (pass 4)
+check Embeddings_SemanticSearchMultiColumn.retry4: 58 statement(s) deferred (round 1)
+check Embeddings_SemanticSearchMultiColumn.retry4: nothing left to execute
+deferred Embeddings_SemanticSearchMultiColumn: 58 tried, 58 still deferred (pass 4)
+check ExampleMicroflows.retry4: 27 statement(s) deferred (round 1)
+check ExampleMicroflows.retry4: nothing left to execute
+deferred ExampleMicroflows: 27 tried, 27 still deferred (pass 4)
+check General.retry4: 20 statement(s) deferred (round 1)
+check/exec General.retry4: error not mappable to a statement — executing one statement at a time (captures/exec-each-General.retry4.txt)
+exec-each General.retry4: 0 landed, 1 deferred
+deferred General: 21 tried, 21 still deferred (pass 4)
+check ImageGenerations_Postcards.retry4: 3 statement(s) deferred (round 1)
+check ImageGenerations_Postcards.retry4: nothing left to execute
+deferred ImageGenerations_Postcards: 3 tried, 3 still deferred (pass 4)
+check MCPClient.retry4: 3 statement(s) deferred (round 1)
+exec MCPClient.retry4: 1 statement deferred, resuming after it (round 2)
+exec MCPClient.retry4: 1 statement deferred, resuming after it (round 3)
+check MCPClient.retry4: 1 statement(s) deferred (round 4)
+check MCPClient.retry4: nothing left to execute
+deferred MCPClient: 6 tried, 6 still deferred (pass 4)
+check MCPClient_ConnectToServer.retry4: 18 statement(s) deferred (round 1)
+exec MCPClient_ConnectToServer.retry4: 1 statement deferred, resuming after it (round 2)
+exec MCPClient_ConnectToServer.retry4: 1 statement deferred, resuming after it (round 3)
+check/exec MCPClient_ConnectToServer.retry4: error not mappable to a statement — executing one statement at a time (captures/exec-each-MCPClient_ConnectToServer.retry4.txt)
+exec-each MCPClient_ConnectToServer.retry4: 0 landed, 2 deferred
+deferred MCPClient_ConnectToServer: 22 tried, 22 still deferred (pass 4)
+check MCPServer_ExposeToolsPrompts.retry4: 12 statement(s) deferred (round 1)
+exec MCPServer_ExposeToolsPrompts.retry4: 1 statement deferred, resuming after it (round 2)
+deferred MCPServer_ExposeToolsPrompts: 13 tried, 13 still deferred (pass 4)
+check MultiAgentPatterns.retry4: 54 statement(s) deferred (round 1)
+exec MultiAgentPatterns.retry4: 1 statement deferred, resuming after it (round 2)
+check MultiAgentPatterns.retry4: 7 statement(s) deferred (round 3)
+check MultiAgentPatterns.retry4: nothing left to execute
+deferred MultiAgentPatterns: 62 tried, 62 still deferred (pass 4)
+check RAG_Knowledgebase_AmazonBedrock.retry4: 17 statement(s) deferred (round 1)
+check RAG_Knowledgebase_AmazonBedrock.retry4: nothing left to execute
+deferred RAG_Knowledgebase_AmazonBedrock: 17 tried, 17 still deferred (pass 4)
+check ConversationalUI.retry4: 1 statement(s) deferred (round 1)
+check ConversationalUI.retry4: 13 statement(s) deferred (round 2)
+check ConversationalUI.retry4: 2 statement(s) deferred (round 3)
+check ConversationalUI.retry4: 2 statement(s) deferred (round 4)
+check ConversationalUI.retry4: 2 statement(s) deferred (round 5)
+check ConversationalUI.retry4: 4 statement(s) deferred (round 6)
+check ConversationalUI.retry4: 31 statement(s) deferred (round 7)
+check/exec ConversationalUI.retry4: error not mappable to a statement — executing one statement at a time (captures/exec-each-ConversationalUI.retry4.txt)
+exec-each ConversationalUI.retry4: 0 landed, 4 deferred
+deferred ConversationalUI: 59 tried, 59 still deferred (pass 4)
+check GenAICommons.retry5: 3 statement(s) deferred (round 1)
+exec GenAICommons.retry5: 1 statement deferred, resuming after it (round 2)
+deferred GenAICommons: 4 tried, 4 still deferred (pass 5)
+check EchoConnector.retry5: 21 statement(s) deferred (round 1)
+check EchoConnector.retry5: nothing left to execute
+deferred EchoConnector: 21 tried, 21 still deferred (pass 5)
+check MxGenAIConnector.retry5: 10 statement(s) deferred (round 1)
+exec MxGenAIConnector.retry5: 1 statement deferred, resuming after it (round 2)
+check MxGenAIConnector.retry5: 6 statement(s) deferred (round 3)
+check MxGenAIConnector.retry5: nothing left to execute
+deferred MxGenAIConnector: 17 tried, 17 still deferred (pass 5)
+check OpenAIConnector.retry5: 43 statement(s) deferred (round 1)
+check OpenAIConnector.retry5: nothing left to execute
+deferred OpenAIConnector: 43 tried, 43 still deferred (pass 5)
+check PgVectorKnowledgeBase.retry5: 4 statement(s) deferred (round 1)
+exec PgVectorKnowledgeBase.retry5: 1 statement deferred, resuming after it (round 2)
+check PgVectorKnowledgeBase.retry5: 14 statement(s) deferred (round 3)
+exec PgVectorKnowledgeBase.retry5: 1 statement deferred, resuming after it (round 4)
+check PgVectorKnowledgeBase.retry5: 1 statement(s) deferred (round 5)
+exec PgVectorKnowledgeBase.retry5: 1 statement deferred, resuming after it (round 6)
+exec PgVectorKnowledgeBase.retry5: 1 statement deferred, resuming after it (round 7)
+exec PgVectorKnowledgeBase.retry5: 1 statement deferred, resuming after it (round 8)
+deferred PgVectorKnowledgeBase: 24 tried, 24 still deferred (pass 5)
+check AmazonBedrockConnector.retry5: 8 statement(s) deferred (round 1)
+exec AmazonBedrockConnector.retry5: 1 statement deferred, resuming after it (round 2)
+exec AmazonBedrockConnector.retry5: 1 statement deferred, resuming after it (round 3)
+check AmazonBedrockConnector.retry5: 1 statement(s) deferred (round 4)
+check AmazonBedrockConnector.retry5: nothing left to execute
+deferred AmazonBedrockConnector: 11 tried, 11 still deferred (pass 5)
+check GoogleGeminiConnector.retry5: 26 statement(s) deferred (round 1)
+exec GoogleGeminiConnector.retry5: 1 statement deferred, resuming after it (round 2)
+check GoogleGeminiConnector.retry5: 4 statement(s) deferred (round 3)
+check GoogleGeminiConnector.retry5: nothing left to execute
+deferred GoogleGeminiConnector: 31 tried, 31 still deferred (pass 5)
+check MistralConnector.retry5: 26 statement(s) deferred (round 1)
+exec MistralConnector.retry5: 1 statement deferred, resuming after it (round 2)
+check MistralConnector.retry5: 4 statement(s) deferred (round 3)
+check MistralConnector.retry5: nothing left to execute
+deferred MistralConnector: 31 tried, 31 still deferred (pass 5)
+check AgentCommons.retry5: 70 statement(s) deferred (round 1)
+check AgentCommons.retry5: 7 statement(s) deferred (round 2)
+exec AgentCommons.retry5: 1 statement deferred, resuming after it (round 3)
+check AgentCommons.retry5: 1 statement(s) deferred (round 4)
+exec AgentCommons.retry5: 1 statement deferred, resuming after it (round 5)
+check AgentCommons.retry5: 1 statement(s) deferred (round 6)
+exec AgentCommons.retry5: 1 statement deferred, resuming after it (round 7)
+check AgentCommons.retry5: 1 statement(s) deferred (round 8)
+exec AgentCommons.retry5: 1 statement deferred, resuming after it (round 9)
+check AgentCommons.retry5: 1 statement(s) deferred (round 10)
+check/exec AgentCommons.retry5: error not mappable to a statement — executing one statement at a time (captures/exec-each-AgentCommons.retry5.txt)
+exec-each AgentCommons.retry5: 0 landed, 4 deferred
+deferred AgentCommons: 89 tried, 89 still deferred (pass 5)
+check AgentEditorCommons.retry5: 12 statement(s) deferred (round 1)
+check AgentEditorCommons.retry5: nothing left to execute
+deferred AgentEditorCommons: 12 tried, 12 still deferred (pass 5)
+check ChatCompletions_ComplexityReduction.retry5: 6 statement(s) deferred (round 1)
+check ChatCompletions_ComplexityReduction.retry5: nothing left to execute
+deferred ChatCompletions_ComplexityReduction: 6 tried, 6 still deferred (pass 5)
+check ChatCompletions_ConversationalUI.retry5: 20 statement(s) deferred (round 1)
+check ChatCompletions_ConversationalUI.retry5: nothing left to execute
+deferred ChatCompletions_ConversationalUI: 20 tried, 20 still deferred (pass 5)
+check ChatCompletions_DocumentChat.retry5: 7 statement(s) deferred (round 1)
+check ChatCompletions_DocumentChat.retry5: nothing left to execute
+deferred ChatCompletions_DocumentChat: 7 tried, 7 still deferred (pass 5)
+check ChatCompletions_FunctionCalling.retry5: 24 statement(s) deferred (round 1)
+exec ChatCompletions_FunctionCalling.retry5: 1 statement deferred, resuming after it (round 2)
+deferred ChatCompletions_FunctionCalling: 25 tried, 25 still deferred (pass 5)
+check ChatCompletions_JsonModeDemoData.retry5: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeDemoData.retry5: nothing left to execute
+deferred ChatCompletions_JsonModeDemoData: 7 tried, 7 still deferred (pass 5)
+check ChatCompletions_JsonModeText.retry5: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeText.retry5: nothing left to execute
+deferred ChatCompletions_JsonModeText: 7 tried, 7 still deferred (pass 5)
+check ChatCompletions_ProductDescription.retry5: 9 statement(s) deferred (round 1)
+check ChatCompletions_ProductDescription.retry5: nothing left to execute
+deferred ChatCompletions_ProductDescription: 9 tried, 9 still deferred (pass 5)
+check ChatCompletions_Vision_Webcam.retry5: 8 statement(s) deferred (round 1)
+check ChatCompletions_Vision_Webcam.retry5: nothing left to execute
+deferred ChatCompletions_Vision_Webcam: 8 tried, 8 still deferred (pass 5)
+check ComputerUse_AmazonBedrock.retry5: 6 statement(s) deferred (round 1)
+check ComputerUse_AmazonBedrock.retry5: nothing left to execute
+deferred ComputerUse_AmazonBedrock: 6 tried, 6 still deferred (pass 5)
+check Embeddings_Clustering.retry5: 27 statement(s) deferred (round 1)
+check Embeddings_Clustering.retry5: 1 statement(s) deferred (round 2)
+exec Embeddings_Clustering.retry5: 1 statement deferred, resuming after it (round 3)
+exec Embeddings_Clustering.retry5: 1 statement deferred, resuming after it (round 4)
+deferred Embeddings_Clustering: 30 tried, 30 still deferred (pass 5)
+check Embeddings_RAG.retry5: 37 statement(s) deferred (round 1)
+check Embeddings_RAG.retry5: nothing left to execute
+deferred Embeddings_RAG: 37 tried, 37 still deferred (pass 5)
+check Embeddings_SemanticSearch.retry5: 25 statement(s) deferred (round 1)
+check Embeddings_SemanticSearch.retry5: nothing left to execute
+deferred Embeddings_SemanticSearch: 25 tried, 25 still deferred (pass 5)
+check Embeddings_SemanticSearchMultiColumn.retry5: 58 statement(s) deferred (round 1)
+check Embeddings_SemanticSearchMultiColumn.retry5: nothing left to execute
+deferred Embeddings_SemanticSearchMultiColumn: 58 tried, 58 still deferred (pass 5)
+check ExampleMicroflows.retry5: 27 statement(s) deferred (round 1)
+check ExampleMicroflows.retry5: nothing left to execute
+deferred ExampleMicroflows: 27 tried, 27 still deferred (pass 5)
+check General.retry5: 20 statement(s) deferred (round 1)
+check/exec General.retry5: error not mappable to a statement — executing one statement at a time (captures/exec-each-General.retry5.txt)
+exec-each General.retry5: 0 landed, 1 deferred
+deferred General: 21 tried, 21 still deferred (pass 5)
+check ImageGenerations_Postcards.retry5: 3 statement(s) deferred (round 1)
+check ImageGenerations_Postcards.retry5: nothing left to execute
+deferred ImageGenerations_Postcards: 3 tried, 3 still deferred (pass 5)
+check MCPClient.retry5: 3 statement(s) deferred (round 1)
+exec MCPClient.retry5: 1 statement deferred, resuming after it (round 2)
+exec MCPClient.retry5: 1 statement deferred, resuming after it (round 3)
+check MCPClient.retry5: 1 statement(s) deferred (round 4)
+check MCPClient.retry5: nothing left to execute
+deferred MCPClient: 6 tried, 6 still deferred (pass 5)
+check MCPClient_ConnectToServer.retry5: 18 statement(s) deferred (round 1)
+exec MCPClient_ConnectToServer.retry5: 1 statement deferred, resuming after it (round 2)
+exec MCPClient_ConnectToServer.retry5: 1 statement deferred, resuming after it (round 3)
+check/exec MCPClient_ConnectToServer.retry5: error not mappable to a statement — executing one statement at a time (captures/exec-each-MCPClient_ConnectToServer.retry5.txt)
+exec-each MCPClient_ConnectToServer.retry5: 0 landed, 2 deferred
+deferred MCPClient_ConnectToServer: 22 tried, 22 still deferred (pass 5)
+check MCPServer_ExposeToolsPrompts.retry5: 12 statement(s) deferred (round 1)
+exec MCPServer_ExposeToolsPrompts.retry5: 1 statement deferred, resuming after it (round 2)
+deferred MCPServer_ExposeToolsPrompts: 13 tried, 13 still deferred (pass 5)
+check MultiAgentPatterns.retry5: 54 statement(s) deferred (round 1)
+exec MultiAgentPatterns.retry5: 1 statement deferred, resuming after it (round 2)
+check MultiAgentPatterns.retry5: 7 statement(s) deferred (round 3)
+check MultiAgentPatterns.retry5: nothing left to execute
+deferred MultiAgentPatterns: 62 tried, 62 still deferred (pass 5)
+check RAG_Knowledgebase_AmazonBedrock.retry5: 17 statement(s) deferred (round 1)
+check RAG_Knowledgebase_AmazonBedrock.retry5: nothing left to execute
+deferred RAG_Knowledgebase_AmazonBedrock: 17 tried, 17 still deferred (pass 5)
+check ConversationalUI.retry5: 1 statement(s) deferred (round 1)
+check ConversationalUI.retry5: 13 statement(s) deferred (round 2)
+check ConversationalUI.retry5: 2 statement(s) deferred (round 3)
+check ConversationalUI.retry5: 2 statement(s) deferred (round 4)
+check ConversationalUI.retry5: 2 statement(s) deferred (round 5)
+check ConversationalUI.retry5: 4 statement(s) deferred (round 6)
+check ConversationalUI.retry5: 31 statement(s) deferred (round 7)
+check/exec ConversationalUI.retry5: error not mappable to a statement — executing one statement at a time (captures/exec-each-ConversationalUI.retry5.txt)
+exec-each ConversationalUI.retry5: 0 landed, 4 deferred
+deferred ConversationalUI: 59 tried, 59 still deferred (pass 5)
+check GenAICommons.retry6: 3 statement(s) deferred (round 1)
+exec GenAICommons.retry6: 1 statement deferred, resuming after it (round 2)
+deferred GenAICommons: 4 tried, 4 still deferred (pass 6)
+check EchoConnector.retry6: 21 statement(s) deferred (round 1)
+check EchoConnector.retry6: nothing left to execute
+deferred EchoConnector: 21 tried, 21 still deferred (pass 6)
+check MxGenAIConnector.retry6: 10 statement(s) deferred (round 1)
+exec MxGenAIConnector.retry6: 1 statement deferred, resuming after it (round 2)
+check MxGenAIConnector.retry6: 6 statement(s) deferred (round 3)
+check MxGenAIConnector.retry6: nothing left to execute
+deferred MxGenAIConnector: 17 tried, 17 still deferred (pass 6)
+check OpenAIConnector.retry6: 43 statement(s) deferred (round 1)
+check OpenAIConnector.retry6: nothing left to execute
+deferred OpenAIConnector: 43 tried, 43 still deferred (pass 6)
+check PgVectorKnowledgeBase.retry6: 4 statement(s) deferred (round 1)
+exec PgVectorKnowledgeBase.retry6: 1 statement deferred, resuming after it (round 2)
+check PgVectorKnowledgeBase.retry6: 14 statement(s) deferred (round 3)
+exec PgVectorKnowledgeBase.retry6: 1 statement deferred, resuming after it (round 4)
+check PgVectorKnowledgeBase.retry6: 1 statement(s) deferred (round 5)
+exec PgVectorKnowledgeBase.retry6: 1 statement deferred, resuming after it (round 6)
+exec PgVectorKnowledgeBase.retry6: 1 statement deferred, resuming after it (round 7)
+exec PgVectorKnowledgeBase.retry6: 1 statement deferred, resuming after it (round 8)
+deferred PgVectorKnowledgeBase: 24 tried, 24 still deferred (pass 6)
+check AmazonBedrockConnector.retry6: 8 statement(s) deferred (round 1)
+exec AmazonBedrockConnector.retry6: 1 statement deferred, resuming after it (round 2)
+exec AmazonBedrockConnector.retry6: 1 statement deferred, resuming after it (round 3)
+check AmazonBedrockConnector.retry6: 1 statement(s) deferred (round 4)
+check AmazonBedrockConnector.retry6: nothing left to execute
+deferred AmazonBedrockConnector: 11 tried, 11 still deferred (pass 6)
+check GoogleGeminiConnector.retry6: 26 statement(s) deferred (round 1)
+exec GoogleGeminiConnector.retry6: 1 statement deferred, resuming after it (round 2)
+check GoogleGeminiConnector.retry6: 4 statement(s) deferred (round 3)
+check GoogleGeminiConnector.retry6: nothing left to execute
+deferred GoogleGeminiConnector: 31 tried, 31 still deferred (pass 6)
+check MistralConnector.retry6: 26 statement(s) deferred (round 1)
+exec MistralConnector.retry6: 1 statement deferred, resuming after it (round 2)
+check MistralConnector.retry6: 4 statement(s) deferred (round 3)
+check MistralConnector.retry6: nothing left to execute
+deferred MistralConnector: 31 tried, 31 still deferred (pass 6)
+check AgentCommons.retry6: 70 statement(s) deferred (round 1)
+check AgentCommons.retry6: 7 statement(s) deferred (round 2)
+exec AgentCommons.retry6: 1 statement deferred, resuming after it (round 3)
+check AgentCommons.retry6: 1 statement(s) deferred (round 4)
+exec AgentCommons.retry6: 1 statement deferred, resuming after it (round 5)
+check AgentCommons.retry6: 1 statement(s) deferred (round 6)
+exec AgentCommons.retry6: 1 statement deferred, resuming after it (round 7)
+check AgentCommons.retry6: 1 statement(s) deferred (round 8)
+exec AgentCommons.retry6: 1 statement deferred, resuming after it (round 9)
+check AgentCommons.retry6: 1 statement(s) deferred (round 10)
+check/exec AgentCommons.retry6: error not mappable to a statement — executing one statement at a time (captures/exec-each-AgentCommons.retry6.txt)
+exec-each AgentCommons.retry6: 0 landed, 4 deferred
+deferred AgentCommons: 89 tried, 89 still deferred (pass 6)
+check AgentEditorCommons.retry6: 12 statement(s) deferred (round 1)
+check AgentEditorCommons.retry6: nothing left to execute
+deferred AgentEditorCommons: 12 tried, 12 still deferred (pass 6)
+check ChatCompletions_ComplexityReduction.retry6: 6 statement(s) deferred (round 1)
+check ChatCompletions_ComplexityReduction.retry6: nothing left to execute
+deferred ChatCompletions_ComplexityReduction: 6 tried, 6 still deferred (pass 6)
+check ChatCompletions_ConversationalUI.retry6: 20 statement(s) deferred (round 1)
+check ChatCompletions_ConversationalUI.retry6: nothing left to execute
+deferred ChatCompletions_ConversationalUI: 20 tried, 20 still deferred (pass 6)
+check ChatCompletions_DocumentChat.retry6: 7 statement(s) deferred (round 1)
+check ChatCompletions_DocumentChat.retry6: nothing left to execute
+deferred ChatCompletions_DocumentChat: 7 tried, 7 still deferred (pass 6)
+check ChatCompletions_FunctionCalling.retry6: 24 statement(s) deferred (round 1)
+exec ChatCompletions_FunctionCalling.retry6: 1 statement deferred, resuming after it (round 2)
+deferred ChatCompletions_FunctionCalling: 25 tried, 25 still deferred (pass 6)
+check ChatCompletions_JsonModeDemoData.retry6: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeDemoData.retry6: nothing left to execute
+deferred ChatCompletions_JsonModeDemoData: 7 tried, 7 still deferred (pass 6)
+check ChatCompletions_JsonModeText.retry6: 7 statement(s) deferred (round 1)
+check ChatCompletions_JsonModeText.retry6: nothing left to execute
+deferred ChatCompletions_JsonModeText: 7 tried, 7 still deferred (pass 6)
+check ChatCompletions_ProductDescription.retry6: 9 statement(s) deferred (round 1)
+check ChatCompletions_ProductDescription.retry6: nothing left to execute
+deferred ChatCompletions_ProductDescription: 9 tried, 9 still deferred (pass 6)
+check ChatCompletions_Vision_Webcam.retry6: 8 statement(s) deferred (round 1)
+check ChatCompletions_Vision_Webcam.retry6: nothing left to execute
+deferred ChatCompletions_Vision_Webcam: 8 tried, 8 still deferred (pass 6)
+check ComputerUse_AmazonBedrock.retry6: 6 statement(s) deferred (round 1)
+check ComputerUse_AmazonBedrock.retry6: nothing left to execute
+deferred ComputerUse_AmazonBedrock: 6 tried, 6 still deferred (pass 6)
+check Embeddings_Clustering.retry6: 27 statement(s) deferred (round 1)
+check Embeddings_Clustering.retry6: 1 statement(s) deferred (round 2)
+exec Embeddings_Clustering.retry6: 1 statement deferred, resuming after it (round 3)
+exec Embeddings_Clustering.retry6: 1 statement deferred, resuming after it (round 4)
+deferred Embeddings_Clustering: 30 tried, 30 still deferred (pass 6)
+check Embeddings_RAG.retry6: 37 statement(s) deferred (round 1)
+check Embeddings_RAG.retry6: nothing left to execute
+deferred Embeddings_RAG: 37 tried, 37 still deferred (pass 6)
+check Embeddings_SemanticSearch.retry6: 25 statement(s) deferred (round 1)
+check Embeddings_SemanticSearch.retry6: nothing left to execute
+deferred Embeddings_SemanticSearch: 25 tried, 25 still deferred (pass 6)
+check Embeddings_SemanticSearchMultiColumn.retry6: 58 statement(s) deferred (round 1)
+check Embeddings_SemanticSearchMultiColumn.retry6: nothing left to execute
+deferred Embeddings_SemanticSearchMultiColumn: 58 tried, 58 still deferred (pass 6)
+check ExampleMicroflows.retry6: 27 statement(s) deferred (round 1)
+check ExampleMicroflows.retry6: nothing left to execute
+deferred ExampleMicroflows: 27 tried, 27 still deferred (pass 6)
+check General.retry6: 20 statement(s) deferred (round 1)
+check/exec General.retry6: error not mappable to a statement — executing one statement at a time (captures/exec-each-General.retry6.txt)
+exec-each General.retry6: 0 landed, 1 deferred
+deferred General: 21 tried, 21 still deferred (pass 6)
+check ImageGenerations_Postcards.retry6: 3 statement(s) deferred (round 1)
+check ImageGenerations_Postcards.retry6: nothing left to execute
+deferred ImageGenerations_Postcards: 3 tried, 3 still deferred (pass 6)
+check MCPClient.retry6: 3 statement(s) deferred (round 1)
+exec MCPClient.retry6: 1 statement deferred, resuming after it (round 2)
+exec MCPClient.retry6: 1 statement deferred, resuming after it (round 3)
+check MCPClient.retry6: 1 statement(s) deferred (round 4)
+check MCPClient.retry6: nothing left to execute
+deferred MCPClient: 6 tried, 6 still deferred (pass 6)
+check MCPClient_ConnectToServer.retry6: 18 statement(s) deferred (round 1)
+exec MCPClient_ConnectToServer.retry6: 1 statement deferred, resuming after it (round 2)
+exec MCPClient_ConnectToServer.retry6: 1 statement deferred, resuming after it (round 3)
+check/exec MCPClient_ConnectToServer.retry6: error not mappable to a statement — executing one statement at a time (captures/exec-each-MCPClient_ConnectToServer.retry6.txt)
+exec-each MCPClient_ConnectToServer.retry6: 0 landed, 2 deferred
+deferred MCPClient_ConnectToServer: 22 tried, 22 still deferred (pass 6)
+check MCPServer_ExposeToolsPrompts.retry6: 12 statement(s) deferred (round 1)
+exec MCPServer_ExposeToolsPrompts.retry6: 1 statement deferred, resuming after it (round 2)
+deferred MCPServer_ExposeToolsPrompts: 13 tried, 13 still deferred (pass 6)
+check MultiAgentPatterns.retry6: 54 statement(s) deferred (round 1)
+exec MultiAgentPatterns.retry6: 1 statement deferred, resuming after it (round 2)
+check MultiAgentPatterns.retry6: 7 statement(s) deferred (round 3)
+check MultiAgentPatterns.retry6: nothing left to execute
+deferred MultiAgentPatterns: 62 tried, 62 still deferred (pass 6)
+check RAG_Knowledgebase_AmazonBedrock.retry6: 17 statement(s) deferred (round 1)
+check RAG_Knowledgebase_AmazonBedrock.retry6: nothing left to execute
+deferred RAG_Knowledgebase_AmazonBedrock: 17 tried, 17 still deferred (pass 6)
+check ConversationalUI.retry6: 1 statement(s) deferred (round 1)
+check ConversationalUI.retry6: 13 statement(s) deferred (round 2)
+check ConversationalUI.retry6: 2 statement(s) deferred (round 3)
+check ConversationalUI.retry6: 2 statement(s) deferred (round 4)
+check ConversationalUI.retry6: 2 statement(s) deferred (round 5)
+check ConversationalUI.retry6: 4 statement(s) deferred (round 6)
+check ConversationalUI.retry6: 31 statement(s) deferred (round 7)
+check/exec ConversationalUI.retry6: error not mappable to a statement — executing one statement at a time (captures/exec-each-ConversationalUI.retry6.txt)
+exec-each ConversationalUI.retry6: 0 landed, 4 deferred
+deferred ConversationalUI: 59 tried, 59 still deferred (pass 6)
+GenAICommons: 4 statement(s) never executed — mdl/GenAICommons.deferred.mdl
+EchoConnector: 21 statement(s) never executed — mdl/EchoConnector.deferred.mdl
+MxGenAIConnector: 17 statement(s) never executed — mdl/MxGenAIConnector.deferred.mdl
+OpenAIConnector: 43 statement(s) never executed — mdl/OpenAIConnector.deferred.mdl
+PgVectorKnowledgeBase: 24 statement(s) never executed — mdl/PgVectorKnowledgeBase.deferred.mdl
+AmazonBedrockConnector: 11 statement(s) never executed — mdl/AmazonBedrockConnector.deferred.mdl
+GoogleGeminiConnector: 31 statement(s) never executed — mdl/GoogleGeminiConnector.deferred.mdl
+MistralConnector: 31 statement(s) never executed — mdl/MistralConnector.deferred.mdl
+AgentCommons: 89 statement(s) never executed — mdl/AgentCommons.deferred.mdl
+AgentEditorCommons: 12 statement(s) never executed — mdl/AgentEditorCommons.deferred.mdl
+ChatCompletions_ComplexityReduction: 6 statement(s) never executed — mdl/ChatCompletions_ComplexityReduction.deferred.mdl
+ChatCompletions_ConversationalUI: 20 statement(s) never executed — mdl/ChatCompletions_ConversationalUI.deferred.mdl
+ChatCompletions_DocumentChat: 7 statement(s) never executed — mdl/ChatCompletions_DocumentChat.deferred.mdl
+ChatCompletions_FunctionCalling: 25 statement(s) never executed — mdl/ChatCompletions_FunctionCalling.deferred.mdl
+ChatCompletions_JsonModeDemoData: 7 statement(s) never executed — mdl/ChatCompletions_JsonModeDemoData.deferred.mdl
+ChatCompletions_JsonModeText: 7 statement(s) never executed — mdl/ChatCompletions_JsonModeText.deferred.mdl
+ChatCompletions_ProductDescription: 9 statement(s) never executed — mdl/ChatCompletions_ProductDescription.deferred.mdl
+ChatCompletions_Vision_Webcam: 8 statement(s) never executed — mdl/ChatCompletions_Vision_Webcam.deferred.mdl
+ComputerUse_AmazonBedrock: 6 statement(s) never executed — mdl/ComputerUse_AmazonBedrock.deferred.mdl
+Embeddings_Clustering: 30 statement(s) never executed — mdl/Embeddings_Clustering.deferred.mdl
+Embeddings_RAG: 37 statement(s) never executed — mdl/Embeddings_RAG.deferred.mdl
+Embeddings_SemanticSearch: 25 statement(s) never executed — mdl/Embeddings_SemanticSearch.deferred.mdl
+Embeddings_SemanticSearchMultiColumn: 58 statement(s) never executed — mdl/Embeddings_SemanticSearchMultiColumn.deferred.mdl
+ExampleMicroflows: 27 statement(s) never executed — mdl/ExampleMicroflows.deferred.mdl
+General: 21 statement(s) never executed — mdl/General.deferred.mdl
+ImageGenerations_Postcards: 3 statement(s) never executed — mdl/ImageGenerations_Postcards.deferred.mdl
+MCPClient: 6 statement(s) never executed — mdl/MCPClient.deferred.mdl
+MCPClient_ConnectToServer: 22 statement(s) never executed — mdl/MCPClient_ConnectToServer.deferred.mdl
+MCPServer_ExposeToolsPrompts: 13 statement(s) never executed — mdl/MCPServer_ExposeToolsPrompts.deferred.mdl
+MultiAgentPatterns: 62 statement(s) never executed — mdl/MultiAgentPatterns.deferred.mdl
+RAG_Knowledgebase_AmazonBedrock: 17 statement(s) never executed — mdl/RAG_Knowledgebase_AmazonBedrock.deferred.mdl
+ConversationalUI: 59 statement(s) never executed — mdl/ConversationalUI.deferred.mdl
+catalog=2776 covered=2772 not-emitted=4
+ledger: out-nightly2/fidelity-ledger.tsv

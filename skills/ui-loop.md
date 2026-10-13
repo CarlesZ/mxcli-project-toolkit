@@ -205,10 +205,10 @@ diagnosis rounds spent on "defects" that were a stale runtime (#284, #275, #285)
 | | a new page (`create page`), or a page that gets a `Url` — the route table predates it and the deep link lands on Home |
 | | theme SCSS or theme JS (`themesource/`, `theme/`) — one edit dropped the page bundles (404), another left a 24 px column the model says is 120 |
 
-`bin/exec.sh` runs this table for you after every applied script (`--watch-compat <script>`
-prints the same verdict without running anything): it reads the statement heads and checks theme
-SCSS/JS against the running app's boot time, and prints `restart needed: <reasons>` or `watch can
-apply this`. Advisory only — it never blocks. A `create or replace page` is reported reloadable
+`bin/exec.sh` runs this table after every applied script (`--watch-compat <script>` alone
+writes nothing): it reads statement heads, checks theme SCSS/JS against the app's boot time, and
+prints `restart needed: <reasons>`, `watch can apply this`, or, for a statement in neither
+column, `unknown — restart if behaviour looks stale`. Advisory only — it never blocks. A `create or replace page` is reported reloadable
 with a note: restart if that page is new, because a script cannot tell new from replaced.
 
 **A stale runtime looks like a defect.** Before diagnosing any of these right after an exec,

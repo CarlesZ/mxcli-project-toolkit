@@ -166,9 +166,12 @@ checkpoint script, and an expert user's reaction was "I can't even compact?":
 **not** write it reviews the diff and returns a verdict. The builder's own report and green CI
 never count: the builder grades its own work, and CI proves only the tests the builder wrote.
 
-1. **Who reviews.** A fresh agent given the PR diff and the linked issues, never the builder's
-   summary or conclusion. One reviewer per PR, plus one composition check when several PRs in a
-   batch touch the same files.
+1. **Who reviews, and with what.** A fresh agent given the PR diff, the linked issues and the PR
+   body's description of *what* changed — never the builder's verdict, risk assessment or "all
+   checks pass" claims. One reviewer per PR, plus one composition check when several PRs in a
+   batch touch the same files. The reviewer may run the fixtures the PR adds or that target its
+   changed files, in a detached worktree — that is part of the review the maintainer asked for, not
+   a free-standing test run (see "Testing this toolkit").
 2. **What it answers, each with file:line.** *Value*: does it fix the issue as reported, and is
    anything overbuilt? *Regression risk*: what changes for an existing project after
    `sync-project.sh` (new FAIL / BLIND / refusals, exit codes, output another tool parses, gate
@@ -178,22 +181,28 @@ never count: the builder grades its own work, and CI proves only the tests the b
 3. **Verdict.** `MERGE`, `MERGE-AFTER-FIX` (exact fixes listed; the fixes are pushed and
    re-reviewed before merge) or `HOLD` (goes back to the maintainer with the reason). Only `MERGE`
    merges.
-4. **Report the verdict with the merge.** The message announcing a merge names the reviewer's
-   verdict and its top finding next to CI, so the maintainer sees what was checked.
-5. **No exceptions for size or urgency.** A one-line fix, a docs-only PR and an outside
-   contributor's PR all get the same review. "Small", "only skill text" and "CI is green" are how
-   the exceptions start.
+4. **Record the verdict durably.** The squash commit body carries a line
+   `Review: MERGE — <one-line top finding or "no findings">`, and the merge announcement repeats it
+   next to CI. A merge with no `Review:` line was not reviewed.
+5. **No exceptions for size.** A one-line fix, a docs-only PR and an outside contributor's PR all
+   get the same review. "Small", "only skill text" and "CI is green" are how the exceptions start.
+   The one exception is guard rule 7's: a fix whose only purpose is to unblock master (a broken CI
+   check, a leak guard that blocks every commit) may merge first, with its review within 24 hours
+   and a `Review: PENDING (unblock)` line that the follow-up review replaces.
 
 **Why (real incident, 2026-10-13).** Nine PRs merged in one day on the builders' own reports and
 green CI, each carrying its builder's "all checks pass". When the maintainer asked whether value
 and regression risk had been checked, the honest answer was no: nobody who had not written the
-code had read it. The same day showed the cost of unread diffs in another form — the always-loaded
+code had read it. The after-the-fact reviews found, among others, a journey preflight that made
+every synced project's journey rung FAULT, and an exec lock that let three writers in at once. The same day showed the cost of unread diffs in another form — the always-loaded
 skill text hit its 80,000-word cap because each PR added words that nobody outside the PR weighed.
 
 ## Always-loaded skill text — the word budget
 
-`bin/render-routing.sh --check` caps the always-loaded (baseline) skill set at 80,000 words. Room is
-made by **moving** text, never by deleting the text that does the work.
+`bin/render-routing.sh --check` caps the always-loaded (baseline) skill set at
+`MXTK_BASELINE_BUDGET_WORDS` — a ratchet, explained in that script's header: lowered as text moves
+out, never raised to admit growth. Room is made by **moving** text, never by deleting the text
+that does the work.
 
 1. **Protected — never removed to make room:** rules, STOP rows, denominators / completion
    criteria, and the one-line failure example each rule is paired with. Removing one needs its own
@@ -207,12 +216,13 @@ made by **moving** text, never by deleting the text that does the work.
 4. **At the cap, a feature PR never squeezes other text to fit.** Room comes from a separate trim
    PR that only moves movable text; its reviewer compares removed against moved line by line, and
    any protected line that disappeared is a HOLD.
-5. **Trim before the cap, not at it:** when the baseline passes 76,000 words (95%), the next PR
-   that adds baseline words is preceded by a trim PR.
+5. **Trim before the cap, not at it:** when the baseline passes 95% of the budget, the next PR that
+   adds baseline words is preceded by a trim PR. A trim PR does not lower the ratchet by itself;
+   lowering it is a separate one-line change once the trimmed total has held for a release.
 
-**Why (2026-10-13).** The baseline hit 79,975 of 80,000 while six open PRs each added words; a
-"make it fit" instruction inside a feature PR merged two redundant sentences in a testing skill to
-squeeze under. That one was harmless, but nothing stopped the next one from cutting a STOP row.
+**Why (2026-10-13).** One feature PR pushed the baseline to 80,466 words against the 80,000 budget
+while six other open PRs each added words; to fit, it merged two sentences in a testing skill and
+landed at 79,997. That one was harmless, but nothing stopped the next one from cutting a STOP row.
 
 ## Changelog and contributions
 

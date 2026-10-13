@@ -177,7 +177,8 @@ never count: the builder grades its own work, and CI proves only the tests the b
    `sync-project.sh` (new FAIL / BLIND / refusals, exit codes, output another tool parses, gate
    verdicts that flip), across both layouts and macOS / Git Bash? *Correctness*: real bugs, tests
    that do not test what they claim, hand-written golden input where a capture was required.
-   *Context cost*: words added to always-loaded skill files.
+   *Context cost*: words added to always-loaded skill files — re-measured by the reviewer, not taken
+   from the PR body.
 3. **Verdict.** `MERGE`, `MERGE-AFTER-FIX` (exact fixes listed; the fixes are pushed and
    re-reviewed before merge) or `HOLD` (goes back to the maintainer with the reason). Only `MERGE`
    merges.
@@ -237,7 +238,7 @@ and tag every few days — the release cycle is defined at the top of `CHANGELOG
 
 Contributions arrive through three lanes (`CONTRIBUTING.md`): the `contrib/inbox/` drop
 (no quality bar — triage promotes into `skills/`/`bug-logs/`/`bin/` and deletes the inbox file
-in the same commit; inbox files are unreviewed and nothing may cite them),
+in the same commit; inbox files are unreviewed — their content is not vetted for promotion — and nothing may cite them; a PR that adds one still gets the merge review below),
 `bin/harvest-learnings.sh <project-root>` (drafts inbox files from a project's bug logs,
 register promotion tables, and locally-patched installed scripts — run it at project wrap-up),
 and direct PRs held to the full field-proof bar. CI (`.github/workflows/checks.yml`) runs
@@ -347,7 +348,7 @@ fixtures the PR adds or that target its changed files, without asking, in a deta
 the PR branch. That isolation is what avoids the shared-tree problem above; the reviewer still
 never runs the full suites.
 
-**Asking is also required for a single fixture** — name it, say what it will tell us, and wait.
+**Outside that reviewer exception, asking is also required for a single fixture** — name it, say what it will tell us, and wait.
 
 Where a fixture's assertions are greps over a file you changed, prefer verifying by inspection:
 read the fixture, replicate its greps against the changed file, and report that. Same signal, no

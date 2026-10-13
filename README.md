@@ -511,6 +511,7 @@ Every mxcli project has a `.ai-context/skills/` directory (bundled by `mxcli ini
 
 | Task | Skill to load |
 |---|---|
+| Applying or proving a change request (CR row), a change whose class, size or status is unclear, or a "Change log:" gate line to explain: full class/size/ask tables, the wrong-vs-right example, apply and prove steps, the owners table and what the warn-only gate check counts | `skills/change-intake-detail.md` |
 | Deep, adaptive interview on one topic, on demand, when a checkpoint's 2+1 or a single question batch isn't enough | `skills/grill-mode.md` |
 | CAC-1, closing Stage 0 in EVERY entry mode — scope IN: full scope or a slice, and in what order. Opens with a brainstorm, not options | `skills/checkpoints/checkpoint-scope.md` |
 | CAC-1b, after Stage 1 — scope OUT: is what extraction produced what you meant. No gate stops you; run it late against the BRDs if it was skipped | `skills/checkpoints/checkpoint-extraction.md` |

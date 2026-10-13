@@ -91,7 +91,7 @@ hs_str()  { sed -n "s/^  \"$1\": *\"\(.*\)\",\{0,1\} *$/\1/p" "$2" 2>/dev/null |
 pid_alive() {
   [ -n "${1:-}" ] || return 1
   case "$(mxtk_platform)" in
-    windows) tasklist //FI "PID eq $1" //NH 2>/dev/null | grep -q " $1 " ;;   # mxcli.exe records a Windows pid
+    windows) grep -q " $1 " <<<"$(tasklist //FI "PID eq $1" //NH 2>/dev/null)" ;;   # mxcli.exe records a Windows pid
     *)       kill -0 "$1" 2>/dev/null || return 1
              # a zombie answers kill -0 until something reaps it; on Linux /proc says Z
              case "$(sed 's/.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f1)" in Z) return 1 ;; esac ;;

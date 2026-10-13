@@ -92,7 +92,7 @@ if [ -z "$ROOT_DECL" ]; then
   printf '  check below is measured against an assumed 10px Atlas root rather than yours.\n\n'
   ROOT_DECL="10px (ASSUMED — no deployment/web/theme.compiled.css)"
   ROOT_IS_16=0
-elif printf '%s' "$ROOT_DECL" | grep -qE '^ *(16px|100%|1rem|1em)'; then
+elif grep -qE -- '^ *(16px|100%|1rem|1em)' <<<"$ROOT_DECL"; then
   ROOT_IS_16=1
 else
   ROOT_IS_16=0
@@ -116,7 +116,7 @@ for f in $TARGETS; do
     case "$txt" in *design-portability-ok:*) continue ;; esac
 
     # 1. rem, against a root that is not 16px.
-    if [ "$ROOT_IS_16" -eq 0 ] && printf '%s' "$txt" | grep -qE '[0-9.]+rem'; then
+    if [ "$ROOT_IS_16" -eq 0 ] && grep -qE -- '[0-9.]+rem' <<<"$txt"; then
       report "$f" "$ln" "rem unit, but the app root font-size is $ROOT_DECL" \
         'Every rem here renders at that fraction of a 16px-root design. Author component sizes in px, or restate the root in the app stylesheet.'
     fi
@@ -140,28 +140,28 @@ for f in $TARGETS; do
     #    a DOM fact you measured in a running app, recorded next to the tag.
     case "$txt" in *'{'*)
       sel="${txt%%\{*}"
-      if printf '%s' "$sel" | grep -qE '(^|[[:space:]>+~,])(b|i|table|thead|tbody|th|td|tr|ul|ol|li)([[:space:].:,>+~]|$)'; then
+      if grep -qE -- '(^|[[:space:]>+~,])(b|i|table|thead|tbody|th|td|tr|ul|ol|li)([[:space:].:,>+~]|$)' <<<"$sel"; then
         report "$f" "$ln" "selector styles through an HTML element Mendix does not emit" \
           'Mendix emits div/span/button. table|th|td|tr never appear (DataGrid2 is role="grid" divs). Restate as a class-only rule and give the class a widget carrier.'
       fi
       # 2b. A child-tag selector that DOES match, by accident, and outranks its own class.
       #     `.foo span` is 0-1-1 and beats the class-only `.foo-value` at 0-1-0, so the caption
       #     rule paints the headline. This is worse than a dead rule: it renders, wrongly.
-      if printf '%s' "$sel" | grep -qE '\.[A-Za-z_-][A-Za-z0-9_-]*[[:space:]]+(span|div|button)([[:space:].:,]|$)'; then
+      if grep -qE -- '\.[A-Za-z_-][A-Za-z0-9_-]*[[:space:]]+(span|div|button)([[:space:].:,]|$)' <<<"$sel"; then
         report "$f" "$ln" "class-descendant-tag selector outranks your own class rules" \
           'DYNAMICTEXT emits <span>, so this matches by accident at 0-1-1 and beats a class-only rule at 0-1-0. Give the inner widget its own class.'
       fi
       # 3. Row alternation driven from the DOM.
       #    Each listview row is wrapped in its own div.mx-dataview > div.mx-dataview-content,
       #    so EVERY row is :nth-of-type(1) in its own parent. Alternation must come from data.
-      if printf '%s' "$sel" | grep -qE ':nth-(of-type|child|last-child|last-of-type)'; then
+      if grep -qE -- ':nth-(of-type|child|last-child|last-of-type)' <<<"$sel"; then
         report "$f" "$ln" "positional selector on Mendix-generated rows" \
           'Each listview row sits in its own div.mx-dataview wrapper, so every row is :nth-of-type(1). Drive alternation from data via DynamicClasses.'
       fi
       # WARN: background without colour on a non-state selector.
-      if printf '%s' "$txt" | grep -qE 'background(-color)?[[:space:]]*:' \
-         && ! printf '%s' "$txt" | grep -qE '(^|[;{[:space:]])color[[:space:]]*:' \
-         && ! printf '%s' "$sel" | grep -qE ':(hover|focus|active|disabled|visited)'; then
+      if grep -qE -- 'background(-color)?[[:space:]]*:' <<<"$txt" \
+         && ! grep -qE -- '(^|[;{[:space:]])color[[:space:]]*:' <<<"$txt" \
+         && ! grep -qE -- ':(hover|focus|active|disabled|visited)' <<<"$sel"; then
         warn "$f" "$ln" "paints a background but not a text colour" \
           'Text colour is then inherited from whatever widget carries the class. A rule that paints a background should paint its text.'
       fi

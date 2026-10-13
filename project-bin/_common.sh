@@ -398,7 +398,7 @@ mxtk_version_in_name() {
   v3=$(printf '%s' "$2" | cut -d. -f1-3)
   [ -n "$v3" ] || return 1
   re=$(printf '%s' "$v3" | sed 's/\./\\./g')
-  printf '%s\n' "$base" | grep -Eq "(^|[^0-9.])${re}(\.[0-9]+)?([^0-9.]|\.[^0-9]|\$)"
+  grep -Eq -- "(^|[^0-9.])${re}(\.[0-9]+)?([^0-9.]|\.[^0-9]|\$)" <<<"$base"
 }
 
 # mxtk_mxbuild_for_version <version> — an executable mxbuild whose install (Studio Pro

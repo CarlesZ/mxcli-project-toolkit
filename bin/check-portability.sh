@@ -131,7 +131,7 @@ while IFS= read -r f; do
     case "$txt" in
       *'$('*'<<'*)
         _pc="$(printf '%s' "$txt" | sed -e 's/<<<//g' -e 's/\$(([^)]*))//g')"
-        if printf '%s' "$_pc" | grep -Eq '\$\([^)]*<<[^<]'; then
+        if grep -Eq -- '\$\([^)]*<<[^<]' <<<"$_pc"; then
           report "$f" "$ln" "heredoc opened inside \$(...) — unparseable on bash 3.2" \
             "Read the heredoc into a variable first (IFS= read -r -d '' var <<EOF ... EOF), then use \"\$var\" inside \$(...)."
         fi ;;
@@ -151,7 +151,7 @@ while IFS= read -r f; do
       *awk*)
         # A backslash inside a $(...) substitution is the shell's, not the value's (e.g.
         # -v ok="$(... | tr '\n' ' ')"): strip substitutions before looking.
-        if printf '%s' "$txt" | sed 's/\$([^)]*)//g' | grep -Eq -- '-v [A-Za-z_][A-Za-z_0-9]*="[^"]*\\'; then
+        if grep -Eq -- '-v [A-Za-z_][A-Za-z_0-9]*="[^"]*\\' <<<"$(printf '%s' "$txt" | sed 's/\$([^)]*)//g')"; then
           report "$f" "$ln" "backslash inside an awk -v value (gawk rewrites escapes, mawk does not)" \
             'Pass patterns without backslashes: [|] for a literal pipe, [.] for a dot, or read the regex from ENVIRON["re"].'
         fi ;;

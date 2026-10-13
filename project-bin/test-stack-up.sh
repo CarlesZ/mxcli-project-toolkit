@@ -256,7 +256,7 @@ pid_alive() {
   [ -n "$1" ] || return 1
   case "$(mxtk_platform)" in
     # mxcli.exe records a Windows pid; Git Bash's kill only knows MSYS pids.
-    windows) tasklist //FI "PID eq $1" //NH 2>/dev/null | grep -q " $1 " ;;
+    windows) grep -q " $1 " <<<"$(tasklist //FI "PID eq $1" //NH 2>/dev/null)" ;;
     *)       kill -0 "$1" 2>/dev/null ;;
   esac
 }

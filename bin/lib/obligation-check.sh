@@ -225,8 +225,8 @@ _ob_find() {
 # A denominator is a first line that counts something out of something: "12 of 12 pages reviewed".
 # Deliberately loose — the wording belongs to the skill, only the shape is mechanical.
 _ob_has_denominator() {
-  head -c 4000 "$1" 2>/dev/null | tr -d '\r' \
-    | grep -qiE '[0-9]+[[:space:]]+of[[:space:]]+[0-9]+|[0-9]+[[:space:]]*/[[:space:]]*[0-9]+'
+  grep -qiE -- '[0-9]+[[:space:]]+of[[:space:]]+[0-9]+|[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' \
+    <<<"$(head -c 4000 "$1" 2>/dev/null | tr -d '\r')"
 }
 
 # _ob_stale <project-root> <artifact>  → prints "<hash>+<n>" and returns 0 if the mark has
@@ -501,8 +501,8 @@ mxtk_obligations_reverse_check() {
     # skills — an MDL cookbook and a datagrid note among them — and a warning listing 46
     # names is one nobody reads, which is the same as no check at all.
     [ "$group" = "verify" ] || continue
-    printf '%s\n' "$named" | grep -qxF "$path" && continue
-    printf '%s' "$MXTK_OBLIGATIONS_NOROUTE" | awk '{print $1}' | grep -qxF "$name" && continue
+    grep -qxF -- "$path" <<<"$named" && continue
+    grep -qxF -- "$name" <<<"$(awk '{print $1}' <<<"$MXTK_OBLIGATIONS_NOROUTE")" && continue
     unnamed="$unnamed $name"
   done < "$tsv"
   if [ -n "$unnamed" ]; then

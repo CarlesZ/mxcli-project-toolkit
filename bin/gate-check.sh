@@ -825,13 +825,13 @@ check_stage_0() {
     }' "$f")
   if [ -z "$signer" ]; then
     echo "FAIL|no non-empty 'Confirmed by:' line inside the '## Sign-off' section of $f — anything the user actually said is enough (\"confirmed in chat\", \"agreed, move on\"); it only has to not be the shipped placeholder"
-  elif printf '%s' "$signer" | grep -q '\[' && [ "$ENTRY_MODE" = "existing-app-change" ] \
+  elif grep -q '\[' <<<"$signer" && [ "$ENTRY_MODE" = "existing-app-change" ] \
        && [ -s "$PROJECT_DIR/analysis/app-report.json" ]; then
     # Mapped and waiting for a change is a normal state in this mode (existing-app-change.md
     # §"Map the app first"): there is nothing to sign off yet, so this is not-started, not wrong.
     # Without it a parked project read "needs attention" forever (existing-app field run, 2026-09-22).
     echo "PENDING|app mapped (analysis/app-report.html), waiting on the change — triage.md is signed off at Stage 0b, once the user says what to work on and what it touches is written ($f, ## Sign-off)"
-  elif printf '%s' "$signer" | grep -q '\['; then
+  elif grep -q '\[' <<<"$signer"; then
     echo "FAIL|'Confirmed by:' still holds the shipped placeholder: \"$signer\" — replace it with whatever the user actually said (\"confirmed in chat 2026-08-20\" is fine; a full name is not required) ($f, ## Sign-off)"
   else
     echo "PASS|triage.md signed off by \"$signer\" [$f]"
@@ -1208,7 +1208,7 @@ stage4_closing_rows() {
   rows="$(tr -d '\r' < "$plan" | grep -E '^\|[[:space:]]*[0-9]+[A-Za-z.]*[[:space:]]*\|')"
   # Rows with a Kind cell are the plan's steps; a numbered question or decision table elsewhere
   # in the file is not. Plans written before the Kind column keep every numbered row.
-  printf '%s\n' "$rows" | grep -qE '\|[[:space:]]*`?(BRIEF|BUILD|PROVE|RUN|HARNESS)`?[[:space:]]*\|' \
+  grep -qE -- '\|[[:space:]]*`?(BRIEF|BUILD|PROVE|RUN|HARNESS)`?[[:space:]]*\|' <<<"$rows" \
     && rows="$(printf '%s\n' "$rows" | grep -E '\|[[:space:]]*`?(BRIEF|BUILD|PROVE|RUN|HARNESS)`?[[:space:]]*\|')"
   if [ -z "$rows" ]; then
     echo "OK|no numbered rows (closing rows not counted)"
@@ -1221,7 +1221,7 @@ stage4_closing_rows() {
             | sed -nE 's/.*verify-module\.sh[`"[:space:]]+([A-Za-z0-9_]+).*/\1/p' | sort -u)"
   if [ -n "$declared" ]; then
     for m in $declared; do
-      printf '%s\n' "$rows" | grep 'verify-module\.sh' | grep -qw -- "$m" || missing="$missing $m"
+      grep -qw -- "$m" <<<"$(grep 'verify-module\.sh' <<<"$rows")" || missing="$missing $m"
     done
     n="$(printf '%s\n' "$declared" | wc -l | tr -d ' ')"
   else
@@ -1235,7 +1235,7 @@ stage4_closing_rows() {
   local why=""
   [ -n "$missing" ] && why="no \`verify-module.sh <Module>\` close row for:$missing"
   [ "$ncoh" -lt "$need" ] && why="${why:+$why; }$ncoh of $need coherence-pass row(s) for $n modules"
-  printf '%s' "$last" | grep -qE 'gate-check\.sh[^|]*[[:space:]]5([^0-9]|$)' \
+  grep -qE -- 'gate-check\.sh[^|]*[[:space:]]5([^0-9]|$)' <<<"$last" \
     || why="${why:+$why; }the last numbered row is not \`gate-check.sh <project> 5\`"
   if [ -n "$why" ]; then
     echo "FAIL|build-plan.md is missing its closing rows (brd-to-build-plan.md, \"three closing rows\"): $why — add them; nothing that walks the plan does a step it does not list"

@@ -84,7 +84,7 @@ if [[ -z "$HEAVY_LINE" ]]; then
   exit 3
 fi
 
-if echo "$HEAVY_LINE" | grep -qE "$IDLE_PATTERN"; then
+if grep -qE -- "$IDLE_PATTERN" <<<"$HEAVY_LINE"; then
   echo "healthy: idle, parked in a normal wait call — not hung"
   echo "  $HEAVY_LINE"
   rm -f "$SAMPLE_FILE"

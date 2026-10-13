@@ -2,6 +2,7 @@
 # Fixture for project-bin/lint-gate.sh's receipt check (#264) and exec.sh's reading of it.
 #
 # Usage: bash test-lint-receipt-revert.sh [path-to-lint-gate.sh]
+#   INSTALLER=<install-lint-rules.sh> swaps the installer under test in T9-T11.
 #
 # Field case (two toolkit-built apps, mxcli v0.25.0, 2026-10-07 and 2026-10-11): `mxcli init`
 # re-seeded .claude/lint-rules/ and the toolkit rules lost their `# mxtk-lint-rule:` header.
@@ -108,6 +109,67 @@ echo "T8 no receipt (pre-receipt install): no check"
 rm -f "$R"; strip_header "$P/.claude/lint-rules/conv010_act_microflow_content.star"
 out=$(gate 2>&1); rc=$?
 case "$out" in *REVERTED*) bad "alarm with no receipt to compare" "$out" ;; *) ok "no receipt -> no alarm (rc $rc)" ;; esac
+
+# ---- review follow-ups: an mxcli newer than STOCK-HASHES, deliberate opt-out, manifest drops ----
+# A scratch toolkit copy: lint-rules/ + bin/lib/. INSTALLER=<file> swaps in another
+# install-lint-rules.sh (used to prove these cases fail on master's installer).
+TK2="$WORK/tk2"; mkdir -p "$TK2/bin"
+cp -R "$TK/lint-rules" "$TK2/lint-rules"; cp -R "$TK/bin/lib" "$TK2/bin/lib"
+[ -n "${INSTALLER:-}" ] && cp "$INSTALLER" "$TK2/bin/lib/install-lint-rules.sh"
+newproj() { _p="$WORK/$1"; mkdir -p "$_p/bin" "$_p/.claude"; cp "$P/bin/lint-gate.sh" "$_p/bin/"
+  [ -f "$P/bin/_common.sh" ] && cp "$P/bin/_common.sh" "$_p/bin/"
+  cp "$P/.claude/lint-baseline.json" "$_p/.claude/"; printf 'mpr' > "$_p/App.mpr"; cp "$P/mxcli" "$_p/mxcli"; echo "$_p"; }
+inst2() { ( [ -n "${2:-}" ] && MXTK_LINT_RULES="$2"; . "$TK2/bin/lib/install-lint-rules.sh"; mxtk_install_lint_rules "$TK2" "$1" 0 "" ) 2>&1; }
+gate2() { (cd "$1" && LINT_JSON="$WORK/lint.json" bash bin/lint-gate.sh); }
+mk "$(v CONV010 warning 26)"
+
+echo "T9 a genuine stock body whose hash STOCK-HASHES does not list (mxcli upgrade, then init)"
+EBK=entity_business_key.star
+STOCK="$WORK/ebk-stock.star"; sed '1,/^# --- end mxtk-lint-rule header ---$/d' "$TK/lint-rules/$EBK" > "$STOCK"
+# Genuine: this body's md5 is the v0.24.0/v0.25.0 stock hash recorded in the REAL STOCK-HASHES.txt.
+sm=$(portable_md5 "$STOCK")
+grep -q "^$EBK  *$sm " "$TK/lint-rules/STOCK-HASHES.txt" && ok "stock body is genuine (md5 $sm is in STOCK-HASHES.txt)" \
+  || bad "stock body md5 $sm not a recorded stock hash"
+# Unknown version: the scratch toolkit forgets that hash, and its rule has moved off stock (as
+# conv010 and data_change have), so neither the stock nor the "headered" branch can match.
+grep -v "^$EBK " "$TK/lint-rules/STOCK-HASHES.txt" > "$TK2/lint-rules/STOCK-HASHES.txt"
+printf '# toolkit fix, not in stock\n' >> "$TK2/lint-rules/$EBK"
+P9=$(newproj p9); inst2 "$P9" >/dev/null
+cp "$STOCK" "$P9/.claude/lint-rules/$EBK"
+out=$(gate2 "$P9" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && case "$out" in *"BLIND — lint rules reverted"*"$EBK"*|*"$EBK"*"BLIND — lint rules reverted"*) true ;; *) false ;; esac \
+  && ok "lint-gate: BLIND, names $EBK" || bad "lint-gate did not flag the unknown-hash re-seed (rc $rc)" "$out"
+case "$out" in *"--upgrade-lint-rules all"*) ok "message carries the LOCALLY MODIFIED fallback" ;; *) bad "no --upgrade-lint-rules fallback" "$out" ;; esac
+out=$(inst2 "$P9")
+case "$out" in *"REVERTED TO STOCK"*"$EBK"*) ok "installer restores it (not LOCALLY MODIFIED)" ;; *) bad "installer did not restore it" "$out" ;; esac
+cmp -s "$TK2/lint-rules/$EBK" "$P9/.claude/lint-rules/$EBK" && ok "file is the toolkit version again" || bad "file not restored"
+ls "$P9/.claude/lint-rules/$EBK".reseeded-* >/dev/null 2>&1 && ok "found copy kept beside it" || bad "found copy not kept"
+out=$(gate2 "$P9" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "after sync: rc 0 (remedy clears it)" || bad "still blind after sync (rc $rc)" "$out"
+
+echo "T10 a rule removed on purpose (listed in .claude/lint-rules-disabled.txt) is not a re-seed"
+P10=$(newproj p10); inst2 "$P10" >/dev/null
+printf '# display standard is dd/MM/yyyy\ntxt002_non_iso_date_in_user_text.star\n' > "$P10/.claude/lint-rules-disabled.txt"
+rm -f "$P10/.claude/lint-rules/txt002_non_iso_date_in_user_text.star"
+out=$(gate2 "$P10" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "lint-gate: rc 0, no alarm before any sync" || bad "deliberate removal read as a re-seed (rc $rc)" "$out"
+out=$(inst2 "$P10")
+[ ! -f "$P10/.claude/lint-rules/txt002_non_iso_date_in_user_text.star" ] && ok "sync does not restore a disabled rule" || bad "sync restored a disabled rule" "$out"
+grep -q '^txt002_non_iso_date_in_user_text.star ' "$P10/.claude/.mxtk-lint-receipt" && bad "disabled rule's receipt row kept" || ok "disabled rule's receipt row pruned"
+rm -f "$P10/.claude/lint-rules/txt001_build_words_in_user_text.star"
+out=$(gate2 "$P10" 2>&1); rc=$?
+case "$out" in *txt001_build_words_in_user_text.star*) ok "an unlisted removal is still caught" ;; *) bad "unlisted removal missed" "$out" ;; esac
+
+echo "T11 a rule the toolkit stops shipping: its receipt row is pruned, no permanent 'gone'"
+P11=$(newproj p11); inst2 "$P11" >/dev/null
+rm -f "$P11/.claude/lint-rules/ui001_widget_layout_traps.star"   # project tidies the retired rule away
+FEWER=$(printf '%s\n' $(. "$TK2/bin/lib/install-manifest.sh" >/dev/null 2>&1; echo "$MXTK_LINT_RULES") | grep -v '^ui001_widget_layout_traps.star$' | paste -sd' ' -)
+out=$(inst2 "$P11" "$FEWER")
+grep -q '^ui001_widget_layout_traps.star ' "$P11/.claude/.mxtk-lint-receipt" && bad "row for a dropped rule kept" "$out" || ok "row for the dropped rule pruned"
+case "$out" in *"dropped row"*ui001*) ok "installer says so" ;; *) bad "prune not reported" "$out" ;; esac
+[ ! -f "$P11/.claude/lint-rules/ui001_widget_layout_traps.star" ] && ok "dropped rule not reinstalled" || bad "dropped rule reinstalled"
+out=$(gate2 "$P11" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "lint-gate: rc 0 after the prune" || bad "permanent 'gone' (rc $rc)" "$out"
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"

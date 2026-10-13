@@ -114,6 +114,46 @@ _mxtk_lint_receipt_set() {
   } > "$_tmp" && mv "$_tmp" "$_receipt"
 }
 
+# DELIBERATE OPT-OUT. .claude/lint-rules-disabled.txt, one rule file per line ('#' comments).
+# A rule listed there is never installed or restored, and its receipt row is pruned, so
+# deleting it is not undone by the next sync and lint-gate.sh (which reads the same file) does
+# not report the deletion as a re-seed. Deleting a rule without listing it is what `mxcli init`
+# does, and is treated as such.
+_mxtk_lint_is_disabled() {
+  # Own variable names: callers loop with _n/_m/_f, and these are not `local` (POSIX sh).
+  _dis_file="$1"; _dis_want="$2"
+  [ -f "$_dis_file" ] || return 1
+  while read -r _dis_n _dis_rest; do
+    case "$_dis_n" in ''|'#'*) continue ;; esac
+    [ "$_dis_n" = "$_dis_want" ] && return 0
+  done < "$_dis_file"
+  return 1
+}
+
+# Drop receipt rows for rules this toolkit no longer ships, or that the project disabled.
+# A stale row would make lint-gate.sh report the rule "gone" on every run, forever.
+_mxtk_lint_receipt_prune() {
+  _receipt="$1"; _keep=" $2 "; _dis="$3"
+  [ -f "$_receipt" ] || return 0
+  _pruned=""; _tmp="$_receipt.tmp.$$"
+  {
+    printf '# md5 of each toolkit lint rule AS INSTALLED. Written by bin/lib/install-lint-rules.sh.\n'
+    printf '# Do not edit. Deleting this file makes a revert-to-stock look like a first install.\n'
+    while read -r _n _m _r; do
+      case "$_n" in ''|'#'*) continue ;; esac
+      case "$_keep" in *" $_n "*) ;; *) _pruned="$_pruned $_n"; continue ;; esac
+      if _mxtk_lint_is_disabled "$_dis" "$_n"; then _pruned="$_pruned $_n"; continue; fi
+      printf '%s  %s\n' "$_n" "$_m"
+    done < "$_receipt"
+  } > "$_tmp"
+  if [ -n "$_pruned" ]; then
+    mv "$_tmp" "$_receipt"
+    echo "Lint receipt: dropped row(s) for rules no longer shipped or disabled here:$_pruned"
+  else
+    rm -f "$_tmp"
+  fi
+}
+
 mxtk_install_lint_rules() {
   _tk="$1"; _proj="$2"; _dry="${3:-0}"; _upg="${4:-}"
 
@@ -123,6 +163,7 @@ mxtk_install_lint_rules() {
   _dst_dir="$_proj/.claude/lint-rules"
   _hashes="$_src_dir/STOCK-HASHES.txt"
   _receipt="$_proj/.claude/.mxtk-lint-receipt"
+  _disabled="$_proj/.claude/lint-rules-disabled.txt"
 
   if [ ! -d "$_src_dir" ]; then
     _mxtk_lint_warn "Toolkit has no lint-rules/ — this project's lint rules were not checked."
@@ -157,6 +198,7 @@ mxtk_install_lint_rules() {
     for _f in $_list; do
       _src="$_src_dir/$_f"; _dst="$_dst_dir/$_f"
       [ -f "$_src" ] || continue
+      _mxtk_lint_is_disabled "$_disabled" "$_f" && continue
       _srcmd5="$(portable_md5 "$_src")" || continue
       _rec="$(_mxtk_lint_receipt_get "$_receipt" "$_f" 2>/dev/null || true)"
 
@@ -240,6 +282,27 @@ mxtk_install_lint_rules() {
         continue
       fi
 
+      # ---- installed by us, header gone, stock hash not on file -----------------------
+      # The receipt says we installed this file, and the provenance header is gone. That is
+      # a re-seed by an mxcli version STOCK-HASHES.txt does not list yet (an upgrade, then
+      # init), not a hand edit: a hand edit keeps the header. The same test lint-gate.sh uses
+      # to declare the run BLIND, so the remedy it prints (sync) actually clears it (#264
+      # review: without this branch the file was reported LOCALLY MODIFIED and never written,
+      # and lint stayed BLIND forever). The found file is kept beside it, not loaded by lint.
+      if [ -n "$_rec" ] && ! grep -q '^# mxtk-lint-rule:' "$_dst"; then
+        _why="REVERTED TO STOCK — header gone and its hash is not in STOCK-HASHES.txt (newer mxcli?). Restoring it"
+        if [ "$_dry" -eq 1 ]; then
+          echo "Would install: .claude/lint-rules/$_f ($_why)"
+        else
+          _bak="$_dst.reseeded-$(date +%Y%m%d%H%M%S)"
+          cp "$_dst" "$_bak"
+          cp "$_src" "$_dst" && _mxtk_lint_receipt_set "$_receipt" "$_f" "$_srcmd5"
+          echo "Lint rule: $_why — .claude/lint-rules/$_f (found copy kept at $(basename "$_bak"); md5 $_dstmd5 — add it to STOCK-HASHES.txt if it is a stock seed)"
+        fi
+        MXTK_LINT_CHANGES=$((MXTK_LINT_CHANGES + 1))
+        continue
+      fi
+
       # ---- configurable and edited: this is the EXPECTED state, not drift ------------
       # conv020 ships with PROJECT_MODULES empty and refuses to run until it is filled in.
       # Refreshing it would silently un-configure the rule and send it back to inspecting
@@ -283,5 +346,7 @@ mxtk_install_lint_rules() {
   if [ -n "$_drifted" ] && [ -z "$_upg" ]; then
     echo "   (upgrade every drifted lint rule at once with: --upgrade-lint-rules all)"
   fi
+  [ "$_dry" -eq 1 ] || _mxtk_lint_receipt_prune "$_receipt" \
+    "${MXTK_LINT_RULES:-} ${MXTK_LINT_RULES_CONFIGURABLE:-}" "$_disabled"
   return 0
 }

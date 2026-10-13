@@ -18,7 +18,7 @@ and configure the marked constants — **after** running `mxcli init`, never bef
 | `perf002_nested_data_widgets.star` | PERF002 — a data view / list view / data grid / gallery nested inside two or more other data widgets on the same page: re-queries per row at every level | `MAX_NESTING`, `DATA_WIDGET_CANDIDATES`, `EXCLUDE` (widget_type vocabulary: probe first) |
 | `perf004_npe_system_user_assoc.star` | PERF004 — an association between a non-persistable entity and System.User / System.Session (or an entity generalizing them), which pins session objects to the shared side | `NON_PERSISTABLE_CANDIDATES`, `SYSTEM_TARGETS` (entity_type vocabulary: probe first) |
 | `txt001_build_words_in_user_text.star` | TXT001 — user-visible text (titles, captions, templates, messages, menu items) holding build-process words: `Stage N`, `BR-10`, `F004`, TODO, a version tag, "(local, …)" | `PROJECT_WORDS` (sibling-app and project code names); `LEAK_PATTERNS` if "Stage N" is a real domain word |
-| `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no — delete it deliberately if the project's display standard is not ISO |
+| `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no — to opt out (display standard is not ISO), list it in `.claude/lint-rules-disabled.txt`, then delete it |
 | `ui001_widget_layout_traps.star` | UI001 — a list view inside a Data grid 2 column (its own "Load more" / "No items found" in every cell); an inline `width` on an Atlas input without `flex` (ignored) | `DATAGRID_TYPES`, `LISTVIEW_TYPES`, `INPUT_TYPES` (widget_type vocabulary: probe first) |
 
 `err001` and `loop001` first field count (2026-10-12, mxcli 0.26.0, 21-module Mendix 11.12 model,
@@ -107,7 +107,17 @@ the real prefix produces none. `bin/lint-gate.sh` treats `module == "_rule"` as 
 this turns a silent pass into a gate failure rather than a line in a report nobody reads.
 
 Set `ACTION_PREFIX` / `DELEGATE_PREFIX` to your project's prefixes. If the project has no such
-convention, delete the rule deliberately rather than leaving it inert.
+convention, opt out deliberately rather than leaving it inert: list the file in
+`.claude/lint-rules-disabled.txt`, then delete it (see "Opting out of a rule" below).
+
+## Opting out of a rule
+
+List the rule file, one per line, in `.claude/lint-rules-disabled.txt`, then delete it from
+`.claude/lint-rules/`. A bare delete does not stick: `sync-project.sh` restores a rule it
+installed before, and `bin/lint-gate.sh` reads a rule that its receipt lists but that is missing
+as a `mxcli init` re-seed, so every exec reports `LINT BLIND` (#264). With the rule listed,
+the installer neither installs nor restores it and drops its receipt row, and lint-gate
+skips it.
 
 ## How these reach a project
 

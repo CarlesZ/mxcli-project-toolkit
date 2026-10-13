@@ -34,8 +34,10 @@
 # rewrites the receipt, so the next run is clean) and exits 1 without linting; --update-baseline
 # is refused, since baselining stock counts is how the five-day case went in. A rule that still
 # carries the header but differs is a hand edit — install-lint-rules.sh reports those, this does
-# not. No receipt = nothing to compare (pre-receipt installs) = no check. A deliberate headerless
-# local rule: LINT_RULES_REVERTED_OK=1 runs anyway, with the warning.
+# not. No receipt = nothing to compare (pre-receipt installs) = no check. A rule removed on
+# purpose is listed in .claude/lint-rules-disabled.txt (the installer honours the same file and
+# prunes its receipt row). A deliberate headerless local rule: LINT_RULES_REVERTED_OK=1 runs
+# anyway, with the warning.
 #
 # ACCEPTING DEBT IS RECORDED, NOT SILENT (2026-10-12). Three toolkit-built apps re-baselined
 # 61 times in four days — every acceptance made by the agent whose script caused the rise,
@@ -128,7 +130,7 @@ while [ $# -gt 0 ]; do
               REASON="$2"; shift ;;
     --reason=*) REASON="${1#--reason=}" ;;
     --approved-in-chat) APPROVED=1 ;;
-    -h|--help) sed -n '2,60p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,62p' "$0"; exit 0 ;;
     *) echo "lint-gate: unknown argument '$1'" >&2; exit 2 ;;
   esac
   shift
@@ -158,12 +160,20 @@ if [ -f "$RECEIPT" ]; then
   # Read into a variable first: a heredoc inside $(...) does not parse on bash 3.2.
   IFS= read -r -d '' _RCHK <<'PY' || true
 import hashlib, os
-rec, d = os.environ["RECEIPT"], os.environ["RULES_DIR"]
+rec, d, dis = os.environ["RECEIPT"], os.environ["RULES_DIR"], os.environ["DISABLED"]
+disabled = set()
+if os.path.isfile(dis):
+    for line in open(dis, encoding="utf-8", errors="replace"):
+        w = line.split()
+        if w and not w[0].startswith("#"):
+            disabled.add(w[0])
 for line in open(rec, encoding="utf-8", errors="replace"):
     parts = line.split()
     if len(parts) < 2 or parts[0].startswith("#"):
         continue
     name, want = parts[0], parts[1]
+    if name in disabled:
+        continue  # deliberate opt-out, .claude/lint-rules-disabled.txt
     path = os.path.join(d, name)
     if not os.path.isfile(path):
         print("%s\tgone (installed per the receipt, missing now)" % name)
@@ -176,7 +186,7 @@ for line in open(rec, encoding="utf-8", errors="replace"):
         continue  # header kept: a hand edit, which install-lint-rules.sh reports
     print("%s\theader gone, md5 %s != receipt %s" % (name, got[:8], want[:8]))
 PY
-  REVERTED="$(RECEIPT="$RECEIPT" RULES_DIR="$ROOT/.claude/lint-rules" "$PY" -c "$_RCHK")"
+  REVERTED="$(RECEIPT="$RECEIPT" RULES_DIR="$ROOT/.claude/lint-rules" DISABLED="$ROOT/.claude/lint-rules-disabled.txt" "$PY" -c "$_RCHK")"
   if [ -n "$REVERTED" ]; then
     TKR=""
     type find_toolkit_root >/dev/null 2>&1 && TKR="$(PROJECT_ROOT="$ROOT" find_toolkit_root 2>/dev/null || true)"
@@ -186,6 +196,9 @@ PY
     echo ""
     echo "   Restore the toolkit rules (rewrites .claude/.mxtk-lint-receipt), then re-run:"
     echo "     ${TKR:-<toolkit-root>}/bin/sync-project.sh $ROOT"
+    echo "   If sync reports a rule LOCALLY MODIFIED instead of restoring it:"
+    echo "     ${TKR:-<toolkit-root>}/bin/sync-project.sh $ROOT --upgrade-lint-rules all"
+    echo "   Removed one on purpose? List it in .claude/lint-rules-disabled.txt and this stops."
     if [ "${LINT_RULES_REVERTED_OK:-}" = "1" ]; then
       echo "   LINT_RULES_REVERTED_OK=1 — linting anyway; counts below are from the files on disk."
       echo ""

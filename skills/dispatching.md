@@ -57,7 +57,7 @@ otherwise (`ui-loop.md` § "What watch picks up"). The old lead-only rule came f
 in one lane that took down another lane's app; the helper cannot do that, and the rule cost 24 implementer
 restart-resumes (41.6M tokens, 8.5% of subagent tokens) in the 2026-10-12 run (#289). If the
 helper refuses (exit 3), the app does not come back (exit 1), a process it did not record
-holds the app or admin port (exit 4, nothing stopped or started), or the stop left a live
+holds the app or admin port (exit 4, nothing started; the recorded app may already be stopped), or the stop left a live
 MxTest after-startup in place (exit 5, nothing started), the implementer reports
 `BLOCKED NEEDS_RESTART` with its output, as before.
 

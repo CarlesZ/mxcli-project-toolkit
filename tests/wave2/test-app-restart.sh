@@ -19,6 +19,9 @@
 # live, port + bundle proven, command remembered, self-gitignored); bundle missing → exit 1 with
 # the blank-page message; dead pid + remembered command → start only; dead pid, nothing
 # remembered → refuse naming --cmd; secrets masked; no pattern-kill anywhere in the source.
+# #262: a stranger on the admin port while our app runs → exit 4 before anything is stopped, the
+# stranger named by pid and alive; our app dead and a stranger on the app port → exit 4, nothing
+# started. (The stranger is a bare TCP listener, as a runtime's admin port is to curl.)
 # Needs node and curl; skips (exit 0, says so) without them.
 set -uo pipefail
 
@@ -76,6 +79,7 @@ http.createServer((req, res) => {
     .replace(/^  "project": "[^"]*"/m, '  "project": ' + JSON.stringify(path.join(dir, 'Fixture.mpr')))
     .replace(/^  "pid": \d+/m, '  "pid": ' + process.pid)
     .replace(/^  "appPort": \d+/m, '  "appPort": ' + port)
+    .replace(/^  "adminPort": \d+/m, '  "adminPort": ' + (port + 10))
     .replace(/^  "adminPass": "[^"]*"/m, '  "adminPass": "x"');
   fs.mkdirSync(path.dirname(hs), { recursive: true });
   setTimeout(() => fs.writeFileSync(hs, g), 300);   // written when "ready", as mxcli does
@@ -152,6 +156,42 @@ OUT="$(restart "$P" --timeout 30)"; RC=$?
 has "says there was nothing to stop" "$OUT" "nothing — recorded pid $D is not running"
 has "uses the remembered command" "$OUT" "remembered from the last restart"
 KILL_LIST="$KILL_LIST $(hs_pid "$P") $(cat "$P/.fakechild" 2>/dev/null)"
+
+# A process this script did not start, listening on $1 — the Studio Pro runtime of #262.
+stranger() {
+  node -e "require('net').createServer(()=>{}).listen($1,'127.0.0.1')" & STR=$!; KILL_LIST="$KILL_LIST $STR"
+  local i; for i in $(seq 1 50); do alive "$STR" && (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && return 0; sleep 0.1; done; return 1
+}
+CAN_NAME=0; { command -v lsof >/dev/null 2>&1 || command -v ss >/dev/null 2>&1; } && CAN_NAME=1
+
+echo "-- #262: a stranger holds the admin port while our app runs → exit 4, nothing stopped"
+CUR="$(hs_pid "$P")"; CURKID="$(cat "$P/.fakechild" 2>/dev/null)"
+if [ "$CAN_NAME" = 1 ]; then
+  stranger $((PORT + 10)) && ok "[setup] stranger listening on :$((PORT + 10))" || bad "[setup] stranger never listened"
+  OUT="$(restart "$P" --timeout 10)"; RC=$?
+  [ "$RC" -eq 4 ] && ok "exit 4" || bad "exit $RC: $(printf '%s' "$OUT" | tail -4)"
+  has "says instrument blocked" "$OUT" "instrument blocked"
+  has "names the holder's pid" "$OUT" "pid $STR"
+  has "says nothing was stopped" "$OUT" "Nothing was stopped"
+  alive "$CUR" && ok "our app still running" || bad "our app was stopped although the start could never succeed"
+  alive "$STR" && ok "stranger untouched" || bad "stranger killed"
+  kill -KILL "$STR" 2>/dev/null; wait "$STR" 2>/dev/null
+else
+  echo "  [skip] neither lsof nor ss — a holder beside a live app cannot be told from the app's own runtime"
+fi
+
+echo "-- #262: our app died and a stranger took the app port → exit 4, nothing started"
+CUR="$(hs_pid "$P")"; CURKID="$(cat "$P/.fakechild" 2>/dev/null)"
+kill -KILL "$CUR" "$CURKID" 2>/dev/null; sleep 0.5
+stranger "$PORT" && ok "[setup] stranger listening on :$PORT" || bad "[setup] stranger never listened"
+OUT="$(restart "$P" --timeout 10)"; RC=$?
+[ "$RC" -eq 4 ] && ok "exit 4" || bad "exit $RC: $(printf '%s' "$OUT" | tail -4)"
+has "says instrument blocked" "$OUT" "instrument blocked — port :$PORT"
+[ "$CAN_NAME" = 1 ] && has "names the holder's pid" "$OUT" "pid $STR"
+hasnt "starts nothing" "$OUT" "started (log:"
+alive "$STR" && ok "stranger untouched" || bad "stranger killed"
+NEWP="$(hs_pid "$P")"; [ "$NEWP" = "$CUR" ] && ok "no new record written" || { bad "the record changed: an app was started or the record removed (pid '$NEWP')"; KILL_LIST="$KILL_LIST $NEWP"; }
+kill -KILL "$STR" 2>/dev/null; wait "$STR" 2>/dev/null
 
 echo "-- dead pid, nothing remembered, no --cmd → refuse naming --cmd"
 D="$(hs_pid "$P")"; kill -KILL "$D" "$(cat "$P/.fakechild" 2>/dev/null)" 2>/dev/null; sleep 0.5

@@ -47,8 +47,10 @@
 #                                           # and records the result. Add --if-stale to skip
 #                                           # the run when it already ran for this mxcli
 #                                           # version (sync-project.sh does). Exit 0 clean,
-#                                           # 1 units need repair or the run failed, 2 not run,
-#                                           # 3 this mxcli predates the command (v0.26.0).
+#                                           # 1 units need repair (NEEDS/FAILED rows), 2 not run
+#                                           # (incl. timeout), 3 this mxcli predates the command
+#                                           # (v0.26.0), 4 could not check (error, unclassified
+#                                           # output, a crashed probe) — a repair would not help.
 #   bin/doctor.sh --fix-property-sets <dir> # the same check, then the repair — and only
 #                                           # through bin/exec.sh --patch (snapshot, mxbuild
 #                                           # gate, restore on failure). See "Property sets".
@@ -330,7 +332,7 @@ ps_apply() {
   ps_check
 }
 ps_exit_code() {
-  case "$PS_RESULT" in clean) echo 0 ;; not-run) echo 2 ;; unsupported) echo 3 ;; *) echo 1 ;; esac
+  case "$PS_RESULT" in clean) echo 0 ;; not-run) echo 2 ;; unsupported) echo 3 ;; needs|failed) echo 1 ;; *) echo 4 ;; esac
 }
 
 # --property-sets / --fix-property-sets: only this check, then exit. Stands alone so
@@ -1191,12 +1193,13 @@ if [ -n "$PROJECT_DIR" ]; then
     elif [ -n "${MPR:-}" ] && [ -n "${PMXCLI_PROBE:-}" ]; then
       PS_VER="$(ps_version "$PMXCLI_PROBE")"
       if ps_stale; then
-        if ps_supported "$PMXCLI_PROBE"; then
-          warn "property sets not checked for this mxcli (${PS_VER:-?}) — Studio Pro merge/diff can throw on units an older mxcli wrote"
-          note "read-only check: bin/doctor.sh --property-sets $PROJECT_DIR"
-        else
-          note "${PS_VER:-this mxcli} predates 'mxcli fix property-sets' (v0.26.0) — upgrade before a Team Server merge"
-        fi
+        _psq_rc=0; ps_supported "$PMXCLI_PROBE" || _psq_rc=$?
+        case "$_psq_rc" in
+          0) warn "property sets not checked for this mxcli (${PS_VER:-?}) — Studio Pro merge/diff can throw on units an older mxcli wrote"
+             note "read-only check: bin/doctor.sh --property-sets $PROJECT_DIR" ;;
+          1) note "${PS_VER:-this mxcli} predates 'mxcli fix property-sets' (v0.26.0) — upgrade before a Team Server merge" ;;
+          *) warn "property sets: could not probe this mxcli for 'fix property-sets' ('mxcli fix --help' failed)" ;;
+        esac
       else
         _psq="$(sed -n 1p "$(ps_receipt)")"
         case "$_psq" in

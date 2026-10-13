@@ -79,7 +79,7 @@ case "${1:-}" in
                   echo "1 unit(s) could not be normalized and were left as they are."; exit 1 ;;
           notfound) cat "$F/dry-run-not-found-v0.26.0.txt"; exit 1 ;;
           noversion) echo "$b has no readable Mendix version; nothing is normalized without one."; exit 0 ;;
-          slow) sleep 6; echo "Checked 3 unit(s) in $b against the Mendix 11.12.1 property sets."; exit 0 ;;
+          slow) exec sleep 6; echo "Checked 3 unit(s) in $b against the Mendix 11.12.1 property sets."; exit 0 ;;
         esac ;;
     esac ;;
 esac
@@ -131,7 +131,8 @@ echo "== P4 failed / error / no version — never clean =="
 for st in failed notfound noversion; do
   P="$(mkproj st-$st)"; echo "$st" > "$P/.stub-state"
   OUT="$("$DOCTOR" --property-sets "$P" 2>&1)"; RC=$?
-  [ "$RC" -eq 1 ] && ! printf '%s' "$OUT" | grep -q "ok    property sets" && ok "$st: exit 1, no ok line" || bad "$st: rc=$RC" "$OUT"
+  want=4; [ "$st" = failed ] && want=1
+  [ "$RC" -eq "$want" ] && ! printf '%s' "$OUT" | grep -q "ok    property sets" && ok "$st: exit $want, no ok line" || bad "$st: rc=$RC (want $want)" "$OUT"
 done
 printf '%s' "$OUT" | grep -q "no Mendix version" && ok "noversion: says nothing was checked" || bad "noversion wording" "$OUT"
 for st in notfound noversion; do
@@ -141,8 +142,11 @@ P="$WORK/st-notfound"; "$DOCTOR" --property-sets --if-stale "$P" >/dev/null 2>&1
 [ "$(grep -c -- '--dry-run' "$P/.stub-log")" -eq 2 ] && ok "notfound: --if-stale re-checks after an error" || bad "notfound: --if-stale skipped after an error"
 P="$(mkproj helpfail)"; touch "$P/.stub-helpfail"
 OUT="$("$DOCTOR" --property-sets "$P" 2>&1)"; RC=$?
-[ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q "support is unknown" && [ ! -f "$P/.claude/.property-sets-receipt" ] \
-  && ok "failed 'fix --help' probe: error (exit 1), not unsupported, not recorded" || bad "helpfail rc=$RC" "$OUT"
+[ "$RC" -eq 4 ] && printf '%s' "$OUT" | grep -q "support is unknown" && [ ! -f "$P/.claude/.property-sets-receipt" ] \
+  && ok "failed 'fix --help' probe: error (exit 4), not unsupported, not recorded" || bad "helpfail rc=$RC" "$OUT"
+OUT="$("$DOCTOR" --quick "$P" 2>&1)"
+printf '%s' "$OUT" | grep -q "could not probe this mxcli" && ! printf '%s' "$OUT" | grep -q "predates 'mxcli fix property-sets'" \
+  && ok "--quick, crashed probe: says 'could not probe', not 'predates'" || bad "quick helpfail" "$(printf '%s' "$OUT" | grep -i property)"
 
 echo "== P5 --if-stale: once per mxcli version =="
 P="$(mkproj stale)"; echo clean > "$P/.stub-state"
@@ -246,6 +250,15 @@ OUT="$("$SYNC" "$S3" 2>&1)"
 psl="$(printf '%s\n' "$OUT" | grep -i 'property' )"
 printf '%s' "$psl" | grep -q "info  property sets: .*arrived in v0.26.0" && ! printf '%s' "$psl" | grep -q "WARN  \|⚠️" \
   && ok "sync, mxcli < v0.26: informational line, no WARN, no sync warning" || bad "sync old mxcli" "$psl"
+
+printf '%s' "$OUT" | grep -q "checking property sets (read-only, up to 120s)" && ok "sync announces the check and its 120 s bound" || bad "no announcement" "$(printf '%s' "$OUT" | grep -i property)"
+S4="$WORK/syncerr"; mkdir -p "$S4"; : > "$S4/App.mpr"
+MXTK_NO_GUIDE=1 "$TK/bin/init-project.sh" "$S4" >/dev/null 2>&1
+mkstub "$S4"; echo notfound > "$S4/.stub-state"
+OUT="$("$SYNC" "$S4" 2>&1)"
+psl="$(printf '%s\n' "$OUT" | grep -i 'property')"
+printf '%s' "$psl" | grep -q "could not check property sets: could not classify" && ! printf '%s' "$psl" | grep -q "fix-property-sets\|⚠️\|WARN  " \
+  && ok "sync, check errored (exit 4): neutral line, no repair advice, no warning" || bad "sync error case" "$psl"
 
 echo "== P10 (#236) sync names a pre-fix bin/model-stamp.sh =="
 grep -v 'GIT_WORK_TREE' "$TK/project-bin/model-stamp.sh" > "$S/bin/model-stamp.sh"; chmod +x "$S/bin/model-stamp.sh"

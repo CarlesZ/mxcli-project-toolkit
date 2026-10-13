@@ -1464,10 +1464,14 @@ if [ "$WIRED" -eq 1 ] && [ -x "$SCRIPT_DIR/doctor.sh" ] \
     echo "Would run: bin/doctor.sh --property-sets --if-stale (read-only model check; skipped when it already ran for this mxcli)"
   else
     _ps_rc=0
-    _ps_out="$("$SCRIPT_DIR/doctor.sh" --property-sets --if-stale "$PROJECT_DIR" 2>&1)" || _ps_rc=$?
-    # rc 3 (an mxcli before v0.26 cannot check) is informational here, not a sync warning, so
-    # doctor's own WARN line for it is relabelled rather than shown as one.
-    if [ "$_ps_rc" -eq 3 ]; then
+    # Sync's own, shorter bound (doctor's default is 300 s): the output is captured, so say
+    # up front how long this may sit quiet.
+    _ps_t="${MXTK_PROPSETS_TIMEOUT:-120}"
+    echo "   checking property sets (read-only, up to ${_ps_t}s)…"
+    _ps_out="$(MXTK_PROPSETS_TIMEOUT="$_ps_t" "$SCRIPT_DIR/doctor.sh" --property-sets --if-stale "$PROJECT_DIR" 2>&1)" || _ps_rc=$?
+    # rc 3 (an mxcli before v0.26 cannot check) and rc 4 (the check itself failed) are not
+    # findings about the model, so doctor's WARN line for them is relabelled, not shown as one.
+    if [ "$_ps_rc" -eq 3 ] || [ "$_ps_rc" -eq 4 ]; then
       printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed -e 's/^  WARN  /  info  /' -e 's/^/   /'
     else
       printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed 's/^/   /'
@@ -1475,8 +1479,11 @@ if [ "$WIRED" -eq 1 ] && [ -x "$SCRIPT_DIR/doctor.sh" ] \
     case "$_ps_rc" in
       0|2) ;;
       3) echo "   (the project's mxcli predates 'fix property-sets', v0.26.0 — upgrade it before a Team Server merge)" ;;
-      *) warn "property sets: Studio Pro's merge/diff can throw on this model (see above). Repair, gated:" \
+      4) _ps_why="$(printf '%s\n' "$_ps_out" | sed -n 's/^  WARN  property sets: //p' | head -1)"
+         echo "   could not check property sets: ${_ps_why:-see above} — not recorded; the next sync re-checks" ;;
+      1) warn "property sets: Studio Pro's merge/diff can throw on this model (see above). Repair, gated:" \
               "bin/doctor.sh --fix-property-sets '$PROJECT_DIR'" ;;
+      *) echo "   property-set check exited $_ps_rc — see above" ;;
     esac
   fi
 fi

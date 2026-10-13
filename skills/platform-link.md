@@ -473,7 +473,7 @@ so a project upgraded mid-flight still carries the old ones until the repair run
 for the installed mxcli. After that it runs again only when mxcli changes. Errors and timeouts
 are never recorded, so the next run re-checks. `doctor --quick`, which exec.sh runs when the mxcli
 version changes, warns while the check is owed. The check reads every unit, so it is bounded by
-`MXTK_PROPSETS_TIMEOUT` (default 300 s), and a timeout reports NOT RUN. A unit the
+`MXTK_PROPSETS_TIMEOUT` (default 300 s, 120 s under sync), and a timeout reports NOT RUN. A unit the
 check reports `FAILED` has a value in a key the project's Mendix version does not declare. mxcli
 leaves such units alone, and its exit 1 makes `exec.sh --patch` roll the whole repair back, so
 resolve those units first. An mxcli older than v0.26.0 cannot run this check: upgrade it first.

@@ -138,27 +138,38 @@ holder_live() {
   case "$_args" in ""|*exec.sh*|*test-scratch.sh*) return 0 ;; esac
   return 1
 }
-# Taking over a stale lock is itself serialised (#304 review): two runs that both read the same
-# dead holder must not both remove "the stale lock" — the second would remove the lock the first
-# had just taken, and both would run. So a takeover first wins "$f.takeover" (noclobber: O_EXCL;
-# one older than 30s is a takeover that died midway and is cleared), re-reads the lock, and
-# removes it only if it still holds the stale line it judged. It moves the lock aside before
-# checking; a lock that changed in between is put back with `ln`, which refuses to overwrite,
-# never `mv -f`, which would clobber a lock taken meanwhile.
-take_over() {  # $1 = lock file, $2 = the stale line. 0 = handled (retry the take), 1 = another takeover runs
-  local f="$1" held="$2" t="$1.takeover" ts
-  if ! ( set -o noclobber; printf '%s %s\n' "$$" "$(date +%s)" > "$t" ) 2>/dev/null; then
-    ts="$(cut -d' ' -f2 "$t" 2>/dev/null | head -1)"
-    case "$ts" in ''|*[!0-9]*) ;; *) [ $(( $(date +%s) - ts )) -gt 30 ] && rm -f "$t" ;; esac
+# Taking over a stale lock is serialised through a second O_EXCL file, <lock>.takeover — the SAME
+# file name and protocol as exec.sh's exec_lock_takeover (this script shares .exec.lock with it, so
+# the two must exclude each other; keep the bodies in step). Under it the lock is re-read and
+# removed ONLY if it still holds exactly the stale line judged; nothing else ever removes a lock
+# that is not its own. WHY (independent review of #304): the old takeover here moved the lock
+# aside with `mv -f` — check-then-act — so two runs that judged the same dead holder could both
+# end up holding it. A takeover file left by a holder killed mid-takeover is stale once its pid is
+# dead or it is older than 10 s (an EMPTY one once it is a minute old); it is moved aside, and put
+# back with `ln` (fails if a new one exists — never clobbers) if what was moved is not the one
+# judged stale. The machine-wide port lock uses the same protocol.
+take_over() {  # $1 = lock file, $2 = the stale lock line. 0 iff it was removed (or already gone)
+  local _tk="$1.takeover" _t _tpid _tsince _tstale _now
+  if ! ( set -o noclobber; printf '%s %s\n' "$$" "$(date +%s)" > "$_tk" ) 2>/dev/null; then
+    _t="$(head -1 "$_tk" 2>/dev/null || true)"; _tpid="${_t%% *}"; _tsince="${_t#* }"
+    case "$_tsince" in ''|*[!0-9]*) _tsince=0 ;; esac
+    _tstale=0
+    if [ -n "$_t" ]; then
+      { ! kill -0 "$_tpid" 2>/dev/null || [ $(( $(date +%s) - _tsince )) -gt 10 ]; } && _tstale=1
+    elif [ -n "$(find "$_tk" -mmin +0 2>/dev/null)" ]; then
+      _tstale=1   # empty for a minute: its creator died between the create and the write
+    fi
+    if [ "$_tstale" = 1 ]; then
+      if mv "$_tk" "$_tk.stale.$$" 2>/dev/null; then
+        [ "$(head -1 "$_tk.stale.$$" 2>/dev/null || true)" = "$_t" ] || ln "$_tk.stale.$$" "$_tk" 2>/dev/null || true
+        rm -f "$_tk.stale.$$"
+      fi
+    fi
     return 1
   fi
-  if [ "$(head -1 "$f" 2>/dev/null || true)" = "$held" ] && mv "$f" "$f.stale.$$" 2>/dev/null; then
-    if [ "$(head -1 "$f.stale.$$" 2>/dev/null || true)" != "$held" ]; then
-      ln "$f.stale.$$" "$f" 2>/dev/null || true   # not the line we judged: put it back, never over a newer one
-    fi
-    rm -f "$f.stale.$$"
-  fi
-  rm -f "$t"
+  _now="$(head -1 "$1" 2>/dev/null || true)"
+  [ "$_now" = "$2" ] && rm -f "$1"
+  rm -f "$_tk"
   return 0
 }
 take_lock() {  # $1 = lock file, $2 = what it guards (for messages). 0 = taken, 1 = live holder

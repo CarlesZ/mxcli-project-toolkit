@@ -114,7 +114,7 @@ OUT="$( L="$L" LIVE="$LIVE" bash -c '
 has "the second taker is refused (the live lock survives)" "$OUT" "rc=1"
 [ "$(cut -d' ' -f1 "$L" 2>/dev/null)" = "$LIVE" ] && ok "the lock still names the live holder" || bad "the live holder's lock was replaced: $(cat "$L" 2>/dev/null)"
 [ -e "$L.takeover" ] && bad "takeover marker left behind" || ok "takeover marker cleared"
-echo "-- a takeover marker older than 30s (a takeover that died midway) is cleared"
+echo "-- a takeover marker whose pid is dead (a takeover that died midway) is cleared"
 printf '999999 1 test-scratch.sh\n' > "$L"; printf '999998 1\n' > "$L.takeover"
 OUT="$( L="$L" bash -c '. "$1"; holder_live() { return 1; }; take_lock "$L" "race lock"; echo "rc=$?"' _ "$H" 2>&1 )"
 has "taken after clearing the dead marker" "$OUT" "rc=0"

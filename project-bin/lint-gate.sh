@@ -18,8 +18,7 @@
 #       --approved-in-chat              # ALSO required when a security-tier rule rises
 #   bin/lint-gate.sh --full             # ignore the vendor exclusion (rarely useful)
 #
-# Exit codes: 0 clean, unchanged, or only FIRST-SEEN rules (a .star rule installed after the
-#             baseline: reported, not a rise — #305 review) · 1 a rule increased, or BLIND (a rule inspected nothing,
+# Exit codes: 0 clean or unchanged · 1 a rule increased, or BLIND (a rule inspected nothing,
 #             or the toolkit rules reverted to stock — see below) · 2 could not run (or a
 #             refused update)
 #
@@ -131,7 +130,7 @@ while [ $# -gt 0 ]; do
               REASON="$2"; shift ;;
     --reason=*) REASON="${1#--reason=}" ;;
     --approved-in-chat) APPROVED=1 ;;
-    -h|--help) sed -n '2,63p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,62p' "$0"; exit 0 ;;
     *) echo "lint-gate: unknown argument '$1'" >&2; exit 2 ;;
   esac
   shift
@@ -309,28 +308,6 @@ except (ValueError, IndexError):
     sys.exit(2)
 
 viol = data.get("violations") or []
-
-# FIRST-SEEN (#305 review). A rule sync-project.sh installs AFTER the baseline was taken has no
-# baseline count, so it compared against 0 and its first hit was a "rise": every exec logged
-# LINT ROSE and exited 1 until someone re-baselined (Lint Batch 3's TXT001/TXT002 fire on TBD,
-# XXX, v1.2, "12 Oct 2026"). A rule absent from the baseline counts is FIRST-SEEN, not a rise,
-# when it is a Starlark rule in .claude/lint-rules/ (`RULE_ID = "..."`) that the baseline did not
-# know: listed in neither its counts nor its `star_rules` (written by --update-baseline from now
-# on); for an older baseline without `star_rules`, its .star file is newer than the baseline.
-# Built-in mxcli rules are never first-seen: a baseline omits a rule with zero findings, so
-# "absent" there means "was clean" and a hit is a real rise.
-import re, glob
-def star_rules():
-    out = {}
-    rdir = os.path.join(os.path.dirname(base_path), "lint-rules")
-    for f in glob.glob(os.path.join(rdir, "*.star")):
-        try:
-            m = re.search(r'^RULE_ID\s*=\s*"([^"]+)"', open(f, encoding="utf-8", errors="replace").read(), re.M)
-        except OSError:
-            continue
-        if m:
-            out[m.group(1)] = os.path.getmtime(f)
-    return out
 counts = collections.Counter(v["ruleId"] for v in viol)
 sev    = {v["ruleId"]: v["severity"] for v in viol}
 
@@ -420,7 +397,6 @@ if update:
             sys.exit(2)
     json.dump({"counts": dict(sorted(counts.items())),
                "total": len(viol),
-               "star_rules": sorted(star_rules()),
                "note": "Per-rule finding counts on OUR modules. Gate fails when any rises."},
               open(base_path, "w"), indent=2)
     open(base_path, "a").write("\n")
@@ -436,22 +412,11 @@ if not os.path.exists(base_path):
     write_last("ERROR-NO-BASELINE", viol, counts)
     sys.exit(2)
 
-base_doc = json.load(open(base_path))
-base = base_doc.get("counts", {})
-known = base_doc.get("star_rules")
-stars = star_rules()
-base_mtime = os.path.getmtime(base_path)
-def first_seen(r):
-    if r in base or r not in stars:
-        return False
-    if known is not None:
-        return r not in known
-    return stars[r] > base_mtime
-rose, fell, new = [], [], []
+base = json.load(open(base_path)).get("counts", {})
+rose, fell = [], []
 for r in sorted(set(counts) | set(base)):
     now, was = counts.get(r, 0), base.get(r, 0)
-    if now > was and first_seen(r): new.append((r, now))
-    elif now > was: rose.append((r, was, now))
+    if now > was: rose.append((r, was, now))
     elif now < was: fell.append((r, was, now))
 
 print("==> %d findings on our modules (baseline %d)" % (len(viol), sum(base.values())))
@@ -488,20 +453,11 @@ if collapsed:
     write_last("FAIL-COLLAPSE", viol, counts)
     sys.exit(1)
 
-if new:
-    print("\n!! NEW RULE(S), FIRST SEEN — not in the baseline, so not counted as a rise:")
-    for r, now in new:
-        print("   FIRST-SEEN %-8s %-8s %d finding(s) — new rule, first seen: review and re-baseline with --reason"
-              % (r, sev.get(r, "?"), now))
-        for v in [x for x in viol if x["ruleId"] == r][:3]:
-            print("        %s | %s" % (v.get("module") or "(project)", v["message"][:120]))
-    print("   Review them, then: bin/lint-gate.sh --update-baseline --reason \"<why these are accepted>\"")
-
 if not rose:
     print("\nPASS — nothing got worse.")
     if fell:
         print("       %d rule(s) improved. Run --update-baseline to lock the gain in." % len(fell))
-    write_last("PASS-BLIND" if blind else ("PASS-FIRST-SEEN" if new else "PASS"), viol, counts)
+    write_last("PASS-BLIND" if blind else "PASS", viol, counts)
     sys.exit(1 if blind else 0)
 
 print("\nFAIL — %d rule(s) got worse:\n" % len(rose))

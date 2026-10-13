@@ -753,15 +753,7 @@ run_lint_gate() {
   LINT_RC=0
   bash "$PROJECT_ROOT/bin/lint-gate.sh" >"$_lo" 2>&1 || LINT_RC=$?
   case "$LINT_RC" in
-    0) LINT_DETAIL="lint unchanged vs baseline"; echo "  ✓ lint: no rule rose vs baseline"
-       # A rule installed after the baseline is FIRST-SEEN, not a rise (#305 review): say it on
-       # the row, so the count is reviewed and re-baselined rather than found later.
-       _new=$(grep -E '^ +FIRST-SEEN [A-Z][A-Z0-9-]*[0-9]+ ' "$_lo" | awk '{printf "%s%s (%s)", (n++?", ":""), $2, $4}')
-       if [ -n "$_new" ]; then
-         LINT_DETAIL="lint unchanged vs baseline; FIRST-SEEN: $_new — review, re-baseline with --reason"
-         echo "  ⚠ lint: new rule(s) first seen, not counted as a rise: $_new"
-         echo "    Review the findings, then: bin/lint-gate.sh --update-baseline --reason \"<why>\""
-       fi ;;
+    0) LINT_DETAIL="lint unchanged vs baseline"; echo "  ✓ lint: no rule rose vs baseline" ;;
     1) # Rule ids are matched as [A-Z][A-Z0-9-]*[0-9]+, not [A-Z]+[0-9]+: mxcli's built-in
        # rules include hyphenated ids (MDL-FLOW01), and the old pattern dropped them from every
        # row — three field apps logged 475 ROSE rows and not one named MDL-FLOW01 (2026-10-12).

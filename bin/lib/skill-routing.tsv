@@ -83,7 +83,8 @@ checkpoint-architecture	skills/checkpoints/checkpoint-architecture.md	CAC-3, aft
 checkpoint-design	skills/checkpoints/checkpoint-design.md	CAC-4, after rearchitect sign-off and before any design artifact — branding and UI direction. Opens with a brainstorm	architect	3	ondemand	spine
 checkpoint-build	skills/checkpoints/checkpoint-build.md	CAC-5, after design sign-off and before the build plan — build order and slice boundaries. Opens with a brainstorm	architect,mdl	4	ondemand	spine
 checkpoint-cutover	skills/checkpoints/checkpoint-cutover.md	CAC-6, after Stage 6 passes and before any cutover step — migration mode only, and a hard gate: every answer lands CONFIRMED, no ASSUMED defaults	gate,test	6,7	ondemand	spine
-agent-roles	skills/agent-roles.md	Starting a subagent, sending it a fix round, or reading an agent-stop notice; or setting up the project's subagents — read its Dispatching section per dispatch, the rest once at setup	lead	P,1,2,3,4,5,6	baseline	spine
+agent-roles	skills/agent-roles.md	Setting up or completing a project's dev-process subagents — once, at project start, not "on demand"	lead	P,4,5	baseline	spine
+dispatching	skills/dispatching.md	Starting a subagent, sending it a fix round, or reading an agent-stop notice — name the model, fresh not fork, fresh fixer not resume, coalesce notices	lead	P,1,2,3,4,5,6	baseline	spine
 source-triage	skills/source-triage.md	Deciding whether to extract at all, before any BRD gets generated	ba	0	baseline	source
 source-sufficiency	bin/source-sufficiency.sh	Taking in a new source — before generating anything from it. Grades what the source can support; nothing else in this toolkit reads a source	ba	0,1	baseline	source
 source-ledger	bin/source-ledger.sh	Closing Stage 1, or adding files to a source folder — every inventoried file must name the artifact that consumed it (text AND embedded diagrams), or carry a waiver; blocks Stages 1–2 until it does	ba	0,1,2	baseline	source

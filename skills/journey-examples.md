@@ -329,8 +329,8 @@ Stated so a reader is not surprised, and so whoever owns the spec can decide whi
 ## Honesty note
 
 The three example journeys **have never been executed.** There is no app behind
-`Procurement.PurchaseRequest`. They are validated statically — they parse, and they pass all 19 rules
-in `validate-journeys.js`, whose own `--selftest` shows each of those rules going red on a
+`Procurement.PurchaseRequest`. They are validated statically — they parse, and they pass all 16 rules
+in `validate-journeys.js` (19 since #150), whose own `--selftest` shows each of those rules going red on a
 deliberately broken input. Everything stated about runner behaviour was read out of
 `tests/e2e/journey-runner.js`, `helpers.js` and `otel.js`; anything that could not be settled by
 reading is marked *not verified* rather than guessed.

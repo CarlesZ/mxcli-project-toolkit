@@ -85,6 +85,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/kb-generation.md` | Extracting Excel/Word/PDF specs into a knowledge base |
 | `skills/brd-generation.md` | Writing or enriching a BRD JSON |
 | `skills/brd-validation.md` | Validating BRDs against the code and document KB |
+| `skills/interaction-model.md` | Stage 3, after the role model is CONFIRMED and BEFORE THE FIRST WIREFRAME |
 | `skills/company-brain.md` | Setting up or wiring a COMPANY BRAIN |
 | `skills/close-the-loop.md` | Cutover and retrospective |
 | `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |

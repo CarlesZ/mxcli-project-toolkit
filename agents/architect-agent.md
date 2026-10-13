@@ -65,6 +65,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/architecture-blueprint.md` | Diagramming target architecture |
 | `skills/modularize-domain.md` | Deciding module boundaries before "create module" |
 | `skills/design-artifacts.md` | Designing the brand and ONE ANNOTATED WIREFRAME PER SCREEN before building pages |
+| `skills/interaction-model.md` | Stage 3, after the role model is CONFIRMED and BEFORE THE FIRST WIREFRAME |
 | `skills/brd-to-build-plan.md` | Turning BRDs plus architecture into a numbered, dependency-ordered build plan |
 | `skills/coverage-ledger.md` | Building the Stage 4 coverage ledger |
 | `bin/coverage-check.sh` | Checking a coverage ledger against its BRD |

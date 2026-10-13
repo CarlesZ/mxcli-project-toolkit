@@ -192,10 +192,23 @@ case "$n" in "discharge:"*) ok "T9a derived Stage P: NEXT still discharges what 
 case "$n" in *final-look*) bad "T9a derived Stage P: NEXT still names final-look" "$n";; *) ok "T9a derived Stage P: final-look not in NEXT";; esac
 case "$n" in *skeleton*) ok "T9a only final-look is filtered (skeleton, also above Stage P, stays)";; *) bad "T9a filter dropped more than final-look" "$n";; esac
 f="$("$W/tk2/bin/status.sh" "$P9" 2>/dev/null)"
-printf '%s\n' "$f" | grep -q 'obligations pending:.*final-look' && ok "T9a the screen still lists final-look under obligations pending" || bad "T9a obligations pending line lost final-look"
-if [ "$HAVE_BASE" = 1 ]; then
-  o="$(nextof "$W/tk2/bin/status-baseline.sh" "$P9")"
-  case "$o" in *final-look*) ok "T9a control: the baseline sent a Stage P project to final-look";; *) bad "T9a control: baseline did not name final-look — case cannot fail" "$o";; esac
+# Once obligation-check.sh itself reports final-look NOT YET DUE under an early derived readout
+# (#321), final-look is no longer pending at all: then it must be ABSENT from the pending line, and
+# the baseline control cannot apply (the old status.sh would not name it either). Before #321, the
+# pending line keeps listing it and the baseline control shows the old NEXT sent the project there.
+# Captured first: under pipefail, `gate-check | grep -q` reads as false when grep exits early.
+GC9="$("$W/tk2/bin/gate-check-real.sh" --no-html "$P9" 2>/dev/null)"
+if printf '%s\n' "$GC9" | grep -E '^Obligation final-look +NOT YET DUE' >/dev/null; then
+  printf '%s\n' "$f" | grep -q 'obligations pending:.*final-look' \
+    && bad "T9a final-look is NOT YET DUE in gate-check but still listed as pending" "$(printf '%s\n' "$f" | grep 'obligations pending')" \
+    || ok "T9a gate-check says final-look NOT YET DUE: absent from the obligations pending line"
+  ok "T9a control: not applicable — gate-check already reports final-look NOT YET DUE (#321)"
+else
+  printf '%s\n' "$f" | grep -q 'obligations pending:.*final-look' && ok "T9a the screen still lists final-look under obligations pending" || bad "T9a obligations pending line lost final-look"
+  if [ "$HAVE_BASE" = 1 ]; then
+    o="$(nextof "$W/tk2/bin/status-baseline.sh" "$P9")"
+    case "$o" in *final-look*) ok "T9a control: the baseline sent a Stage P project to final-look";; *) bad "T9a control: baseline did not name final-look — case cannot fail" "$o";; esac
+  fi
 fi
 
 # T9b a module opened under the same lagging derived line: the module passes stay in NEXT.

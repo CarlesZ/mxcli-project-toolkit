@@ -188,7 +188,8 @@ never count: the builder grades its own work, and CI proves only the tests the b
    get the same review. "Small", "only skill text" and "CI is green" are how the exceptions start.
    The one exception is guard rule 7's: a fix whose only purpose is to unblock master (a broken CI
    check, a leak guard that blocks every commit) may merge first, with its review within 24 hours
-   and a `Review: PENDING (unblock)` line that the follow-up review replaces.
+   and a `Review: PENDING (unblock)` line; the follow-up verdict is recorded as a comment on the
+   merged PR (and a follow-up fix PR if it finds anything), since a squash commit cannot be edited.
 
 **Why (real incident, 2026-10-13).** Nine PRs merged in one day on the builders' own reports and
 green CI, each carrying its builder's "all checks pass". When the maintainer asked whether value
@@ -216,9 +217,9 @@ that does the work.
 4. **At the cap, a feature PR never squeezes other text to fit.** Room comes from a separate trim
    PR that only moves movable text; its reviewer compares removed against moved line by line, and
    any protected line that disappeared is a HOLD.
-5. **Trim before the cap, not at it:** when the baseline passes 95% of the budget, the next PR that
-   adds baseline words is preceded by a trim PR. A trim PR does not lower the ratchet by itself;
-   lowering it is a separate one-line change once the trimmed total has held for a release.
+5. **Trim before the cap, not at it:** when a PR would take the baseline (measured after the PR)
+   within 2,000 words of the budget, a trim PR lands first. A trim PR does not lower the ratchet by
+   itself; lowering it is a separate one-line change once the trimmed total has held for a release.
 
 **Why (2026-10-13).** One feature PR pushed the baseline to 80,466 words against the 80,000 budget
 while six other open PRs each added words; to fit, it merged two sentences in a testing skill and
@@ -340,6 +341,11 @@ self-authorize, and they were — the rule said "ask first" and then handed out 
 to. Wide blast radius is a reason to pick the right *scoped* check, not to run everything: for
 `bin/lib/skill-routing.tsv` and its re-render (README.md, ROUTING.md, every agent template, and
 `gate-check.sh`'s stage map at once) that check is `bin/render-routing.sh --check`.
+
+**One standing exception: the independent reviewer of a PR** (see "Merging a PR") may run the
+fixtures the PR adds or that target its changed files, without asking, in a detached worktree of
+the PR branch. That isolation is what avoids the shared-tree problem above; the reviewer still
+never runs the full suites.
 
 **Asking is also required for a single fixture** — name it, say what it will tell us, and wait.
 

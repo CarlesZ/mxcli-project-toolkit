@@ -104,7 +104,9 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
    the user's decision, made in chat; `--update-baseline` refuses a rise without `--reason`, a
    security-tier rise (SEC*, CONV006) also without `--approved-in-chat`, and logs each one to
    `.claude/lint-acceptances.tsv`. A row reading `LINT BLIND` is an instrument fault (a rule
-   inspected nothing), not a rise: name the rule and its configuration fix. If the row says
+   inspected nothing), not a rise: name the rule and its configuration fix. `LINT BLIND: rules
+   reverted to stock (…)` means `mxcli init` re-seeded the toolkit rules and lint did not run:
+   the fix is the toolkit's `bin/sync-project.sh`, never a re-baseline. If the row says
    `lint not installed`, say so as a finding: nothing has checked shape in this project.
 
 ## A clean result is not automatically a pass

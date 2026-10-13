@@ -761,7 +761,16 @@ run_lint_gate() {
                  | awk '{printf "%s %s ", $1, $6}')
        _blind=$(sed -n '/^!! A RULE COULD NOT READ/,/^$/p' "$_lo" \
                  | grep -oE '^ +[A-Z][A-Z0-9-]*[0-9]+:' | tr -d ' :' | sort -u | paste -sd, -)
-       if [ -z "$_rules" ] && grep -q '^PASS' "$_lo"; then
+       _reverted=$(sed -n '/^!! LINT RULES REVERTED TO STOCK/,/^$/p' "$_lo" \
+                    | grep -oE '^ +[A-Za-z0-9_.-]+\.star:' | tr -d ' :' | paste -sd, -)
+       if grep -q '^BLIND — lint rules reverted to stock' "$_lo"; then
+         # `mxcli init` re-seeded the toolkit rules (#264): lint-gate did not lint. Logging this
+         # as a rise blamed the next script for CONV010 26 -> 169 on flows it never touched.
+         LINT_RC=3
+         LINT_DETAIL="lint BLIND: rules reverted to stock (${_reverted:-see output}) — run sync-project.sh; delta not attributable"
+         echo "  ✗ lint: toolkit rules reverted to stock (${_reverted:-see output}) — not linted, not a rise"
+         sed -n '/^!! LINT RULES REVERTED TO STOCK/,/^BLIND/p' "$_lo" | head -16 | sed 's/^/    /'
+       elif [ -z "$_rules" ] && grep -q '^PASS' "$_lo"; then
          # lint-gate exits 1 for PASS-BLIND too. Logging that as "ROSE: see output" made a rule
          # that inspected nothing look like a rise with no rule named — 20 such rows in two
          # field apps whose CONV020 shipped unconfigured (#229). It is an instrument fault.

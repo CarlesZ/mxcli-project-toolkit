@@ -18,7 +18,7 @@ and configure the marked constants — **after** running `mxcli init`, never bef
 | `perf002_nested_data_widgets.star` | PERF002 — a data view / list view / data grid / gallery nested inside two or more other data widgets on the same page: re-queries per row at every level | `MAX_NESTING`, `DATA_WIDGET_CANDIDATES`, `EXCLUDE` (widget_type vocabulary: probe first) |
 | `perf004_npe_system_user_assoc.star` | PERF004 — an association between a non-persistable entity and System.User / System.Session (or an entity generalizing them), which pins session objects to the shared side | `NON_PERSISTABLE_CANDIDATES`, `SYSTEM_TARGETS` (entity_type vocabulary: probe first) |
 | `txt001_build_words_in_user_text.star` | TXT001 — user-visible text (titles, captions, templates, messages, menu items) holding build-process words: `Stage N`, `BR-10`, `F004`, TODO, a version tag, "(local, …)" | `PROJECT_WORDS` (sibling-app and project code names); `LEAK_PATTERNS` if "Stage N" is a real domain word |
-| `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no — delete it deliberately if the project's display standard is not ISO |
+| `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no — if the display standard is not ISO, the user may opt out: see "Opting out of a rule" |
 | `ui001_widget_layout_traps.star` | UI001 — a list view inside a Data grid 2 column (its own "Load more" / "No items found" in every cell); an inline `width` on an Atlas input without `flex` (ignored) | `DATAGRID_TYPES`, `LISTVIEW_TYPES`, `INPUT_TYPES` (widget_type vocabulary: probe first) |
 
 `err001` and `loop001` first field count (2026-10-12, mxcli 0.26.0, 21-module Mendix 11.12 model,
@@ -106,8 +106,31 @@ fixture on TestCLIApp — setting `ACTION_PREFIX` to an unused string produces t
 the real prefix produces none. `bin/lint-gate.sh` treats `module == "_rule"` as blindness, so
 this turns a silent pass into a gate failure rather than a line in a report nobody reads.
 
-Set `ACTION_PREFIX` / `DELEGATE_PREFIX` to your project's prefixes. If the project has no such
-convention, delete the rule deliberately rather than leaving it inert.
+Set `ACTION_PREFIX` / `DELEGATE_PREFIX` to your project's prefixes. CONV010 cannot be opted out
+(`mxcli init` seeds that file name, see below), so on a project without the `ACT_` convention set
+`ACTION_PREFIX` to the prefix its page-action microflows do use. CONV020 can be opted out, as a
+user decision, if the project has no such convention (see "Opting out of a rule").
+
+## Opting out of a rule
+
+Disabling a rule is **the user's decision**, never an agent's: ask in chat, record the answer in
+`PROJECT.md`, then write one line per rule in `.claude/lint-rules-disabled.txt`, with its reason,
+and delete the file from `.claude/lint-rules/`:
+
+```
+txt002_non_iso_date_in_user_text.star  # reason: display standard is dd/MM/yyyy (PROJECT.md D-14)
+```
+
+A listed rule is never installed or restored by `sync-project.sh`, its receipt row is dropped,
+and `bin/lint-gate.sh` does not report it. Two kinds of line are **ignored, with a warning**:
+
+- a line with no `# reason:` text;
+- a stock-seeded rule (`conv010`, `data_change_microflows`, `entity_business_key` —
+  `MXTK_LINT_RULES_STOCK` in `bin/lib/install-manifest.sh`). `mxcli init` writes a stock copy of
+  those file names back, and the stock versions report a clean pass while inspecting nothing.
+
+A bare delete does not stick either: sync restores a rule it installed before, and lint-gate
+reads a receipt-listed rule that is missing as a re-seed, so every exec reports `LINT BLIND` (#264).
 
 ## How these reach a project
 
@@ -116,7 +139,9 @@ on every sync; both call `mxtk_install_lint_rules` in `bin/lib/install-lint-rule
 is one implementation rather than two that drift. Nothing a human edited is ever overwritten
 without `--upgrade-lint-rules <rule|all>`, which backs the local copy up first.
 
-A project's `.claude/.mxtk-lint-receipt` records the md5 of each rule *as installed*. Because
+A project's `.claude/.mxtk-lint-receipt` records the md5 of each rule *as installed*, and its
+kind (`stock`, `toolkit` or `configurable`, from the manifest) so that `bin/lint-gate.sh`, which
+runs in a project with no manifest, checks for a re-seed only where `mxcli init` can cause one. Because
 rules are copied verbatim, that one hash answers both questions the copy path needs: if the
 project's file still matches it, nobody here edited it; if the toolkit's file still matches it,
 the template has not moved. The receipt lives outside `lint-rules/`, which is what makes it

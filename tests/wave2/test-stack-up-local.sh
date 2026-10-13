@@ -317,6 +317,7 @@ bash -c "exec -a 'node journey-runner.js' sleep 600" & DECOY14=$!; PIDS="$PIDS $
 # Tracked under another time zone: --track and --reap must spell the start time alike (LC_ALL=C TZ=UTC0).
 ( cd "$P" && TZ=XYZ-14 LC_ALL=C bash bin/test-stack-up.sh --track "$YOUNG" monitor ) >/dev/null 2>&1
 ( cd "$P" && bash bin/test-stack-up.sh --track 1 init ) >/dev/null 2>&1; [ $? -eq 2 ] && ok "--track refuses pid 1" || bad "--track accepted pid 1"
+( cd "$P" && bash bin/test-stack-up.sh --track 01 init ) >/dev/null 2>&1; [ $? -eq 2 ] && ok "--track refuses 01 (normalised, not string-compared)" || bad "--track accepted 01"
 ( cd "$P" && bash bin/test-stack-up.sh --track "$BASHPID" me ) >/dev/null 2>&1; [ $? -eq 2 ] && ok "--track refuses the calling shell" || bad "--track accepted the calling shell"
 ( cd "$P" && bash bin/test-stack-up.sh --track "$DEAD_PID" gone ) >/dev/null 2>&1 && bad "--track accepted a dead pid" || ok "--track refuses a dead pid"
 BG="$P/.claude/loop/bg-pids.tsv"
@@ -328,7 +329,10 @@ printf '%s' "$OUT" | grep -q "pid $OLDRUN — journey-runner" && ok "--check lis
 printf '%s' "$OUT" | grep -qE "pid ($YOUNG|$REUSED|$DECOY14) " && bad "listed a young/reused/untracked pid" "$OUT" || ok "young, reused and untracked pids not listed"
 printf '%s' "$OUT" | grep -q -- "--reap" && ok "names the --reap command" || bad "no remedy named" "$OUT"
 [ "$(wc -l < "$BG" | tr -d ' ')" = 4 ] && ok "--check left the record unchanged" || bad "--check wrote the record"
+# A hand-edited line for pid 1, aged and with init's real start time: --reap must still never signal it.
+printf '1\t1000000000\t%s\tinit\n' "$(LC_ALL=C TZ=UTC0 ps -o lstart= -p 1 2>/dev/null | sed 's/  */ /g; s/^ //; s/ $//')" >> "$BG"
 OUT="$(cd "$P" && bash bin/test-stack-up.sh --reap 2>&1)"; RC=$?
+printf '%s' "$OUT" | grep -q "stopped pid 1 " && bad "--reap signalled pid 1" "$OUT" || ok "--reap never signals a hand-edited pid-1 line"
 sleep 0.5
 [ "$RC" -eq 0 ] && ok "--reap exits 0" || bad "--reap rc=$RC" "$OUT"
 kill -0 "$OLDRUN" 2>/dev/null && bad "stale tracked pid survived --reap" || ok "stale tracked pid stopped"

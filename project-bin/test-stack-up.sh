@@ -472,6 +472,7 @@ bg_scan() {
   now="$(date +%s)"
   while IFS='	' read -r pid ep ls lab; do
     case "$pid" in ''|*[!0-9]*) continue ;; esac
+    [ "$((10#$pid))" -gt 1 ] || { echo "gone|$pid|0|$lab"; continue; }   # init / own group: never a target
     case "$ep" in ''|*[!0-9]*) ep="$now" ;; esac
     if ! kill -0 "$pid" 2>/dev/null || [ "$(pid_lstart "$pid")" != "$ls" ]; then
       echo "gone|$pid|0|$lab"
@@ -495,6 +496,7 @@ bg_prune() {
 if [ "$MODE" = "track" ]; then
   T_PID="${2:-}"; T_LABEL="${3:-process}"
   case "$T_PID" in ''|*[!0-9]*) echo "usage: $0 --track <pid> [label]" >&2; exit 2 ;; esac
+  T_PID=$((10#$T_PID))   # "01" / "001" must not slip past the refusal below as strings
   # Never pid 1, this script, or the shell that called it: --reap would later stop the caller itself.
   case "$T_PID" in 0|1|"$$"|"$PPID") echo "test-stack-up: refusing to track pid $T_PID (init, this script, or the calling shell) — pass the background process's pid (\$! after starting it)" >&2; exit 2 ;; esac
   [ "$(mxtk_platform)" = windows ] && { echo "test-stack-up: --track is not supported on Git Bash (no process start time to check a reused pid against); nothing recorded"; exit 0; }
@@ -523,6 +525,8 @@ if [ "$MODE" = "reap" ]; then
   REAPED=0
   while IFS='|' read -r st pid age lab; do
     [ "$st" = stale ] || continue
+    # A hand-edited line can say anything: pid 0 or 1 is never signalled (kill 0 = our own group).
+    [ "$((10#$pid))" -gt 1 ] || { warn "pid $pid in ${BG_PIDS#$ROOT/} — never signalled"; continue; }
     # Re-checked at the moment of the kill: the scan above may be seconds old.
     _ls="$(awk -F'\t' -v p="$pid" '$1 == p { print $3; exit }' "$BG_PIDS")"
     [ -n "$_ls" ] && [ "$(pid_lstart "$pid")" = "$_ls" ] || { warn "pid $pid changed since the scan — not touched"; continue; }

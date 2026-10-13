@@ -17,6 +17,9 @@ and configure the marked constants — **after** running `mxcli init`, never bef
 | `perf001_generalization_depth.star` | PERF001 — an entity more than two generalization levels deep (a System.* ancestor counts one level); every retrieve joins one table per level | `MAX_DEPTH`, `SYSTEM_ANCESTOR_LEVELS` |
 | `perf002_nested_data_widgets.star` | PERF002 — a data view / list view / data grid / gallery nested inside two or more other data widgets on the same page: re-queries per row at every level | `MAX_NESTING`, `DATA_WIDGET_CANDIDATES`, `EXCLUDE` (widget_type vocabulary: probe first) |
 | `perf004_npe_system_user_assoc.star` | PERF004 — an association between a non-persistable entity and System.User / System.Session (or an entity generalizing them), which pins session objects to the shared side | `NON_PERSISTABLE_CANDIDATES`, `SYSTEM_TARGETS` (entity_type vocabulary: probe first) |
+| `txt001_build_words_in_user_text.star` | TXT001 — user-visible text (titles, captions, templates, messages, menu items) holding build-process words: `Stage N`, `BR-10`, `F004`, TODO, a version tag, "(local, …)" | `PROJECT_WORDS` (sibling-app and project code names); `LEAK_PATTERNS` if "Stage N" is a real domain word |
+| `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no — delete it deliberately if the project's display standard is not ISO |
+| `ui001_widget_layout_traps.star` | UI001 — a list view inside a Data grid 2 column (its own "Load more" / "No items found" in every cell); an inline `width` on an Atlas input without `flex` (ignored) | `DATAGRID_TYPES`, `LISTVIEW_TYPES`, `INPUT_TYPES` (widget_type vocabulary: probe first) |
 
 `err001` and `loop001` first field count (2026-10-12, mxcli 0.26.0, 21-module Mendix 11.12 model,
 876 microflows): ERR001 8 (3 true, 5 debatable — flows that return an error payload instead of
@@ -33,6 +36,22 @@ land: `generalization` is `""` / `System.X` / `Module.Entity`, `entity_type` is 
 (`Forms$ListViewTemplate` was added to PERF002's EXCLUDE on that probe). Status stays `drafted`
 until a project with real inheritance and nesting reports a count
 (`tests/lint-rules/test-batch2-rules.sh`, 16 cases).
+
+`txt001`, `txt002` and `ui001` (Lint Batch 3, issues #280 / #282) first field run (2026-10-13,
+mxcli 0.26.0, the same 21-module Mendix 11.12 model, catalog FULL, 2.1 s, no load errors): 0 / 0 / 0
+findings and no `_rule` blindness finding, over 478 user-visible strings and 271 widgets in the
+app's own modules. A null result again, so the run carried positive controls: loosened copies of
+the three rules (a project word "the", a bare-digit date pattern, data view / dynamic text as
+the grid / list types) returned 27 / 50 / 17 findings through the same accessors, so `strings()`
+and the widget parent walk do reach real rows at runtime. Replaying the rules' patterns over the
+marketplace modules (outside the lint scope; `strings()` and `widgets()` never return them):
+TXT001 9 — one admin-help sentence naming a dependency version, repeated, a debatable hit; TXT002
+0; UI001 2 list views inside Data grid 2 columns. Vocabulary landed in each header: `strings()`
+`object_type` is uppercase, `context` is the Mendix property path, and `strings()` needs
+mxcli >= 0.25.0. On an older binary the file does not load at all (an undefined builtin is a
+Starlark compile error): mxcli prints "rule file skipped" on stderr and no `_rule` finding can be
+emitted, so pin the binary rather than trusting the count (`tests/lint-rules/test-batch3-rules.sh`,
+23 cases; the harness gained a `strings()` mock).
 
 `data_change_microflows` and `entity_business_key` are **repaired copies of rules `mxcli init`
 already seeds**, not new ones. Both shipped comparing `entity.entity_type` to `"PERSISTENT"`

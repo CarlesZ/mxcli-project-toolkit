@@ -1,0 +1,13 @@
+# mxcli v0.26.0 — strings read out of the released linux/amd64 binary with `strings -n 6`,
+# never by running it. One format string per line below the marker, verbatim (Go %d/%s
+# verbs intact). test-journey-preflight.sh fills the verbs to build the probe output the
+# runner classifies; the classifier substring-matches, so the CLI's own error prefix is not
+# assumed. Re-capture on an mxcli upgrade:
+#   strings -n 6 mxcli | grep -oE "authentication failed \(HTTP %d\)[^c]*\(--token or M2EE_ADMIN_PASS\)"
+#   strings -n 6 mxcli | grep -oE "cannot connect to Mendix admin API at %s:%d -- is the app running\? Start with .mxcli docker up."
+#   strings -n 5 mxcli | grep -oE "Using project: %s|\(%d rows\)"
+--- formats ---
+authentication failed (HTTP %d) -- check the admin password (--token or M2EE_ADMIN_PASS)
+cannot connect to Mendix admin API at %s:%d -- is the app running? Start with 'mxcli docker up'
+Using project: %s
+(%d rows)

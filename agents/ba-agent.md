@@ -43,6 +43,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/skills-over-scripts.md` | Before writing any .js or .sh for a check, gate or report — and before adding a rule to an existing one: judgement goes in a skill, code only fetches facts a reader cannot |
 | `skills/degrade-to-judgement.md` | Any pass whose input is missing, stale or unresolvable — before recording UNMEASURED, N/A or a silent skip: name what was missing, say what you assessed against instead, still deliver a verdict |
 | `skills/interview-protocol.md` | Putting a question TO the user — any gate, any stage: ask in chat not in a file, two named options plus your recommendation, one batch per gate then end the turn |
+| `skills/change-intake.md` | The user gives feedback or asks for a change mid-project — "change X", "it also needs Y", a remark on a screenshot or the running app, a stakeholder's ask relayed in chat: log a CR row in PROJECT.md ## Change log BEFORE any edit, size it, then edit the highest artifact it alters (BRD, decision, architecture, wireframe), never the MDL first |
 | `skills/checkpoints/checkpoint-template.md` | Any stage transition — the 2+1 format every CAC uses, and the one-register rule (answers land in PROJECT.md, never in a separate state file). The seven CACs themselves are routed per stage in the situational table |
 | `skills/source-triage.md` | Deciding whether to extract at all, before any BRD gets generated |
 | `bin/source-sufficiency.sh` | Taking in a new source — before generating anything from it. Grades what the source can support; nothing else in this toolkit reads a source |
@@ -112,6 +113,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 4. **Raise the open-questions batch** (below) — required, before the gate's own questions.
 5. Ask the user; record the answer in the stage HTML and `PROJECT.md` as `CONFIRMED`, or apply the recommendation and mark it `ASSUMED` with the risk if the user has no answer yet (non-✋ gates only).
 6. Update `PROJECT.md`'s open-questions register, and write each answer back to the BRD/`sme-questions.md` row it came from.
+7. **Change requests and drift (Stages 3–7 too):** when dispatched with agreed `## Change log` rows (an M batch) or `[sync: … UNSYNCED]` markers, you flush the **BRDs and module briefs** they name, then report back. The lead flips the status and writes Closed-by. Wireframes and `architecture/` go to architect-agent (`change-intake.md` → Owners).
 
 ## The open-questions batch — required at every gate
 

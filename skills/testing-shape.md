@@ -422,6 +422,15 @@ journey across one.** `--attach` avoids the second build but hot-applies into th
 against its database, so restart before any journey that counts rows.
 (Field case: existing app, mxcli v0.25, Mendix 11.15, 2026-10-07.)
 
+**The remedy: `./bin/test-scratch.sh -- <test files> --local`.** It takes this project's exec lock
+while it copies (so it never copies a half-written model), copies the model tree to a scratch dir
+without `.git`, `deployment/` or `.mxcli/` (the live app's run --local record), takes a machine-wide
+lock on the test ports 8081/8091 (a live holder refuses, a dead one is taken over), runs `mxcli test`
+there with `-p` on the copy, and deletes the copy. The live model, its `deployment/` and the running
+app are never touched, so no restart is owed afterwards. It refuses `--attach`, which by design runs
+against the live app. (Field case: 2026-10-12, one unlocked `mxcli test` in the live repo broke the
+running app with `NoClassDefFoundError`, .mpr unchanged; #278.)
+
 > ### 🔴 Docker is NOT a safe default if the app calls host services by `localhost`
 >
 > **Confirmed the hard way, 2026-08-06, on the first real run of this skill.** Inside a container,

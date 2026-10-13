@@ -382,6 +382,24 @@ practice converges on without exception.
 
 ---
 
+## The final LOOK — the whole app, last, before anything is called closed
+
+Per-module and per-task LOOKs judge the piece that changed. They cannot see a later task undoing
+an earlier one on a page the later task never claimed. So the last step of a build, a slice or a
+multi-task fix run is one read-only stage 4 pass over **every page, as every role**, after the
+last model commit. It is owed as the `final-look` row in `bin/lib/obligations.tsv`.
+
+- **Report:** `design/ui-reviews/final-look-<YYYY-MM-DD>.html`, same format as stage 5: the
+  headline's denominator ("38 of 38 pages, 4 of 4 roles"), `VALID AT:`, PROOF-OF-LOOK lines.
+  Any model commit after `VALID AT` makes it stale, and the obligation is owed again. That is how
+  "final" is checked mechanically.
+- **Reads, beyond stage 4:** every `Displayed fact:` row in `PROJECT.md`, against every page that
+  shows the fact (`process-coherence-pass.md` pass 5). Every microflow a later script redefined,
+  diffed before and after, to make sure no earlier fix was dropped.
+- **Why mandatory (2026-10-12, a 20-task UX-fix run over three apps):** every task passed its own
+  review and journeys. The final LOOK then found 1 critical and 5 important defects. The critical
+  one was a status fix from task 4 that task 18 had undone on four pages.
+
 ## Defining "acceptable"
 
 Researched 2026-08-13 against DORA, Google's diff-scoped mutation testing, 2026 agentic-review

@@ -71,6 +71,8 @@ AGENTS="$MXTK_AGENTS"
 . "$SCRIPT_DIR/lib/resume-template.sh"
 # The CLAUDE.local.md session-start ritual: the short text, and the long one it heals (#288).
 . "$SCRIPT_DIR/lib/ritual-template.sh"
+# The PROJECT.md "## Change log" section (skills/change-intake.md): same text init-project.sh writes.
+. "$SCRIPT_DIR/lib/change-log.sh"
 
 # Item 3 of wire-agents.sh's stamped block, the one text shared with the in-place repair step
 # below (5c) — see that file's header for why it is not typed twice.
@@ -678,6 +680,18 @@ fi
 if [ -f "$PROJECT_DIR/PROJECT.md" ] && ! grep -q "Toolkit commit:" "$PROJECT_DIR/PROJECT.md"; then
   printf '\nToolkit commit: (set at session start — see CLAUDE.local.md ritual)\n' | w_app "$PROJECT_DIR/PROJECT.md"
   echo "Updated: PROJECT.md — added the Toolkit commit acknowledgement line."
+  CHANGES=$((CHANGES + 1))
+fi
+
+# --- 2b1a. PROJECT.md: append the "## Change log" section if this project predates it --------
+# Feedback typed mid-build is logged there BEFORE any edit (skills/change-intake.md), and
+# gate-check.sh counts the rows that still owe something. A project scaffolded before the section
+# existed has nowhere to write the row, so the first change goes straight into MDL again. Append
+# only: keyed on the heading, so a second run (or a section someone moved or reworded the legend
+# of) is left alone. Same idempotence contract as the Toolkit commit line just above.
+if [ -f "$PROJECT_DIR/PROJECT.md" ] && ! mxtk_change_log_has_section "$PROJECT_DIR/PROJECT.md"; then
+  { printf '\n'; mxtk_change_log_section; } | w_app "$PROJECT_DIR/PROJECT.md"
+  echo "${DRY:-}Updated: PROJECT.md — appended the '## Change log' section (feedback is logged there before any edit; skills/change-intake.md)."
   CHANGES=$((CHANGES + 1))
 fi
 

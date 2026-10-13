@@ -189,6 +189,56 @@ Mendix answer on its port publishes `APP_OWNERSHIP=verified`, `APP_SOURCE=run-lo
 config tests it without `ALLOW_UNVERIFIED_APP=1`. It never reloads or restarts that loop. Started
 without `--watch`, a model edited since boot is reported stale with the restart to run.
 
+## What watch picks up — and what it does not
+
+**Trigger:** `bin/exec.sh` printed `→ Watch: restart needed`, or the running app shows something
+that looks like a defect right after an exec. The timings above make watch look like a complete
+live loop. It is not. In a 20-task UX-fix run over three apps (mxcli v0.26.0, Mendix 11.15,
+2026-10-12) watch silently missed the right-hand column below: about 26 restarts, and several
+diagnosis rounds spent on "defects" that were a stale runtime (#284, #275, #285).
+
+| Watch applies it (~4 s reload) | Watch does NOT apply it — restart the app |
+|---|---|
+| `ALTER PAGE` / `ALTER SNIPPET` edits to an existing page: widgets, captions, classes, visibility | a microflow created, dropped, or dropped and recreated — the old body keeps serving |
+| a new or changed snippet | a new attribute (stored or calculated), a new entity |
+| `create or replace page` of a page that already exists | a GRANT / REVOKE, a new module role or user role |
+| | a new page (`create page`), or a page that gets a `Url` — the route table predates it and the deep link lands on Home |
+| | theme SCSS or theme JS (`themesource/`, `theme/`) — one edit dropped the page bundles (404), another left a 24 px column the model says is 120 |
+
+`bin/exec.sh` runs this table for you after every applied script (`--watch-compat <script>`
+prints the same verdict without running anything): it reads the statement heads and checks theme
+SCSS/JS against the running app's boot time, and prints `restart needed: <reasons>` or `watch can
+apply this`. Advisory only — it never blocks. A `create or replace page` is reported reloadable
+with a note: restart if that page is new, because a script cannot tell new from replaced.
+
+**A stale runtime looks like a defect.** Before diagnosing any of these right after an exec,
+restart the app and re-run once:
+- a security error opening a page you just granted;
+- `NoClassDefFoundError` for a widget or Java class;
+- a picker or data-source error on a widget that was just rebound;
+- a deep link that lands on Home (the route table predates the new `Url`);
+- 404s on `dist/...` or `deployment/web/pages/...` after an SCSS or page edit;
+- a microflow that still behaves as before your change;
+- the watch log shows `build failed: ... IO_PathNotFound ... deployment/web/pages/<Module>.<Page>.js`
+  (#285): an SCSS or page edit landed while the previous incremental web build was still running,
+  and the bundler read page bundles that build had just removed. 74 of these in one night, in two
+  of three apps; one took the runtime down mid-suite, the rest left stale or 404ing pages. The
+  failed build does not recover by itself: **restart** (about 40 s). If it happened during a
+  journey sweep, rerun only the journeys that failed after it — they are infrastructure faults,
+  not product failures. Pacing edits so one watch build finishes before the next write lands
+  makes it rarer.
+
+**Restart only your own app: `./bin/app-restart.sh`.** It stops only the process that
+`mxcli run --local` recorded for this project (`.mxcli/run-local.json` beside the `.mpr`), with
+that process's own children, never anything found by name or pattern. It starts the app again
+with the same command line, and returns once the port answers a Mendix page and the JS bundle
+that `index.html` loads answers 2xx (exit 0). It refuses, and stops nothing (exit 3), when there
+is no record, when the record belongs to another project (a copied project carries the
+original's), or when it cannot recover the start command. On Windows, pass `--cmd '<how you
+started it>'` once; it is remembered after that. `--dry-run` says what it would do. A Docker-hosted
+app uses `bin/test-stack-up.sh --restart` instead. This is the one restart an implementer may run
+without the lead (`agent-roles.md` → Dispatching).
+
 ## When it finds something — which side is actually wrong
 
 The symptom is easy to see. **Where the fix goes is not, and the instinct is usually wrong.**

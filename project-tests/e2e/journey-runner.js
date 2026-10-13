@@ -5,6 +5,13 @@
 //   node tests/e2e/journey-runner.js journeys/FieldScan.journey.json
 //   node tests/e2e/journey-runner.js journeys/*.journey.json --positive-control
 //
+// A suite PREFLIGHT runs before the browser opens (see "Suite preflight" below): admin
+// credential + reachability, required env vars, live sessions. Exit 2 = aborted there.
+// Env: TEST_USER / TEST_PASS (required; ALLOW_CONFIG_CREDENTIALS=1 to use the config
+// default), M2EE_ADMIN_PASS / M2EE_ADMIN_PORT, ALLOW_NO_DATA_RUNG=1, JOURNEY_SESSION_CAP=<n>,
+// ALLOW_SESSION_CAP=1. Journeys may declare requiresEnv / requires / leaves / consumes,
+// resetsData (refused under --protect-state) and assertLanding (or --assert-landing).
+//
 // WHY THIS EXISTS
 // The suite's 14 `TARGETS['full-app']` entries are independent PAGE STOPS: navigate,
 // assert widgets present, count rows. Nothing in the corpus performs
@@ -38,6 +45,10 @@ const O = require(__dirname + '/otel.js');
 const { cfg } = require(__dirname + '/config.js');
 
 const POSITIVE_CONTROL = process.argv.includes('--positive-control');
+// --protect-state: refuse every journey tagged "resetsData": true (see preflight step 0b).
+const PROTECT_STATE = process.argv.includes('--protect-state');
+// --assert-landing (or any journey with "assertLanding": true): the landing check after login.
+const ASSERT_LANDING = process.argv.includes('--assert-landing');
 const files = process.argv.slice(2).filter(a => !a.startsWith('--'));
 // `require.main === module` guard: tests/e2e/journey-rung4-scope.test.js requires this
 // file to exercise the rung-4 SQL builders directly. Without the guard, requiring it
@@ -879,25 +890,384 @@ function personaMismatch(j, signedInAs) {
          `TEST_USER=${j.persona} (one file, one run per role).`;
 }
 
+// ── Suite preflight: refuse a run that can only produce INVALIDs ────────────
+// Field run 2026-10-12, 14 journeys (#286): the admin credential the runner defaulted to
+// was not the app's, every data rung got HTTP 403 and read INVALID, and the suite walked
+// all 14 journeys anyway — first pass 305/339 PASS, 2 of 14 green, discarded whole. Two
+// unset mock env vars made 3 more journeys INVALID one at a time, and an undeclared order
+// dependency (one journey's last step moved the record on; the next one's seed refused)
+// made 6 of 14 INVALID. Every one of those is a SETUP fault, knowable before the first
+// click, and each was reported as a pile of per-journey INVALIDs that look like test faults.
+//
+// So, before the browser opens:
+//   0. login    — TEST_PASS unset aborts before any login attempt (#278): a run started
+//                 without the project's env step submitted the config default, then the
+//                 admin fallback, and locked two demo accounts for ~5 min each.
+//                 ALLOW_CONFIG_CREDENTIALS=1 when the config default is the real password.
+//   1. env      — every journey's `requiresEnv` names are checked; the missing ones are ONE
+//                 setup line, and the journeys that need them are not walked.
+//   2. admin    — if any journey has a data rung, seed or outcome, one OQL probe through
+//                 the same `mxcli oql --direct` the rungs use. 401/403 or unreachable
+//                 ABORTS THE SUITE (exit 2) with where the credential came from and how to
+//                 set it — never the credential. ALLOW_NO_DATA_RUNG=1 proceeds anyway, with
+//                 every data rung INVALID as before.
+//   3. sessions — the same probe counts System.Session. Leaked sessions (journeys that
+//                 never logged out, a hung runner, an agent retry loop) filled a trial
+//                 licence's cap in the field (#287) and every later login read as a wrong
+//                 password. JOURNEY_SESSION_CAP=<n> refuses the run when the live count is
+//                 already at the cap; ALLOW_SESSION_CAP=1 overrides.
+//
+// The probe's text is mxcli v0.26.0's own messages (format strings read out of the binary,
+// see tests/wave2/fixtures/journey-preflight/): "authentication failed (HTTP %d) -- check
+// the admin password (--token or M2EE_ADMIN_PASS)" and "cannot connect to Mendix admin API
+// at %s:%d -- is the app running?". The class is decided from those, not from the exit code.
+const ADMIN_PROBE_SQL = 'SELECT COUNT(*) AS n FROM System.Session';
+
+function classifyAdminProbe(text, status) {
+  const t = String(text || '');
+  const auth = t.match(/authentication failed \(HTTP (\d{3})\)/i)
+            || t.match(/\bHTTP (401|403)\b/)
+            || t.match(/\b(401) Unauthorized\b|\b(403) Forbidden\b/i);
+  if (auth) return { state: 'auth', http: Number(auth[1] || auth[2]) };
+  if (/cannot connect to Mendix admin API|ECONNREFUSED|connection refused/i.test(t))
+    return { state: 'unreachable' };
+  const parsed = H.parseOqlOutput(t);
+  if (status === 0 && parsed && parsed.rows && parsed.rows[0] !== undefined) {
+    const n = Number(parsed.rows[0][0]);
+    return { state: 'ok', sessions: Number.isFinite(n) ? n : null };
+  }
+  return { state: 'unknown', detail: t.trim().split('\n').filter(Boolean).slice(-1)[0] || `exit ${status}` };
+}
+
+function runAdminProbe() {
+  const { spawnSync } = require('child_process');
+  const r = spawnSync(H.mxcliBin(), [
+    'oql', '--direct', '--host', cfg.adminHost, '--port', String(cfg.adminPort),
+    '--token', cfg.adminToken, '--json', ADMIN_PROBE_SQL,
+  ], { cwd: cfg.root, encoding: 'utf8', timeout: 20000 });
+  if (r.error) return { state: 'tool', detail: `${H.mxcliBin()}: ${r.error.code || r.error.message}` };
+  return classifyAdminProbe(`${r.stdout || ''}\n${r.stderr || ''}`, r.status);
+}
+
+// Does this journey need the admin API at all? A UI-only journey must not be refused
+// over a data instrument it never uses.
+function journeyNeedsAdmin(j) {
+  return (j.seeds || []).some(s => s && s.sql)
+      || !!(j.outcome && j.outcome.sql)
+      || (j.steps || []).some(s => s && s.data);
+}
+
+// var -> [journey ids] for every `requiresEnv` name that is unset or empty.
+function missingEnv(journeys, env) {
+  const miss = new Map();
+  for (const j of journeys) {
+    for (const v of j.requiresEnv || []) {
+      if (env[v]) continue;
+      if (!miss.has(v)) miss.set(v, []);
+      miss.get(v).push(j.id);
+    }
+  }
+  return miss;
+}
+
+// The whole preflight as one decision, with the probe injected so the fixture can feed it
+// captured mxcli output. Returns:
+//   lines  — SETUP lines to print, in order
+//   rows   — result rows to record (rung 'setup')
+//   skip   — journey id -> reason, journeys not to walk
+//   abort  — null, or the exit code (2: instrument fault) that ends the suite here
+// `redact` is applied to anything quoted back from the probe, so a token can never be echoed.
+function preflight(journeys, { env = process.env, probe = runAdminProbe, admin = cfg,
+                               protectState = PROTECT_STATE } = {}) {
+  const lines = [], rows = [], skip = new Map();
+  const redact = s => (admin.adminToken && admin.adminToken.length > 2
+    ? String(s).split(admin.adminToken).join('<redacted>') : String(s));
+  const setup = (name, detail) => {
+    lines.push(`SETUP  ${name}: ${detail}`);
+    rows.push({ rung: 'setup', name: `preflight: ${name}`, verdict: 'INVALID', detail, requirement: '' });
+  };
+
+  // 0. login credential (#278). Unset TEST_PASS means the run would submit project.config's
+  // default and then the admin fallback. Each rejected submit counts toward Mendix's
+  // 3-attempt lockout, and in the field two demo accounts were locked for ~5 min each. So no
+  // login is attempted at all. The override exists for a project whose config default IS its
+  // real demo password.
+  if (!admin.passFromEnv && env.ALLOW_CONFIG_CREDENTIALS !== '1') {
+    setup('credentials', `TEST_PASS is unset — the run would log in as "${admin.user}" with ` +
+      "project.config.js's default password and then try the fallback account, and each rejected " +
+      'attempt counts toward the account lockout. Load the project env first (export TEST_USER / ' +
+      'TEST_PASS, e.g. `set -a; . ./.env; set +a`), or set ALLOW_CONFIG_CREDENTIALS=1 if the ' +
+      'config default is the real demo password. Suite ABORTED before any login');
+    return { lines, rows, skip, abort: 2 };
+  }
+
+  // 0b. journeys that reset or reload demo data (#279). Field run 2026-10-12: one suite run
+  // between a rehearsal and a recording wiped one app's seeded state, and that app never
+  // appeared in the film. The tag is always printed; --protect-state refuses tagged journeys.
+  const resetting = journeys.filter(j => j.resetsData === true).map(j => j.id);
+  if (resetting.length && !protectState) {
+    lines.push(`SETUP  resetsData: ${resetting.join(', ')} reset or reload demo data — anything seeded or rehearsed by hand is gone after this run (--protect-state refuses them)`);
+  } else if (resetting.length) {
+    for (const id of resetting) skip.set(id, 'tagged resetsData; --protect-state is on');
+    setup('protect-state', `refused ${resetting.join(', ')} — tagged "resetsData": true and --protect-state is on. Record or snapshot the demo state first, then run them without the flag`);
+  }
+
+  // 1. env — one line for the suite, however many journeys share the gap.
+  const miss = missingEnv(journeys, env);
+  if (miss.size) {
+    const ids = new Set([].concat(...miss.values()));
+    for (const id of ids) skip.set(id, 'required env var(s) unset — see the SETUP line');
+    setup('env', `missing ${[...miss].map(([v, js]) => `${v} (needed by ${js.join(', ')})`).join('; ')}` +
+      ` — export ${miss.size === 1 ? 'it' : 'them'} and re-run; ${ids.size} journey(s) not walked`);
+  }
+  const runnable = journeys.filter(j => !skip.has(j.id));
+  if (!runnable.length) return { lines, rows, skip, abort: 2 };
+
+  // 2 + 3. one probe: credential, reachability and the live session count.
+  if (!runnable.some(journeyNeedsAdmin)) return { lines, rows, skip, abort: null };
+  const p = probe();
+  const where = `${admin.adminHost}:${admin.adminPort}`;
+  const how = 'set M2EE_ADMIN_PASS (and M2EE_ADMIN_PORT if the port differs), or start the app ' +
+              'with `mxcli run --local` / `mxcli docker up` so the toolkit can read it from ' +
+              '.mxcli/run-local.json / .docker/.env';
+  const allowNoData = env.ALLOW_NO_DATA_RUNG === '1';
+  if (p.state === 'auth' || p.state === 'unreachable' || p.state === 'tool') {
+    const what = p.state === 'auth'
+      ? `admin API at ${where} refused the credential (HTTP ${p.http}); credential from ${admin.adminSource}. ${how}`
+      : p.state === 'unreachable'
+        ? `admin API unreachable at ${where} — is the app running? Credential from ${admin.adminSource}; ` +
+          'set M2EE_ADMIN_PORT if the admin API listens on another port'
+        : `could not run the OQL instrument: ${redact(p.detail)}`;
+    setup('admin', `${what}. Every seed, data rung and outcome would read INVALID — ` +
+      (allowNoData ? 'proceeding because ALLOW_NO_DATA_RUNG=1.'
+                   : 'suite ABORTED before the first journey (ALLOW_NO_DATA_RUNG=1 runs it anyway).'));
+    return { lines, rows, skip, abort: allowNoData ? null : 2 };
+  }
+  if (p.state === 'unknown') {
+    lines.push(`SETUP  admin: probe inconclusive (${redact(p.detail)}) — proceeding; data rungs may read INVALID`);
+    return { lines, rows, skip, abort: null };
+  }
+  lines.push(`SETUP  admin: OK at ${where} (credential from ${admin.adminSource})`);
+  if (p.sessions != null) {
+    const cap = Number(env.JOURNEY_SESSION_CAP || 0);
+    if (cap > 0 && p.sessions >= cap && env.ALLOW_SESSION_CAP !== '1') {
+      setup('sessions', `${p.sessions} live session(s), cap ${cap} (JOURNEY_SESSION_CAP) — this run's ` +
+        'login would be refused and read as a wrong password. Find the leak (a runner that never ' +
+        'logged out, a hung run) or restart the runtime; ALLOW_SESSION_CAP=1 overrides');
+      return { lines, rows, skip, abort: 2 };
+    }
+    lines.push(`SETUP  sessions: ${p.sessions} live${cap > 0 ? ` of cap ${cap}` : ''}` +
+      (p.sessions > 0 && !cap ? ' — on a trial licence leaked sessions fill the cap; set JOURNEY_SESSION_CAP to refuse at it' : ''));
+  }
+  return { lines, rows, skip, abort: null };
+}
+
+// ── Landing state: no focus ring before any pointer action (#281) ───────────
+// Mendix focuses the first nav item from script on page load, and Chrome treats that as
+// :focus-visible. So a focus ring added for accessibility paints on every landing. A step
+// that clicks first clears it, and a check that counts only inset box-shadows misses an
+// outline. Field run 2026-10-12: the ring showed on landing for 3 of 3 roles on one app
+// while its 3 UX asserts stayed green.
+//
+// collectLanding() runs in the page right after login, before any click. It returns the
+// elements that draw a ring: any element with a visible outline, plus any FOCUSED element
+// (activeElement, :focus, :focus-visible) with a box-shadow. A card's resting shadow is
+// not a focus ring, so unfocused box-shadows are not collected. judgeLanding() is the pure
+// verdict, exported for the fixture.
+async function collectLanding(page) {
+  return page.evaluate(() => {
+    const out = [];
+    const name = el => {
+      const cls = (typeof el.className === 'string' ? el.className : '').trim().split(/\s+/)
+        .filter(c => /^mx-name-|^mx-navigation|^nav|^btn/.test(c)).slice(0, 2).join('.');
+      return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (cls ? '.' + cls : '');
+    };
+    for (const el of document.querySelectorAll('*')) {
+      const cs = getComputedStyle(el);
+      let focused = el === document.activeElement;
+      try { focused = focused || el.matches(':focus') || el.matches(':focus-visible'); } catch {}
+      const outlined = cs.outlineStyle !== 'none' && cs.outlineWidth !== '0px';
+      const shadowed = focused && cs.boxShadow && cs.boxShadow !== 'none';
+      if (outlined || shadowed)
+        out.push({ el: name(el), outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth,
+                   boxShadow: cs.boxShadow, focused });
+      if (out.length >= 20) break;
+    }
+    return out;
+  }).catch(e => ({ error: String(e && e.message || e) }));
+}
+
+function judgeLanding(snapshot) {
+  if (!Array.isArray(snapshot))
+    return { verdict: 'INVALID', detail: `landing state not read: ${(snapshot && snapshot.error) || 'no snapshot'}` };
+  const rings = snapshot.filter(r =>
+    (r.outlineStyle && r.outlineStyle !== 'none' && r.outlineWidth !== '0px')
+    || (r.focused && r.boxShadow && r.boxShadow !== 'none'));
+  if (!rings.length) return { verdict: 'PASS', detail: 'no outline and no focus box-shadow on any element' };
+  return { verdict: 'FAIL', detail: `${rings.length} element(s) draw a ring before any click: ` +
+    rings.slice(0, 5).map(r => r.outlineStyle && r.outlineStyle !== 'none' && r.outlineWidth !== '0px'
+      ? `${r.el} outline ${r.outlineWidth} ${r.outlineStyle}` : `${r.el} focus box-shadow`).join('; ') +
+    ' — style the ring for keyboard focus only (e.g. under a class set on the first Tab key)' };
+}
+
+// ── Declared state: requires / leaves / consumes ────────────────────────────
+// Optional journey-level arrays of state tokens (free strings, e.g. "change-at-review"):
+//   requires  — this journey's seeds only resolve when that state holds
+//   leaves    — a clean walk of this journey leaves that state behind
+//   consumes  — a walk of this journey destroys that state (moves the record on)
+// orderJourneys() puts every journey that leaves X before every journey requiring X, and
+// every journey requiring X before every journey consuming X; ties keep file order, so a
+// suite with no headers runs exactly as listed (back-compat). A cycle keeps file order
+// for the journeys in it and is reported.
+function orderJourneys(journeys) {
+  const n = journeys.length;
+  const arr = (j, k) => Array.isArray(j[k]) ? j[k] : [];
+  const edges = Array.from({ length: n }, () => new Set());
+  const indeg = new Array(n).fill(0);
+  const add = (a, b) => { if (a !== b && !edges[a].has(b)) { edges[a].add(b); indeg[b]++; } };
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+    for (const x of arr(journeys[a], 'leaves'))
+      if (arr(journeys[b], 'requires').includes(x)) add(a, b);
+    for (const x of arr(journeys[a], 'requires'))
+      if (arr(journeys[b], 'consumes').includes(x)) add(a, b);
+  }
+  const done = new Array(n).fill(false), order = [];
+  for (;;) {
+    let next = -1;
+    for (let i = 0; i < n; i++) if (!done[i] && indeg[i] === 0) { next = i; break; }
+    if (next === -1) break;
+    done[next] = true; order.push(next);
+    for (const b of edges[next]) indeg[b]--;
+  }
+  const cycle = [];
+  for (let i = 0; i < n; i++) if (!done[i]) { cycle.push(journeys[i].id); order.push(i); }
+  return { order: order.map(i => journeys[i]), cycle: cycle.length ? cycle : null };
+}
+
+// Tracks which declared states hold as the suite walks. `assumed` are tokens no journey in
+// this run leaves: the runner cannot know them, so it trusts the fixture (and says so once).
+function stateTracker(journeys) {
+  const leftBy = new Map();
+  for (const j of journeys) for (const x of j.leaves || []) {
+    if (!leftBy.has(x)) leftBy.set(x, []);
+    leftBy.get(x).push(j.id);
+  }
+  const held = new Set();
+  const lost = new Map();      // token -> why it does not hold
+  const ran = new Map();       // journey id -> 'clean' | '<n FAIL / m INVALID>' | 'not walked'
+  return {
+    // null when the journey may run, else the INVALID detail.
+    gate(j) {
+      const unmet = [];
+      for (const x of j.requires || []) {
+        if (held.has(x)) continue;
+        if (lost.has(x)) { unmet.push(`${x} (${lost.get(x)})`); continue; }
+        const by = leftBy.get(x);
+        if (!by) continue;                       // no journey here leaves it: fixture's job
+        const why = by.map(id => ran.has(id) ? `${id}, which ${ran.get(id) === 'not walked'
+          ? 'was not walked' : `did not complete: ${ran.get(id)}`}` : `${id}, not yet run`);
+        unmet.push(`${x} (left by journey ${why.join(' / ')})`);
+      }
+      return unmet.length ? `precondition not met: ${unmet.join('; ')} — journey NOT walked; ` +
+        'this is an ordering/fixture fault, not a feature failure' : null;
+    },
+    // Called after each journey with the rows it produced (none when it was not walked).
+    settle(j, rows, walked) {
+      const f = rows.filter(r => r.verdict === 'FAIL').length;
+      const v = rows.filter(r => r.verdict === 'INVALID').length;
+      const clean = walked && !f && !v;
+      ran.set(j.id, !walked ? 'not walked' : clean ? 'clean' : `${f} FAIL / ${v} INVALID`);
+      if (!walked) return;
+      for (const x of j.consumes || []) { held.delete(x); lost.set(x, `consumed by journey ${j.id}`); }
+      if (clean) for (const x of j.leaves || []) { held.add(x); lost.delete(x); }
+    },
+    assumed() {
+      const all = new Set([].concat(...journeys.map(j => j.requires || [])));
+      return [...all].filter(x => !leftBy.has(x));
+    },
+  };
+}
+
 // ── Exports for the rung-4 scope unit test ──────────────────────────────────
 // The SQL builders are pure and exported so their behaviour can be proven against
 // fixture rows without a running app. See tests/e2e/journey-rung4-scope.test.js.
 // runExitCode is exported for tests/wave2/test-journey-control-exit.sh, personaMismatch
-// for tests/wave2/test-journey-persona.sh.
+// for tests/wave2/test-journey-persona.sh, the preflight/ordering set for
+// tests/wave2/test-journey-preflight.sh.
 module.exports = {
   sqlRowCount, sqlWatermark, whereScoped, scopeLiteral,
   sqlAssocTotal, sqlAssocLinked, sqlMustPointAt, captureScope, scopeEvidence,
   runExitCode, personaMismatch,
+  classifyAdminProbe, journeyNeedsAdmin, missingEnv, preflight, orderJourneys, stateTracker,
+  judgeLanding,
 };
 
 // ── Main ────────────────────────────────────────────────────────────────────
 if (require.main !== module) return;
+// Ends the server-side session exactly once, on every exit path: normal end, a thrown error
+// (the .catch below), SIGINT/SIGTERM. The logout used to be one line after the journey loop,
+// so a crash or an interrupted run skipped it and leaked a session — on a trial licence those
+// accumulate until the cap refuses every login (#287: journeys that never logged out, a hung
+// runner, a retry loop). Bounded, so a dead page cannot hang the exit.
+let RELEASE = async () => {};
+function armRelease(page, li) {
+  let done = false;
+  RELEASE = async () => {
+    if (done || !li.ok) return;
+    done = true;
+    const ok = await Promise.race([H.logout(page), PAUSE(5000).then(() => false)]);
+    if (!ok) console.log('  ⚠ logout NOT confirmed — this run\'s session may still be open on the runtime ' +
+                         '(trial licences cap live sessions; a restart clears them)');
+  };
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.once(sig, () => { RELEASE().finally(() => process.exit(2)); });
+  }
+}
+
+const findingsFile = () => path.join(cfg.artifactsDir,
+  POSITIVE_CONTROL ? 'journey-findings-control.json' : 'journey-findings.json');
+
 (async () => {
-  const journeys = files.map(f => JSON.parse(fs.readFileSync(f, 'utf8')));
+  const loaded = files.map(f => JSON.parse(fs.readFileSync(f, 'utf8')));
+  // Declared order first (requires/leaves/consumes); without headers this is file order.
+  const { order: journeys, cycle } = orderJourneys(loaded);
+  if (journeys.some((j, i) => j !== loaded[i]))
+    console.log(`  order from requires/leaves/consumes: ${journeys.map(j => j.id).join(' → ')}`);
+  if (cycle)
+    console.log(`  ⚠ requires/leaves/consumes form a cycle among ${cycle.join(', ')} — those keep file order`);
+
+  // Preflight BEFORE the browser: a run that can only produce INVALIDs ends here, in one
+  // line, instead of after N journeys of them.
+  console.log('\n=== PREFLIGHT ===');
+  const pf = preflight(journeys);
+  for (const l of pf.lines) console.log(`  ${l}`);
+  results.push(...pf.rows);
+  if (pf.abort !== null) {
+    console.log('\n=== SUMMARY ===');
+    console.log(`  ABORTED at preflight — 0 of ${journeys.length} journeys walked. Fix the SETUP line(s) above.`);
+    // Written, not skipped: an aborted run must not leave the previous run's file in the slot
+    // reading as this one.
+    fs.mkdirSync(cfg.artifactsDir, { recursive: true });
+    fs.writeFileSync(findingsFile(), JSON.stringify({
+      capturedAt: new Date().toISOString(), aborted: 'preflight',
+      configuredUser: cfg.user, actualUser: null, usedFallback: false,
+      baseUrl: cfg.baseUrl, positiveControl: POSITIVE_CONTROL, results, walks,
+    }, null, 2));
+    console.log(`  findings → ${path.relative(cfg.root, findingsFile())}`);
+    process.exit(pf.abort);
+  }
 
   const { browser, page } = await H.launchBrowser();
 
   const li = await H.login(page);
+  armRelease(page, li);
+
+  // Landing check: once per run, right after login, before any click. One run signs in as
+  // one role, so "N of N roles" is the count over the per-role runs.
+  if (li.ok && (ASSERT_LANDING || journeys.some(j => j.assertLanding === true))) {
+    const lj = judgeLanding(await collectLanding(page));
+    record('ui', `landing as ${li.user}: no focus ring before any click`, lj.verdict, lj.detail);
+  }
   // Identity, not presence. A silent degrade to admin bypasses the role grants the
   // journey exists to exercise, and every assertion below would be measuring an
   // access path no real user takes.
@@ -922,11 +1292,28 @@ if (require.main !== module) return;
   // "N of M rungs proven", never a bare list of the ones that happened to work.
   const mutantLedger = [];
 
+  const state = stateTracker(journeys);
+  const assumed = state.assumed();
+  if (assumed.length)
+    console.log(`  requires that no journey in this run leaves (trusted to the fixture): ${assumed.join(', ')}`);
+
   if (li.ok && !li.usedFallback) {
     for (const j of journeys) {
+      // Already named once on the preflight SETUP line; no per-journey INVALID on top.
+      if (pf.skip.has(j.id)) { state.settle(j, [], false); continue; }
       const wrongPersona = personaMismatch(j, li.user);
       if (wrongPersona) {
         record('ui', `${j.id}: persona`, 'INVALID', wrongPersona, (j.requirement || []).join(', '));
+        state.settle(j, [], false);
+        continue;
+      }
+      // A declared precondition left unmet by an earlier journey is named as such, with the
+      // journey that should have left it — not a seed INVALID that reads like a data fault.
+      // Walk runs only: a control run's mutants fail on purpose, so "did it complete" is moot.
+      const unmet = POSITIVE_CONTROL ? null : state.gate(j);
+      if (unmet) {
+        record('setup', `${j.id}: precondition`, 'INVALID', unmet, (j.requirement || []).join(', '));
+        state.settle(j, [], false);
         continue;
       }
       if (POSITIVE_CONTROL) {
@@ -972,8 +1359,10 @@ if (require.main !== module) return;
                        : 'BROKEN PRECONDITION WENT GREEN — this rung proves nothing');
         }
       } else {
+        const before = results.length;
         await resetToStart(page);
         await runJourney(page, j);
+        state.settle(j, results.slice(before), true);
       }
     }
   }
@@ -982,7 +1371,7 @@ if (require.main !== module) return;
   // browser does not end a Mendix session; on an unlicensed runtime the leaked
   // sessions accumulate across runs until every later login is refused, and the
   // UI reports that as a wrong password. Measured 2026-08-18.
-  if (li.ok) await H.logout(page);
+  await RELEASE();
   await browser.close();
 
   const n = v => results.filter(r => r.verdict === v).length;
@@ -1028,8 +1417,7 @@ if (require.main !== module) return;
   //
   // These two files answer different questions ("does the app work" / "can this
   // harness tell when it doesn't") and must never share storage.
-  const out = path.join(cfg.artifactsDir,
-    POSITIVE_CONTROL ? 'journey-findings-control.json' : 'journey-findings.json');
+  const out = findingsFile();
   fs.writeFileSync(out, JSON.stringify({
     capturedAt: new Date().toISOString(),
     configuredUser: cfg.user, actualUser: li.user, usedFallback: !!li.usedFallback,
@@ -1037,8 +1425,11 @@ if (require.main !== module) return;
   }, null, 2));
   console.log(`  findings → ${path.relative(cfg.root, out)}`);
 
-  process.exit(runExitCode(POSITIVE_CONTROL, results, mutants));
-})().catch(e => {
+  // A control run's exit ignores non-control rows, so a journey the preflight held back
+  // (its mutants never ran) must still keep the control verdict from reading clean.
+  process.exit(POSITIVE_CONTROL && pf.rows.length ? 1 : runExitCode(POSITIVE_CONTROL, results, mutants));
+})().catch(async e => {
   console.error('ERR', e.stack?.split('\n').slice(0, 8).join('\n'));
+  await RELEASE().catch(() => {});   // a crash must not leak the session either
   process.exit(1);
 });

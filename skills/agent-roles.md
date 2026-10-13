@@ -75,6 +75,17 @@ shows up in the bill:
    does not need yet gets no reply; read the lane's files when its last unit lands. Never send a
    message to an agent that has already reported — that restarts it at its full context.
 
+**App restarts: the implementer restarts its own app, through one script only.** Write this into
+every implementer brief: "When `exec.sh` prints `restart needed`, run `./bin/app-restart.sh`
+yourself and carry on; never stop or start an app any other way (no kill by name, no `pkill`, no
+second `run --local`), and never touch another lane's app." The helper stops only the pid that
+`run --local` recorded for that project and refuses otherwise (`ui-loop.md` § "What watch picks
+up"). The old rule, that only the lead restarts apps, came from a broad kill in one lane that took
+down another lane's app; the helper cannot do that, and the rule cost 24 implementer
+restart-resumes (41.6M tokens, 8.5% of subagent tokens) in the 2026-10-12 run (#289). If the
+helper refuses (exit 3) or the app does not come back (exit 1), the implementer reports
+`BLOCKED NEEDS_RESTART` with its output, as before.
+
 **Prefix you do not control.** Every subagent turn also carries the harness's skill listing,
 tool and MCP notes and the instruction chain — 47–48k tokens in that run before the brief was
 read, about 40% of subagent volume. Each installed skill and plugin adds to it on every turn of
@@ -99,6 +110,8 @@ A single do-everything agent has no natural place to stop before mutating the re
 | **gate-agent** | Run the project's build/quality gates (model check, compile gate, lint) *after* the main session has already executed a script | No | No — read-only/verification-only |
 | **test-agent** | Walk UI test scenarios against the running app, cross-check against the database | No | No — read-only/verification-only |
 | **review-agent** | Owns `module-review.md` — the one pass that closes a module. Stage 3's model-side instruments (`bin/review-module.sh`: conformance + graph sweep) **and stage 4, the LOOK**: every page in the module assessed against wireframe, design system and plain design judgement. Diagnostic only — never fixes what it finds | No — never | Yes, but only its own report under `design/ui-reviews/`, via `Bash` |
+
+**Who records a change, who flushes it.** A mid-build change or decision is *marked* by the lead: the `PROJECT.md` `## Change log` row, the decision row, any `[sync:]` marker. `mdl-agent` and `gate-agent` report it and never write `PROJECT.md`. `ba-agent` flushes BRDs and module briefs, and `architect-agent` flushes wireframes and `architecture/`. The single source is the Owners table in `change-intake.md`.
 
 **The one rule that matters more than any other: only the main session (the one talking to the user) ever runs the command that mutates the real `.mpr`.** All six subagents get `tools: Read, Grep, Glob, Bash` — never `Write`/`Edit`. Agents that need to produce files (`ba-agent`, `architect-agent`, `mdl-agent`) do so via `Bash` (shell redirection/heredoc), not the `Write` tool — that keeps "can this agent silently overwrite something outside its lane" a visible, auditable choice in its tool list rather than an assumption.
 

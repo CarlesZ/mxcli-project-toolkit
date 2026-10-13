@@ -48,6 +48,12 @@ Real rows come back. From a committed run (`tests/e2e/artifacts/findings.json`, 
 **26 OQL assertions in that one report, all answered.** The token there is not randomised; it is
 `1`, because that is what the project's `m2ee` config sets.
 
+**That `|| '1'` is a project fact, not a default.** On another app the same literal produced HTTP 403
+on every data rung (#286). The shipped `tests/e2e/config.js` now resolves the token in this order:
+`M2EE_ADMIN_PASS` → this app's `.mxcli/run-local.json` → `.docker/.env` → a guess that is labelled
+as a guess. `journey-runner.js` probes the admin API once before the suite and aborts on 401/403,
+naming where the token came from.
+
 ### Correction to the previous version of this skill
 
 This skill used to open with: *"`mxcli oql --direct` requires the M2EE admin token. In Mendix

@@ -11,9 +11,18 @@
 # triggers the snapshot restore. See "Delta gate" below. An error is identified by
 # code + message + where (module / document / element), counted, not deduplicated.
 #
-# Usage: ./bin/exec.sh <script.mdl>
-#        ./bin/exec.sh --patch <script> [args...]
+# Usage: ./bin/exec.sh [--commit-first] <script.mdl>
+#        ./bin/exec.sh [--commit-first] --patch <script> [args...]
 #        ./bin/exec.sh --change-class <script.mdl>   (advisory ui-only/logic tag; writes nothing)
+#        ./bin/exec.sh --watch-compat <script.mdl>   (advisory: can `run --local --watch` apply
+#                                                     this, or does the app need a restart; writes nothing)
+#        ./bin/exec.sh --cr CR-07 <script.mdl>        (any mode: tag the run with its change request)
+#
+# --cr (2026-10-13): names the PROJECT.md "## Change log" row this run applies
+# (skills/change-intake.md). It lands in the BUILD-LOG detail cell as "cr: CR-07", the same way
+# the change-class tag does; the metrics-ledger columns are unchanged. Optional — a planned build
+# step has no CR. Its value: a BUILD-LOG row with a cr tag is the Closed-by evidence the change
+# log asks for, and an exec with neither a plan step nor a cr is the MDL-first change signature.
 #
 # --patch (2026-09-27): the same chain around a one-off script that edits the model directly
 # (a Python BSON patch for something mxcli cannot express, e.g. an association owner change).
@@ -34,6 +43,21 @@
 # Refuses to run while the model has UNCOMMITTED changes (by design: the snapshot
 # taken below would not cover them, so a later auto-restore could silently lose
 # that work) — commit the model first, or FORCE_EXEC=1 to override at that risk.
+# --commit-first (or MXTK_COMMIT_FIRST=1) does that commit for you, opt-in only: it prints
+# the model paths it will commit, stages and commits ONLY the .mpr and mprcontents/
+# (`git commit -- <paths>`, so anything else already staged stays staged and uncommitted),
+# then goes on. It refuses while Studio Pro holds the model, even under FORCE_EXEC, because
+# SP's in-memory model is not what is on disk. The project's pre-commit model-stamp hook
+# still applies; if it refuses, nothing is executed and its remedy is printed.
+# WHY: in a 20-task UX-fix field run (2026-10-12) 26 of 148 exec.sh runs applied nothing
+# because of this refusal, and each one cost a turn to commit and re-run (#287 item 4).
+#
+# One exec.sh at a time PER PROJECT: .mpr-snapshots/.exec.lock holds "<pid> <epoch> <script>".
+# A lock whose pid is dead (a crash, a SIGKILL, a closed terminal) is stale and is taken over
+# with a printed note — never a manual rm. A running `mxcli exec` belonging to some other
+# project on the same machine is NOT a conflict and no longer blocks (#287 item 3: a test run
+# on a scratch copy of a different project blocked an unrelated exec).
+# bin/test-scratch.sh takes the same lock while it copies the model for `mxcli test` (#278).
 #
 # Overrides: FORCE_EXEC=1 (skip refusals), SKIP_CHECK=1 (skip the pre-exec
 #            mxcli check), SKIP_BASELINE=1 (skip pre-flight mxbuild),
@@ -76,24 +100,14 @@ _T0=$(date +%s)
 #   ./bin/exec.sh --change-class <script.mdl>   prints `ui-only` or `logic`, then a tab and the
 #                                               deciding statement head (line N: ...); exit 0.
 #                                               Touches nothing, needs no .mpr.
-mxtk_change_class() {  # $1 = MDL script; prints "<class>\t<why>"
-  awk '
-    function head_class(w1, w2, w4,    obj) {
-      if (w1 ~ /^(SHOW|DESCRIBE|CONNECT|DISCONNECT|REFRESH|SEARCH|HELP|SELECT|LIST|USE|EXIT|QUIT)$/) return "neutral"
-      if (w1 == "UPDATE" && w2 == "WIDGETS") return "ui"
-      if (w1 == "ALTER" && w2 == "STYLING") return "ui"
-      if (w1 ~ /^(CREATE|ALTER|DROP|MOVE)$/) {
-        obj = w2
-        if (w1 == "CREATE" && w2 == "OR") obj = w4
-        if (obj ~ /^(PAGE|SNIPPET|LAYOUT)$/) return "ui"
-        return "logic"
-      }
-      if (w1 ~ /^(GRANT|REVOKE|UPDATE|INSERT|DELETE|SQL|IMPORT|EXPORT|EXECUTE|RENAME|SET|CALL|COMMIT|CHANGE|RETRIEVE|DECLARE)$/) return "logic"
-      return "skip"   # a continuation line (to Role;  returns Boolean ...) — not a statement head
-    }
-    BEGIN { depth = 0; inblock = 0; indollar = 0; ui = 0; logic = ""; }
-    {
-      line = $0; clean = ""; n = length(line); i = 1
+# The lexer both advisory classifiers share (change class above, watch-compat below): blanks
+# comments ("--", "//", "/* */"), $$-bodies and '...' literals, strips identifier quotes, and
+# tracks ( { ) } depth. lex_line(line) sets `clean` (the line with all that removed) and
+# `start_depth` (the bracket depth the line STARTS at — 0 means it can be a statement head).
+# Assigned single-quoted, invoked double-quoted: awk's $0 must survive the shell.
+_MXTK_MDL_LEX='
+    function lex_line(line,    n, i, c, c2, tmp, o, cl) {
+      clean = ""; n = length(line); i = 1
       while (i <= n) {
         c = substr(line, i, 1); c2 = substr(line, i, 2)
         if (inblock)   { if (c2 == "*/") { inblock = 0; i += 2 } else i++; continue }
@@ -110,6 +124,27 @@ mxtk_change_class() {  # $1 = MDL script; prints "<class>\t<why>"
         clean = clean c; i++
       }
       start_depth = depth
+      tmp = clean; o = gsub(/[({]/, "", tmp); tmp = clean; cl = gsub(/[)}]/, "", tmp)
+      depth += o - cl; if (depth < 0) depth = 0
+    }'
+mxtk_change_class() {  # $1 = MDL script; prints "<class>\t<why>"
+  awk "$_MXTK_MDL_LEX"'
+    function head_class(w1, w2, w4,    obj) {
+      if (w1 ~ /^(SHOW|DESCRIBE|CONNECT|DISCONNECT|REFRESH|SEARCH|HELP|SELECT|LIST|USE|EXIT|QUIT)$/) return "neutral"
+      if (w1 == "UPDATE" && w2 == "WIDGETS") return "ui"
+      if (w1 == "ALTER" && w2 == "STYLING") return "ui"
+      if (w1 ~ /^(CREATE|ALTER|DROP|MOVE)$/) {
+        obj = w2
+        if (w1 == "CREATE" && w2 == "OR") obj = w4
+        if (obj ~ /^(PAGE|SNIPPET|LAYOUT)$/) return "ui"
+        return "logic"
+      }
+      if (w1 ~ /^(GRANT|REVOKE|UPDATE|INSERT|DELETE|SQL|IMPORT|EXPORT|EXECUTE|RENAME|SET|CALL|COMMIT|CHANGE|RETRIEVE|DECLARE)$/) return "logic"
+      return "skip"   # a continuation line (to Role;  returns Boolean ...) — not a statement head
+    }
+    BEGIN { depth = 0; inblock = 0; indollar = 0; ui = 0; logic = ""; }
+    {
+      lex_line($0)
       t = clean; gsub(/^[ \t]+/, "", t)
       if (start_depth == 0 && t ~ /^[A-Za-z]/) {
         split(toupper(t), w, /[ \t(;{]+/)
@@ -120,8 +155,6 @@ mxtk_change_class() {  # $1 = MDL script; prints "<class>\t<why>"
           logic = "line " NR ": " h
         }
       }
-      tmp = clean; o = gsub(/[({]/, "", tmp); tmp = clean; c_ = gsub(/[)}]/, "", tmp)
-      depth += o - c_; if (depth < 0) depth = 0
     }
     END {
       if (logic != "")  { printf "logic\t%s\n", logic; exit }
@@ -129,9 +162,117 @@ mxtk_change_class() {  # $1 = MDL script; prints "<class>\t<why>"
       printf "ui-only\t%d page/snippet/layout statement(s), nothing else\n", ui
     }' "$1"
 }
+# --cr CR-NN may lead any mode. Parsed first, before anything needs a project, so a malformed id
+# is refused without touching the model.
+CR_ID=""
+if [ "${1:-}" = "--cr" ]; then
+  CR_ID="${2:-}"
+  case "$CR_ID" in
+    CR-[0-9]*) case "${CR_ID#CR-}" in *[!0-9]*) CR_ID="!" ;; esac ;;
+    *) CR_ID="!" ;;
+  esac
+  if [ "$CR_ID" = "!" ]; then
+    echo "✗ --cr takes a change-log id like CR-07 (PROJECT.md '## Change log', skills/change-intake.md); got '${2:-}'" >&2
+    exit 2
+  fi
+  shift 2
+fi
 if [ "${1:-}" = "--change-class" ]; then
   [ -f "${2:-}" ] || { echo "Usage: ./bin/exec.sh --change-class <script.mdl>" >&2; exit 2; }
   mxtk_change_class "$2"
+  exit 0
+fi
+
+# ── Watch compatibility (advisory, added 2026-10-13) ─────────────────────────
+# After a write, can a running `mxcli run --local --watch` apply it, or will the app keep
+# serving the OLD model until someone restarts it? skills/ui-loop.md § "What watch picks up"
+# holds the covers / does-not-cover table and the stale-runtime symptom list; this is the
+# mechanical half of it, so it names the same change classes and nothing else.
+#
+# WHY. In a 20-task UX-fix run over three apps (2026-10-12; #284, #275, #289) watch silently
+# missed recreated microflows, new grants, new attributes, new pages and page URLs, and theme
+# SCSS/JS edits: ~26 restarts, and stale code that read as product defects (a security error
+# on a page, NoClassDefFoundError on a widget class, deep links landing on Home) cost a
+# diagnosis round each before anyone suspected the runtime.
+#
+# Restart class (statement heads read with the change-class lexer above, so comments, strings
+# and widget/property lines never count):
+#   CREATE [OR MODIFY|REPLACE] MICROFLOW, DROP MICROFLOW     → microflow created/recreated/dropped
+#   CREATE ... ENTITY                                        → entity (new attributes)
+#   ALTER ENTITY ... ADD ...                                 → attribute added
+#   GRANT / REVOKE                                           → access rule changed
+#   CREATE ... MODULE ROLE | USER ROLE, ALTER USER ROLE      → role added/changed
+#   CREATE PAGE (no OR — a new page)                         → new page
+#   a Url property on a page (create header, `set Url = ...`) → page URL (route table)
+# `CREATE OR REPLACE|MODIFY PAGE` without a Url is reported as reloadable, with a note that
+# it needs a restart IF the page is new — a script cannot tell new from replaced. Theme
+# SCSS/JS is not in the script; exec.sh checks those files against the running app's boot
+# (see watch_theme_changes below).
+#
+# ADVISORY ONLY: never blocks, never changes a gate or a verdict. Golden input: real MDL
+# (tests/wave2/test-exec-lock-watch.sh).
+#
+#   ./bin/exec.sh --watch-compat <script.mdl>   prints `restart needed: <reasons>` or
+#                                               `watch can apply this`, exit 0. Touches nothing.
+mxtk_watch_compat() {  # $1 = MDL script; prints "restart\t<reasons>" | "watch\t<note>"
+  awk "$_MXTK_MDL_LEX"'
+    function add(label, nr) {
+      if (!(label in cnt)) { order[++nlab] = label; first[label] = nr }
+      cnt[label]++
+    }
+    BEGIN { depth = 0; inblock = 0; indollar = 0; cur_page = 0; nlab = 0; maybe = "" }
+    {
+      lex_line($0)
+      t = clean; gsub(/^[ \t]+/, "", t)
+      if (start_depth == 0 && t ~ /^[A-Za-z]/) {
+        n = split(toupper(t), w, /[ \t(;{]+/)
+        v = w[1]
+        if (v ~ /^(CREATE|ALTER|DROP|GRANT|REVOKE|MOVE|RENAME|SHOW|DESCRIBE|UPDATE|SET|EXECUTE)$/) {
+          j = 2; if (v == "CREATE" && w[2] == "OR") j = 4
+          o1 = w[j]; o2 = w[j+1]; o3 = w[j+2]
+          cur_page = ((v == "CREATE" || v == "ALTER") && o1 == "PAGE")
+          if ((v == "CREATE" || v == "DROP") && o1 == "MICROFLOW")
+            add(v == "DROP" ? "microflow dropped" : "microflow created or recreated", NR)
+          else if (v == "CREATE" && (o1 == "ENTITY" || o2 == "ENTITY"))
+            add("entity created or changed (new attributes)", NR)
+          else if (v == "ALTER" && o1 == "ENTITY") {
+            for (k = 3; k <= n; k++) if (w[k] == "ADD") { add("attribute added", NR); break }
+          }
+          else if (v == "GRANT" || v == "REVOKE")
+            add("access rule changed (" v ")", NR)
+          else if ((v == "CREATE" && ((o1 == "MODULE" && o2 == "ROLE") || (o1 == "USER" && o2 == "ROLE"))) \
+                   || (v == "ALTER" && o1 == "USER" && o2 == "ROLE"))
+            add("module/user role added or changed", NR)
+          else if (v == "CREATE" && o1 == "PAGE" && j == 2)
+            add("new page", NR)
+          else if (v == "CREATE" && o1 == "PAGE" && maybe == "")
+            maybe = "line " NR ": " substr(t, 1, 60)
+        }
+      }
+      # A Url property on a page: the create header `(..., Url: ...)` or `set Url = ...` in an
+      # ALTER PAGE body. The identifier must stand alone, so ImageUrl never matches.
+      if (cur_page && clean ~ /(^|[^A-Za-z0-9_])Url[ \t]*[:=]/) add("page URL added or changed (route table)", NR)
+    }
+    END {
+      if (nlab > 0) {
+        s = ""
+        for (i = 1; i <= nlab; i++) {
+          l = order[i]; s = s (i > 1 ? "; " : "") l (cnt[l] > 1 ? " x" cnt[l] : "") " (line " first[l] ")"
+        }
+        printf "restart\t%s\n", s; exit
+      }
+      if (maybe != "") { printf "watch\tunless the page is new: create or replace/modify page, %s\n", maybe; exit }
+      printf "watch\t\n"
+    }' "$1"
+}
+if [ "${1:-}" = "--watch-compat" ]; then
+  [ -f "${2:-}" ] || { echo "Usage: ./bin/exec.sh --watch-compat <script.mdl>" >&2; exit 2; }
+  _wc="$(mxtk_watch_compat "$2")"
+  case "${_wc%%	*}" in
+    restart) echo "restart needed: ${_wc#*	}" ;;
+    *) _n="${_wc#*	}"
+       if [ -n "$_n" ]; then echo "watch can apply this — $_n"; else echo "watch can apply this"; fi ;;
+  esac
   exit 0
 fi
 
@@ -141,6 +282,11 @@ MPR="$(find_mpr)" || exit 1
 MPR_BASE="$(basename "$MPR")"
 NAME="$(basename "$MPR" .mpr)"
 PATCH_MODE=0
+COMMIT_FIRST="${MXTK_COMMIT_FIRST:-0}"
+if [ "${1:-}" = "--commit-first" ]; then
+  COMMIT_FIRST=1
+  shift
+fi
 if [ "${1:-}" = "--patch" ]; then
   PATCH_MODE=1
   shift
@@ -152,8 +298,8 @@ LOG_NAME="$(basename "$SCRIPT")"
 [ "$PATCH_MODE" = "1" ] && LOG_NAME="patch: $LOG_NAME"
 
 if [ -z "$SCRIPT" ]; then
-  echo "Usage: ./bin/exec.sh <script.mdl>"
-  echo "       ./bin/exec.sh --patch <script> [args...]"
+  echo "Usage: ./bin/exec.sh [--commit-first] [--cr CR-NN] <script.mdl>"
+  echo "       ./bin/exec.sh [--commit-first] --patch <script> [args...]"
   exit 1
 fi
 if [ "$PATCH_MODE" = "1" ]; then
@@ -182,6 +328,7 @@ change_lane() {
     logic)   echo "re-run only the tests whose subject this change touched (changed microflows + their SHOW CALLERS, changed pages' journeys). Full mxcli test at module close, not here" ;;
   esac
 }
+[ -n "$CR_ID" ] && echo "→ Change request: $CR_ID (PROJECT.md '## Change log'; cite this run's commit in its Closed-by)"
 if [ -n "$CHANGE_CLASS" ]; then
   echo "→ Change class: $CHANGE_CLASS ($CHANGE_WHY)"
   echo "  test lane (skills/testing-shape.md §3): $(change_lane)"
@@ -253,7 +400,7 @@ HDR2
   # The gate cell is read from GATE_STATE rather than passed in, so no caller
   # can omit it — a blank cell in this table reads as "fine", which is the exact
   # false-green the gate exists to prevent.
-  _detail="$2${CHANGE_CLASS:+ · change: $CHANGE_CLASS}$_EXEC_APPROVAL_SUFFIX"
+  _detail="$2${CHANGE_CLASS:+ · change: $CHANGE_CLASS}${CR_ID:+ · cr: $CR_ID}$_EXEC_APPROVAL_SUFFIX"
   printf '| %s | `%s` | %s | %s | %s |\n' \
     "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$LOG_NAME" \
     "${GATE_STATE:-not-run}" "$1" "$_detail" >> "$BUILD_LOG"
@@ -307,9 +454,11 @@ FORCE="${FORCE_EXEC:-0}"
 
 # 1. Studio Pro must not hold the project open (SP's in-memory model vs a direct
 #    file write = split-brain).
+SP_OPEN=0
 if [ -f "$MPR.lock" ]; then
   SP_PID=$(grep -oE '"ProcessId":[0-9]+' "$MPR.lock" 2>/dev/null | grep -oE '[0-9]+' || true)
   if [ -n "$SP_PID" ] && kill -0 "$SP_PID" 2>/dev/null; then
+    SP_OPEN=1
     echo "✗ Studio Pro has $NAME open (lock PID $SP_PID alive) — refusing exec (split-brain corruption risk)."
     echo "  → Close the project in Studio Pro (or quit SP), then re-run."
     echo "    Override (NOT recommended): FORCE_EXEC=1 ./bin/exec.sh $SCRIPT"
@@ -320,32 +469,132 @@ if [ -f "$MPR.lock" ]; then
   fi
 fi
 
-# 2. No other exec.sh run in progress (e.g. a second agent session).
-if [ -f "$LOCK" ]; then
-  OTHER=$(cat "$LOCK" 2>/dev/null || true)
-  if [ -n "$OTHER" ] && kill -0 "$OTHER" 2>/dev/null; then
-    echo "✗ Another exec is already running (PID $OTHER) — refusing to write the .mpr concurrently."
-    echo "  → Wait for it to finish. If it is stale (process dead): rm '$LOCK'"
+# 2. One exec.sh at a time on THIS project (e.g. a second agent session on the same model).
+#
+#    The lock is per project — $PROJECT_ROOT/.mpr-snapshots/.exec.lock — and holds
+#    "<pid> <epoch> <script>". It is taken atomically (noclobber: O_EXCL, bash 3.2 / Git Bash /
+#    macOS alike; no flock, which macOS and Git Bash do not ship), so two sessions starting in
+#    the same second cannot both win. A lock whose pid is dead is STALE — a SIGKILL, a crash or
+#    a closed terminal never runs the EXIT trap — and is taken over with a printed note; a
+#    guard that needs a manual `rm` to recover blocks its own remedy (CLAUDE.md, instrument
+#    rule 7). Where `ps -o args=` can show the pid's command line and it is not an exec.sh, the
+#    pid was reused by an unrelated process and the lock is stale too; where it cannot (Git
+#    Bash), `kill -0` alone decides. A lock file in the pre-2026-10-13 format (a bare pid) reads
+#    the same way.
+exec_lock_live() {  # $1 = pid from the lock; 0 iff that process is alive and plausibly exec.sh
+  [ -n "$1" ] || return 1
+  case "$1" in *[!0-9]*) return 1 ;; esac
+  kill -0 "$1" 2>/dev/null || return 1
+  # Linux: an unreaped zombie still answers kill -0; /proc/<pid>/stat says Z after the "(comm) ".
+  case "$(sed 's/.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f1)" in Z) return 1 ;; esac
+  _args="$(ps -o args= -p "$1" 2>/dev/null || true)"
+  case "$_args" in ""|*exec.sh*|*test-scratch.sh*) return 0 ;; esac   # test-scratch.sh holds it while copying
+  return 1
+}
+exec_lock_try() { ( set -o noclobber; printf '%s %s %s\n' "$$" "$(date +%s)" "$LOG_NAME" > "$LOCK" ) 2>/dev/null; }
+exec_lock_release() {  # the trap: remove the lock only while it is still ours
+  _own="$(cat "$LOCK" 2>/dev/null || true)"
+  [ "${_own%% *}" = "$$" ] && rm -f "$LOCK"
+  return 0
+}
+LOCK_TAKEN=0
+for _try in 1 2 3 4 5; do
+  if exec_lock_try; then LOCK_TAKEN=1; break; fi
+  _held="$(head -1 "$LOCK" 2>/dev/null || true)"
+  if [ -z "$_held" ] && [ "$_try" -lt 3 ]; then sleep 1; continue; fi   # being written right now
+  _hpid="${_held%% *}"
+  if exec_lock_live "$_hpid"; then
+    _hrest="${_held#* }"; _hsince="${_hrest%% *}"; _hscript="${_hrest#* }"
+    _age=""
+    case "$_hsince" in ''|*[!0-9]*) ;; *) _age=" for $(( $(date +%s) - _hsince ))s" ;; esac
+    [ "$_hrest" = "$_held" ] && _hscript="?"
+    echo "✗ Another session holds this project's exec lock (PID $_hpid, running$_age, script: $_hscript)."
+    echo "  → Wait for it to finish, then re-run. Nothing was written."
+    echo "    (A dead holder is detected and taken over automatically — no manual rm is ever needed.)"
     exit 1
   fi
+  echo "  (stale exec lock from PID ${_hpid:-?}, which is not running — taking it over)"
+  # Move aside only the lock we judged; if someone else replaced it in between, put theirs back.
+  _aside="$LOCK.stale.$$"
+  if mv -f "$LOCK" "$_aside" 2>/dev/null; then
+    if [ "$(head -1 "$_aside" 2>/dev/null || true)" != "$_held" ] && [ ! -e "$LOCK" ]; then
+      mv -f "$_aside" "$LOCK" 2>/dev/null || true
+    fi
+    rm -f "$_aside"
+  fi
+done
+if [ "$LOCK_TAKEN" != 1 ]; then
+  echo "✗ Could not take the exec lock $LOCK after 5 attempts — another session keeps re-taking it."
+  echo "  → Wait for the other exec to finish, then re-run. Nothing was written."
+  exit 1
 fi
+trap 'exec_lock_release' EXIT
 
-# 3. No stray raw `mxcli exec` from another session.
-if pgrep -fl "mxcli exec" 2>/dev/null | grep -qv "$$"; then
-  echo "✗ A raw 'mxcli exec' is already running elsewhere — refusing to write concurrently."
-  [ "$FORCE" = "1" ] || exit 1
+# 3. A raw `mxcli exec` elsewhere on the machine is NOT this project's business. The old guard
+#    here (`pgrep -fl "mxcli exec"`) matched every exec on the machine, so a test run on a
+#    scratch copy of a different project blocked an unrelated write (#287 item 3, compare
+#    #228). Concurrency on THIS model is the lock above; this is a note, never a refusal.
+if command -v pgrep >/dev/null 2>&1; then
+  _raw="$(pgrep -f "mxcli exec" 2>/dev/null | grep -vx "$$" | head -3 | tr '\n' ' ' || true)"
+  [ -n "$_raw" ] && echo "  note: an 'mxcli exec' is running elsewhere on this machine (PID ${_raw% }) — not blocking; only another exec.sh on this project is."
 fi
 
 # 4. Uncommitted model changes. The snapshot taken below would not cover them,
 #    so a failed gate would auto-restore to a state pre-dating those changes and
-#    silently lose work.
+#    silently lose work. --commit-first (opt-in) commits exactly the model paths first.
+MODEL_PATHS="$MPR"
+[ -e "$MODEL_DIR/mprcontents" ] && MODEL_PATHS="$MODEL_PATHS
+$MODEL_DIR/mprcontents"
+commit_model_first() {
+  if [ "$SP_OPEN" = 1 ]; then
+    echo "✗ --commit-first refused: Studio Pro holds $NAME (PID $SP_PID). Its in-memory model is not"
+    echo "  what is on disk, so a commit now would record a state nobody is looking at."
+    echo "  → Save and close the project in Studio Pro, then re-run. Nothing was committed or executed."
+    log_build "🚫 blocked" "--commit-first refused: Studio Pro holds the model"
+    return 1
+  fi
+  echo "→ --commit-first: committing ONLY these model paths (nothing else is staged or committed):"
+  echo ""
+  echo "$MPR_DIRTY" | sed 's/^/    /'
+  echo ""
+  set -f; _IFS="$IFS"; IFS='
+'
+  # shellcheck disable=SC2086
+  _other=$(( $(git diff --cached --name-only 2>/dev/null | grep -c . || true) - $(git diff --cached --name-only -- $MODEL_PATHS 2>/dev/null | grep -c . || true) ))
+  [ "$_other" -gt 0 ] && echo "  ($_other other staged path(s) stay staged and are NOT part of this commit.)"
+  if ! git add -- $MODEL_PATHS; then
+    IFS="$_IFS"; set +f
+    echo "✗ --commit-first: git add of the model paths failed — nothing was committed or executed."
+    log_build "🚫 blocked" "--commit-first: git add failed"
+    return 1
+  fi
+  if ! _cout="$(git commit -q -m "model: commit pending model changes before exec.sh $LOG_NAME" \
+        -m "Committed by bin/exec.sh --commit-first so the pre-exec snapshot covers them. Model paths only." \
+        -- $MODEL_PATHS 2>&1)"; then
+    IFS="$_IFS"; set +f
+    printf '%s\n' "$_cout" | sed 's/^/    /'
+    echo "✗ --commit-first: git commit was refused — nothing was executed. The model paths are left staged."
+    echo "  If the model-stamp hook refused it: ./bin/verify-model.sh (one mxbuild, stamps a clean model),"
+    echo "  then re-run with --commit-first."
+    log_build "🚫 blocked" "--commit-first: git commit refused"
+    return 1
+  fi
+  IFS="$_IFS"; set +f
+  echo "  ✓ committed $(git rev-parse --short HEAD 2>/dev/null) — model paths only"
+  return 0
+}
 MPR_DIRTY=$(git status --porcelain "$MPR" "$MODEL_DIR/mprcontents" 2>/dev/null | grep -v "^$" || true)
+if [ -n "$MPR_DIRTY" ] && [ "$COMMIT_FIRST" = 1 ]; then
+  commit_model_first || exit 1
+  MPR_DIRTY=$(git status --porcelain "$MPR" "$MODEL_DIR/mprcontents" 2>/dev/null | grep -v "^$" || true)
+fi
 if [ -n "$MPR_DIRTY" ]; then
   echo "✗ Uncommitted model changes — refusing exec to prevent snapshot regression."
   echo ""
   echo "$MPR_DIRTY" | sed 's/^/    /'
   echo ""
   echo "  → git add $MPR $MODEL_DIR/mprcontents && git commit -m 'Commit model changes before exec'"
+  echo "  → or let exec.sh make exactly that commit, model files only: ./bin/exec.sh --commit-first $SCRIPT"
   echo "  Override (accepts silent-loss risk): FORCE_EXEC=1 ./bin/exec.sh $SCRIPT"
   if [ "$FORCE" != "1" ]; then
     # A refusal here is otherwise invisible in docs/BUILD-LOG.md — nothing runs
@@ -451,8 +700,8 @@ if [ -n "$brief_missing" ]; then
   echo ""
 fi
 
-echo $$ > "$LOCK"
-trap 'rm -f "$LOCK"' EXIT
+# (The exec lock is taken in guard 2 above, with its EXIT trap, so it covers the commit-first
+# step and every refusal in between.)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stale gate artefact ──────────────────────────────────────────────────────
@@ -1273,6 +1522,48 @@ fi
 if [ -f "$(dirname "$0")/build-plan-status.sh" ]; then
   bash "$(dirname "$0")/build-plan-status.sh" "$PROJECT_ROOT" --refresh >/dev/null 2>&1 || true
 fi
+
+# ── Watch compatibility (advisory) ───────────────────────────────────────────
+# The script was applied and kept. Say whether a running `run --local --watch` can apply it or
+# the app needs a restart — mxtk_watch_compat (top of file) for the statements, plus theme
+# SCSS/JS edited since the running app booted (the handshake's mtime is its boot, the same
+# reference test-stack-up.sh uses). Never blocks, never changes the exit code.
+watch_theme_changes() {  # prints up to 3 theme files newer than the run --local handshake
+  _hs=""
+  for _d in "$(cd "$(dirname "$MPR")" && pwd)" "$MODEL_DIR"; do
+    [ -f "$_d/.mxcli/run-local.json" ] && { _hs="$_d/.mxcli/run-local.json"; break; }
+  done
+  [ -n "$_hs" ] || return 0
+  for _t in "$MODEL_DIR/theme" "$MODEL_DIR/themesource"; do
+    [ -d "$_t" ] || continue
+    find "$_t" -type d -name node_modules -prune -o -type f \( -name '*.scss' -o -name '*.js' \) \
+      -newer "$_hs" -print 2>/dev/null
+  done | head -3 | sed "s|^$MODEL_DIR/||"
+}
+print_watch_compat() {
+  if [ "$PATCH_MODE" = 1 ]; then
+    _wc="restart	--patch script (opaque to the classifier — assume it needs one)"
+  else
+    _wc="$(mxtk_watch_compat "$SCRIPT" 2>/dev/null || true)"
+  fi
+  _why="${_wc#*	}"
+  _theme="$(watch_theme_changes 2>/dev/null | tr '\n' ' ' || true)"
+  if [ -n "$_theme" ]; then
+    [ "${_wc%%	*}" = restart ] && _why="$_why; " || _why=""
+    _wc="restart"; _why="${_why}theme SCSS/JS changed since the app booted: ${_theme% }"
+  fi
+  echo ""
+  case "${_wc%%	*}" in
+    restart)
+      echo "→ Watch: restart needed: $_why"
+      echo "  run --local --watch keeps serving the OLD model for these. Restart this app only:"
+      echo "  ./bin/app-restart.sh   (stale-runtime symptoms + what watch covers: toolkit skills/ui-loop.md)" ;;
+    watch)
+      if [ -n "$_why" ]; then echo "→ Watch: watch can apply this — $_why"
+      else echo "→ Watch: watch can apply this"; fi ;;
+  esac
+}
+print_watch_compat || true
 
 if [ "$GATE_STATE" != "pass" ]; then
   echo ""

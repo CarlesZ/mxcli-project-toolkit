@@ -81,7 +81,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/upstream-feedback.md` | About to open an issue, PR or discussion against mxcli or the toolkit |
 | `skills/doctor-triage.md` | doctor.sh reports FAIL or WARN, or someone asks whether a red setup line blocks them |
 | `skills/field-run.md` | Driving the whole toolkit pipeline on a real source to find what the written skills don't say |
-| `skills/learned-mdl-cannot-express.md` | Before a wireframe or a design commits to a WIDGET |
+| `skills/learned-mdl-cannot-express.md` | Before a wireframe or a design commits to a WIDGET, when a requirement shows a widget to one role and not another, and when a page script hits a parse error that looks like a syntax mistake: the short list of things MDL cannot write at all, and the four-minute probe that answers it at Stage 3 instead of at build time |
 | `skills/platform-link.md` | At project birth (before the first build script) and any time a model needs a platform home: creating the Team Server app, adopting an existing GitHub-born model into it without rewriting history, or deploying; also when the Platform SDK returns 403, git rejects the PAT, a deploy cannot be triggered from a PAT, or the app turns out to be a Free App |
 | `skills/deploy-to-sandbox.md` | Promoting an app to a deployed sandbox or cloud node, or before a customer tests a deployment |
 | `skills/learned-constants-and-secrets.md` | Adding a constant, installing a marketplace module, deploying to a new environment, or needing a Mendix PAT |
@@ -143,6 +143,7 @@ numbered `RUN` row, never a footnote and never omitted.
 3. Write `.mx-brd.json`, `architecture/` (blueprint, wiring diagrams, fit-gap.md), and once approved, `architecture/build-plan.md` — numbered, dependency-ordered, every new row with its `claims` block.
 3b. **If any process has a workflow: `architecture/workflow-count.md`, all ten rows with numbers** — see the section above. Owed at Stage 3, before the build plan names a workflow row.
 4. Record every decision in `PROJECT.md`.
+5. **Change requests (any stage after 3):** when dispatched with agreed `## Change log` rows of class `structure` or `visual` (page unbuilt), or a wireframe `UNSYNCED` marker, you flush `architecture/`, the module brief's structure, or the wireframe. BRDs stay with ba-agent (`change-intake.md` → Owners).
 
 ## Report back
 Boundaries/decisions proposed vs. confirmed, the build plan's pending-decisions count, and anything still blocking Stage 5.

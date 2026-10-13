@@ -635,16 +635,37 @@ async function computedStyles(page, checks) {
 // a bare array of column-keyed objects [{n: "30"}]. Normalise both to
 // {rows:[[v]]} so callers only deal with one shape. Note OQL requires every
 // select column to be aliased — `SELECT COUNT(*) AS n`, never `SELECT COUNT(*)`.
+// The mxcli binary to spawn. Git Bash maps `mxcli` -> `mxcli.exe` transparently; Node does
+// not, so on Windows a configured './mxcli' that only exists as './mxcli.exe' is probed here
+// (CLAUDE.md "Shipping an instrument" rule 3). Shared by oql() and journey-runner's preflight
+// probe so the two cannot spawn different binaries.
+function mxcliBin() {
+  if (process.platform !== 'win32') return cfg.mxcli;
+  const abs = path.resolve(cfg.root, cfg.mxcli);
+  if (!fs.existsSync(abs) && fs.existsSync(abs + '.exe')) return cfg.mxcli + '.exe';
+  return cfg.mxcli;
+}
+
 function oql(sql) {
   try {
-    const out = execFileSync(cfg.mxcli, [
+    const out = execFileSync(mxcliBin(), [
       'oql', '--direct',
       '--host', cfg.adminHost, '--port', String(cfg.adminPort), '--token', cfg.adminToken,
       '--json', sql,
     ], { cwd: cfg.root, encoding: 'utf8', timeout: 20000 });
+    return parseOqlOutput(out);
+  } catch (_) {}
+  return null;
+}
 
-    // mxcli prints a "Using project:" banner and a trailing "(n rows)" line
-    // around the JSON — slice out the JSON body before parsing.
+// The parsing half of oql(), split out so journey-runner's admin preflight reads a probe's
+// stdout with the same code the data rungs use (one parser, so the probe cannot pass on a
+// shape the rungs then reject).
+// mxcli prints a "Using project:" banner and a trailing "(n rows)" line
+// around the JSON — slice out the JSON body before parsing.
+function parseOqlOutput(out) {
+  try {
+    out = String(out || '');
     const start = out.search(/[[{]/);
     if (start < 0) return null;
     let depth = 0, end = -1;
@@ -712,6 +733,6 @@ module.exports = {
   humanMove, humanClick, humanType, humanTypeKeys, humanScroll,
   navTo, ensureSidebar, copilotText, askCopilot, approveConfirmCard,
   login, logout, assertIdentity, dismissModal, gotoTarget,
-  screenshotEl, fullPageShot, computedStyles, oql, oqlScalar, makeReporter,
+  screenshotEl, fullPageShot, computedStyles, oql, oqlScalar, parseOqlOutput, mxcliBin, makeReporter,
   ensureDirs, parseTokens, path, fs,
 };

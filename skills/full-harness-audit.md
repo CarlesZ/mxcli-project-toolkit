@@ -191,7 +191,7 @@ exactly what was cut in the final report, never round up to "full coverage."
    mxcli exec / docker rebuild.
 
 1. Run bin/coherence-cadence.sh. Read its verdict — do not assume "not due" without running
-   it fresh. If it reports DUE, run process-coherence-pass.md's 4-pass review BEFORE the
+   it fresh. If it reports DUE, run process-coherence-pass.md's 5-pass review BEFORE the
    click-through, since an audit built on modules that don't actually chain together isn't
    proving what it claims to prove. Record with --record when the pass completes.
 

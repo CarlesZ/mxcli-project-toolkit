@@ -81,6 +81,63 @@ const PORT = STACK.port;
 // and page-audit.js cannot end up running as two different identities.
 const CREDS = PROJ.credentials();
 
+// ── M2EE admin credential: where it came from, never what it is ──────────────
+// Every data rung, seed and outcome query goes through `mxcli oql --direct` with this
+// token. It used to be `M2EE_ADMIN_PASS || '1'`: a literal default that silently differed
+// from the app's real one. Field run 2026-10-12 (14 journeys): the default was wrong, every
+// data rung got HTTP 403 and read INVALID, and the suite ran to the end anyway — the first
+// pass was discarded. The workaround was reading the password out of the running app.
+//
+// Resolution, first hit wins. The SOURCE is recorded (cfg.adminSource) so a refusal can name
+// where to fix it; the value itself is never printed:
+//   1. M2EE_ADMIN_PASS env                  explicit operator setting, always wins
+//   2. <mpr dir>/.mxcli/run-local.json      `mxcli run --local` handshake — adminPass and
+//      adminPort of the app it serves, used only when its appPort is the port under test
+//      (test-stack-up.sh reads pid/appPort from the same file and deliberately never copies
+//      the password; reading it here, in-process, is the same "read the running app" fix)
+//   3. <root>/.docker/.env                  M2EE_ADMIN_PASS / ADMIN_PORT, as `mxcli docker
+//      init` writes them (fixture-manifest.sh and run-hub.sh read the same file)
+//   4. the legacy guess '1'                 kept so a project that relied on it still runs,
+//      but LABELLED: journey-runner's preflight names it when the admin API refuses it.
+// M2EE_ADMIN_PORT env overrides the port from any source; otherwise the port comes from the
+// same source as the password (they are a pair), falling back to runtime port + 10.
+function readEnvFile(file) {
+  const out = {};
+  let txt;
+  try { txt = fs.readFileSync(file, 'utf8'); } catch { return null; }
+  for (const line of txt.split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+  }
+  return out;
+}
+function resolveAdmin({ env = process.env, root = ROOT, mprPath = null, appPort = null } = {}) {
+  const fallbackPort = String(Number(appPort) + 10);
+  const pick = (token, port, source) => ({
+    token, port: env.M2EE_ADMIN_PORT || port || fallbackPort, source,
+  });
+  if (env.M2EE_ADMIN_PASS) return pick(env.M2EE_ADMIN_PASS, null, 'M2EE_ADMIN_PASS env');
+  if (mprPath) {
+    const dirs = [path.dirname(mprPath)];
+    try { dirs.push(path.dirname(fs.realpathSync(mprPath))); } catch { /* no symlink target */ }
+    for (const d of [...new Set(dirs)]) {
+      const f = path.join(d, '.mxcli', 'run-local.json');
+      let hs = null;
+      try { hs = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { continue; }
+      if (hs && hs.adminPass && String(hs.appPort) === String(appPort)) {
+        return pick(String(hs.adminPass), hs.adminPort ? String(hs.adminPort) : null,
+                    `${path.relative(root, f) || f} (the run --local handshake for :${appPort})`);
+      }
+    }
+  }
+  const de = readEnvFile(path.join(root, '.docker', '.env'));
+  if (de && de.M2EE_ADMIN_PASS) return pick(de.M2EE_ADMIN_PASS, de.ADMIN_PORT || null, '.docker/.env');
+  return pick('1', null, "built-in guess '1' — no credential configured");
+}
+let MPR_PATH = null;
+try { MPR_PATH = PROJ.mpr; } catch { /* reported where cfg.mpr is used */ }
+const ADMIN = resolveAdmin({ mprPath: MPR_PATH, appPort: PORT });
+
 const cfg = {
   root: ROOT,
   port: PORT,
@@ -99,6 +156,11 @@ const cfg = {
   // is wrong: the login page shows the same generic message either way.
   user: CREDS.user,
   pass: CREDS.pass,
+  // Whether the test password came from the environment (TEST_PASS, or its APP_PASS alias)
+  // rather than project.config.js's default. journey-runner's preflight refuses to log in on a
+  // default (#278): a runner started without the project's env-loading step submitted the
+  // template password, then the admin fallback, and locked two demo accounts for ~5 min each.
+  passFromEnv: !!(process.env.TEST_PASS || process.env.APP_PASS),
   // Last-resort identity so a credential problem degrades to a reported finding
   // instead of a zero-coverage run. Set FALLBACK_USER='' to disable.
   fallbackUser: CREDS.fallbackUser,
@@ -131,8 +193,11 @@ const cfg = {
   // alone would try to route through `docker compose exec` and fail. --direct
   // connects straight to the M2EE admin API on the host instead.
   adminHost: process.env.M2EE_ADMIN_HOST || 'localhost',
-  adminPort: process.env.M2EE_ADMIN_PORT || String(Number(PORT) + 10),
-  adminToken: process.env.M2EE_ADMIN_PASS || '1',
+  // Resolved by resolveAdmin() above. adminSource says where the token came from and is
+  // safe to print; adminToken is never printed.
+  adminPort: ADMIN.port,
+  adminToken: ADMIN.token,
+  adminSource: ADMIN.source,
 };
 
 // ── Navigation captions and walkthrough targets ──────────────────────────────
@@ -148,4 +213,4 @@ function resolveTarget() {
   return t;
 }
 
-module.exports = { cfg, NAV, TARGETS, resolveTarget };
+module.exports = { cfg, NAV, TARGETS, resolveTarget, resolveAdmin };

@@ -15,6 +15,8 @@
 // Usage:
 //   page-fidelity.js <wireframe.html> <page-name> <mdl-file> [mdl-file...]
 //   page-fidelity.js <wireframe.html> <page-name> -        (MDL on stdin, e.g. DESCRIBE output)
+//   --chrome a,b,c   classes the page's layout renders (not the page's to declare); or pass the
+//                    layout's MDL (`describe layout <Mod.Layout>`) as another input — see layoutChrome
 //
 // Scoring: headings 25%, action labels 30%, content blocks 25%, structural classes 20%,
 // bindings 25% (normalized over the dimensions the wireframe actually uses — one it
@@ -75,9 +77,20 @@ const proto = require(path.join(__dirname, 'prototype-route.js'));
 const argv = process.argv.slice(2);
 const NOLOG = argv.includes('--no-log');
 const STUB = argv.includes('--stub');
-const [WF, PAGE, ...MDLS] = argv.filter(a => a !== '--no-log' && a !== '--stub');
+// --chrome a,b,c — classes the page's layout renders, when the layout's MDL cannot be passed
+// (see layoutChrome below). `--chrome=a,b` works too.
+const CHROME = [];
+const rest = [];
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a === '--no-log' || a === '--stub') continue;
+  if (a === '--chrome') { (argv[++i] || '').split(/[\s,]+/).filter(Boolean).forEach(c => CHROME.push(c)); continue; }
+  if (a.startsWith('--chrome=')) { a.slice(9).split(/[\s,]+/).filter(Boolean).forEach(c => CHROME.push(c)); continue; }
+  rest.push(a);
+}
+const [WF, PAGE, ...MDLS] = rest;
 if (!WF || !PAGE || !MDLS.length) {
-  console.error('usage: page-fidelity.js [--no-log] [--stub] <wireframe.html | prototype.html#/route> <page-name> <mdl-file...|->');
+  console.error('usage: page-fidelity.js [--no-log] [--stub] [--chrome a,b,c] <wireframe.html | prototype.html#/route> <page-name> <mdl-file...|->');
   process.exit(2);
 }
 const WF_REF = proto.parseRef(WF);
@@ -488,8 +501,161 @@ function pageBody(src, from) {
   return src.slice(from);
 }
 
-function score(wf, mdl) {
-  const corpus = norm(mdl);
+// ---- what the page SHOWS: its caption-like string literals, by widget kind ---------------
+//
+// TEXT IS MATCHED AGAINST WHAT THE PAGE DISPLAYS, NOT AGAINST THE WHOLE MDL (#158). The three
+// text dimensions used to test a wireframe string against the entire normalised page MDL —
+// page name, entity, attribute and microflow names, comments — as a SUBSTRING, with 60% of
+// its >3-char words enough. So a wireframe H2 "Case overview" was present on any page NAMED
+// Case_Overview whether or not it rendered that heading, "case" was present inside
+// `CustomerCase`, and a three-word label needed only two words anywhere. The dimension read
+// green for headings and buttons the page did not show.
+//
+// Now each wireframe string is matched against the page's string literals of the kind that
+// renders it:
+//   headings  the page/snippet Title, Content of text widgets, Caption of non-button widgets
+//             (a group box, a tab) — never a data-grid column caption or a button caption
+//   actions   Caption of actionbutton / linkbutton
+//   content   every displayed literal (Title, Content, Caption, Label, Placeholder)
+// ALTER PAGE `set Caption = '…' on w` counts for w's kind when w is declared in the input,
+// for every kind when it is not. Matching is per literal and on WHOLE words: a label with
+// fewer than three kept words needs all of them in one literal; a longer one needs 60% (a
+// sentence may be reworded). A label whose words are all ≤3 chars ("New", "OK") used to be
+// an automatic hit; its short words are now kept and required. Bindings keep the identifier
+// corpus — there identifiers are the point.
+const ACTION_TYPES = new Set(['actionbutton', 'linkbutton']);
+const NOT_HEADING  = new Set(['actionbutton', 'linkbutton', 'column', 'textbox', 'textarea', 'datepicker',
+  'combobox', 'checkbox', 'radiobuttons', 'dropdown', 'referenceselector', 'textfilter', 'numberfilter',
+  'datefilter', 'dropdownfilter']);
+const LIT = "'((?:[^']|'')*)'";
+const unq = s => s.replace(/''/g, "'");
+
+// The MDL with comments removed and string CONTENTS blanked (same length, so indexes line up):
+// widget openers are then found only in code, never in a caption that happens to contain
+// "word word (".
+function maskMdl(mdl) {
+  let out = '', i = 0;
+  while (i < mdl.length) {
+    const c = mdl[i];
+    if (c === "'") {
+      let j = i + 1;
+      for (; j < mdl.length; j++) { if (mdl[j] === "'") { if (mdl[j + 1] === "'") { j++; continue; } break; } }
+      out += "'" + ' '.repeat(Math.max(0, j - i - 1)) + (j < mdl.length ? "'" : ''); i = j + 1;
+    } else if (c === '-' && mdl[i + 1] === '-') {
+      const e = mdl.indexOf('\n', i); const end = e < 0 ? mdl.length : e;
+      out += ' '.repeat(end - i); i = end;
+    } else if (c === '/' && mdl[i + 1] === '*') {
+      const e = mdl.indexOf('*/', i + 2); const end = e < 0 ? mdl.length : e + 2;
+      out += mdl.slice(i, end).replace(/[^\n]/g, ' '); i = end;
+    } else { out += c; i++; }
+  }
+  return out;
+}
+
+// Widgets: `<type> <name> ( props )`, props balanced on the masked text. Returns
+// [{ type, name, props }] with props sliced from the ORIGINAL text (literals intact).
+function mdlWidgets(mdl) {
+  const masked = maskMdl(mdl);
+  const out = [];
+  // The name may be qualified — `create page Mod.Page (Title: …)` is a declaration whose Title
+  // is the page's own heading — and is then keyed by its last part.
+  for (const m of masked.matchAll(/\b([A-Za-z]+)\s+(?:"?[A-Za-z_][A-Za-z0-9_]*"?\.)?"?([A-Za-z_][A-Za-z0-9_]*)"?\s*\(/g)) {
+    const open = m.index + m[0].length;
+    let depth = 1, i = open;
+    for (; i < masked.length && depth; i++) { if (masked[i] === '(') depth++; else if (masked[i] === ')') depth--; }
+    out.push({ type: m[1].toLowerCase(), name: m[2], props: mdl.slice(open, i - 1), at: m.index });
+  }
+  return { widgets: out, masked };
+}
+
+function mdlTexts(mdl) {
+  const { widgets, masked } = mdlWidgets(mdl);
+  const t = { headings: [], actions: [], content: [] };
+  const kind = {};
+  const add = (type, prop, val) => {
+    if (!val.trim()) return;
+    prop = prop.toLowerCase();
+    if (prop === 'title') { t.headings.push(val); t.content.push(val); return; }
+    if (prop === 'label' || prop === 'placeholder') { t.content.push(val); return; }
+    if (prop !== 'caption' && prop !== 'content') return;
+    t.content.push(val);
+    if (type === null) { t.headings.push(val); t.actions.push(val); return; }
+    if (ACTION_TYPES.has(type)) t.actions.push(val);
+    else if (!NOT_HEADING.has(type)) t.headings.push(val);
+  };
+  for (const w of widgets) {
+    kind[w.name] = w.type;
+    for (const p of w.props.matchAll(new RegExp('\\b(Title|Caption|Content|Label|Placeholder)\\s*:\\s*' + LIT, 'gi')))
+      add(w.type, p[1], unq(p[2]));
+  }
+  // ALTER … set (Caption = '…', …) on w   /   set Title = '…' (page-level, no `on`). mxcli
+  // accepts `:` inside the parenthesised form too (`set (Content: '…') on brandText`).
+  for (const m of masked.matchAll(/\bset\b([^;{}]*?)(?:\bon\s+"?([A-Za-z_][A-Za-z0-9_]*)"?|(?=[;}\n]))/gi)) {
+    const seg = mdl.slice(m.index, m.index + m[0].length);
+    const type = m[2] ? (kind[m[2]] || null) : null;
+    for (const p of seg.matchAll(new RegExp('\\b(Title|Caption|Content|Label|Placeholder)\\s*[:=]\\s*' + LIT, 'gi')))
+      add(p[1].toLowerCase() === 'title' && !m[2] ? 'page' : type, p[1], unq(p[2]));
+  }
+  return t;
+}
+
+// The words a wireframe string must show: the >3-char words, or — when it has none ("New",
+// "OK", "Add") — all of its words, so a short label is matched instead of passing vacuously.
+const keyWords = txt => { const w = words(txt); return w.length ? w : norm(txt).split(' ').filter(Boolean); };
+function makeHit(lits) {
+  const sets = lits.map(l => new Set(norm(l).split(' ').filter(Boolean)));
+  return txt => {
+    const w = keyWords(txt);
+    if (!w.length) return true;
+    const need = w.length < 3 ? w.length : Math.ceil(0.6 * w.length - 1e-9);
+    return sets.some(s => w.filter(x => s.has(x)).length >= need);
+  };
+}
+
+// ButtonStyle → rendered classes (#157). An ACTIONBUTTON renders `<button class="btn mx-button
+// … btn-<style>">` — measured with getComputedStyle in a running Mendix 11.13 app with Atlas
+// Core (skills/learned-stylegallery.md → "The Mendix DOM contract": `btn … btn-default`), and
+// DESCRIBE omits the property for the Default style, so an actionbutton with no ButtonStyle
+// still carries btn-default. A wireframe that draws `button.btn.btn-primary` was reading as
+// two missing classes on every page whose buttons are styled through the property, which is
+// the only way a page script styles a button. Link buttons are NOT mapped: their rendered
+// classes have not been measured.
+function buttonClasses(mdl) {
+  const out = new Set();
+  const { widgets, masked } = mdlWidgets(mdl);
+  const kind = {};
+  for (const w of widgets) {
+    kind[w.name] = w.type;
+    if (w.type !== 'actionbutton') continue;
+    const st = w.props.match(/\bButtonStyle\s*:\s*"?([A-Za-z]+)"?/i);
+    out.add('btn'); out.add('btn-' + (st ? st[1] : 'default').toLowerCase());
+  }
+  for (const m of masked.matchAll(/\bset\b[^;{}]*?\bButtonStyle\s*[:=]\s*"?([A-Za-z]+)"?[^;{}]*?\bon\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi))
+    if (!kind[m[2]] || kind[m[2]] === 'actionbutton') { out.add('btn'); out.add('btn-' + m[1].toLowerCase()); }
+  return out;
+}
+
+// LAYOUT CHROME FROM THE LAYOUT (#157). Classes the page's layout renders are not the page's
+// to declare. The default set below is the guess this scorer has always made; a project's own
+// layout (rail, sidebar, brand) renders more than four names, and each read as missing on every
+// page. Two ways to tell the scorer what the layout renders, both ADDED to the defaults:
+//   * pass the layout's MDL as another input — `create layout` from the build script, or
+//     `./mxcli -p <app>.mpr -c "describe layout <Mod.Layout>"` (mxcli ≥ v0.20 authors layouts);
+//     the layout is the one the page names in `Layout:`, and its Class/DynamicClasses count;
+//   * `--chrome a,b,c` for a layout that cannot be described (a marketplace one).
+// Chrome classes stay REPORTED ("chrome (layout-supplied, not scored)"), never silently dropped.
+function layoutChrome(srcs, ownMdl) {
+  const ref = ownMdl.match(/\bLayout\s*:\s*"?([A-Za-z0-9_]+)"?\."?([A-Za-z0-9_]+)"?/i);
+  if (!ref) return { name: null, found: false, classes: new Set() };
+  const re = new RegExp('CREATE(\\s+OR\\s+(MODIFY|REPLACE))?\\s+LAYOUT\\s+"?' + ref[1] + '"?\\."?' + ref[2] + '"?\\b', 'i');
+  for (const src of srcs) {
+    const d = src.match(re);
+    if (d) return { name: ref[1] + '.' + ref[2], found: true, classes: classesIn(pageBody(src, d.index)) };
+  }
+  return { name: ref[1] + '.' + ref[2], found: false, classes: new Set() };
+}
+
+function classesIn(mdl) {
   const cls = new Set();
   // `Class:` in a declaration, `Class =` in an ALTER PAGE SET.
   for (const m of mdl.matchAll(/\bClass\s*[:=]\s*['"]([^'"]+)['"]/gi)) m[1].split(/\s+/).forEach(c => cls.add(c));
@@ -515,9 +681,17 @@ function score(wf, mdl) {
     }
     for (const t of mdl.slice(from, i).matchAll(/'([a-z][a-z0-9-]*)'/gi)) cls.add(t[1]);
   }
-  const hit = txt => { const w = words(txt); return w.length ? w.filter(x => corpus.includes(x)).length / w.length >= 0.6 : true; };
-  const dim = arr => ({ n: arr.length, ok: arr.filter(hit).length, miss: arr.filter(x => !hit(x)) });
-  const h = dim(wf.headings), b = dim(wf.buttons), k = dim(wf.blocks);
+  return cls;
+}
+
+function score(wf, mdl, chromeExtra) {
+  const corpus = norm(mdl);
+  const cls = classesIn(mdl);
+  buttonClasses(mdl).forEach(c => cls.add(c));
+  const lits = mdlTexts(mdl);
+  const dim = (arr, hit) => ({ n: arr.length, ok: arr.filter(hit).length, miss: arr.filter(x => !hit(x)) });
+  const h = dim(wf.headings, makeHit(lits.headings)), b = dim(wf.buttons, makeHit(lits.actions)),
+        k = dim(wf.blocks, makeHit(lits.content));
   // Platform-supplied classes are not the page's to declare, so they leave the
   // denominator — REPORTED, never silently dropped (see the printout below):
   //   * on a popup layout, the dialog frame (dialog/dialog-head/-body/-foot) is
@@ -530,6 +704,7 @@ function score(wf, mdl) {
   const popup = /Layout:\s*[^,)\n]*Popup/i.test(mdl);
   const chromeSet = new Set(popup ? ['dialog', 'dialog-head', 'dialog-body', 'dialog-foot']
                                   : ['topbar', 'userchip', 'avatar', 'content']);
+  chromeExtra.forEach(x => chromeSet.add(x));
   const intrinsic = new Set(/\btextbox\b|\btextfilter\b/i.test(mdl) ? ['label', 'input'] : []);
   if (/\bdatagrid\b/i.test(mdl)) wf.gridOnly.forEach(x => intrinsic.add(x));
   const scoredCls = wf.classes.filter(x => !chromeSet.has(x));
@@ -550,7 +725,8 @@ const ownMdl = pageMdl();
 if (!ownMdl.trim()) { console.error('page-fidelity: no declaration of page "' + PAGE + '" found in input'); process.exit(2); }
 const snips = expandSnippets(ownMdl);
 const mdl = ownMdl + snips.extra;
-const s = score(wf, mdl);
+const lay = layoutChrome(SRCS, ownMdl);
+const s = score(wf, mdl, [...lay.classes, ...CHROME]);
 const dims = '   headings ' + s.h.ok + '/' + s.h.n + '  actions ' + s.b.ok + '/' + s.b.n +
   '  content ' + s.k.ok + '/' + s.k.n + '  classes ' + s.c.ok + '/' + s.c.n +
   (s.bd.n ? '  bindings ' + s.bd.ok + '/' + s.bd.n : '');
@@ -595,6 +771,10 @@ if (bareImg && s.bd.miss.some(r => r.image))
     ' ImageUrl parameters, so their attribute bindings cannot be seen here; pass the script that' +
     ' set them (ALTER PAGE … set ImageUrl = [Attr]) as another input');
 if (s.c.chrome.length) console.log('  chrome (layout-supplied, not scored): ' + s.c.chrome.join(' '));
+if (lay.found) console.log('  layout ' + lay.name + ' read from input: ' + lay.classes.size + ' class(es) treated as chrome');
+else if (lay.name && s.c.miss.length && !CHROME.length)
+  console.log('  layout ' + lay.name + ' is not in the input — if a missed class is one it renders, pass' +
+    ' `describe layout ' + lay.name + '` output as another input, or name it with --chrome a,b');
 if (wf.mockUsed.length) console.log('  bound-data mocks (wireframe-local, text not scored): ' + wf.mockUsed.join(' '));
 if (wf.structural.length) console.log('  wireframe structure (kept as page content, not a mock): ' + wf.structural.join(' '));
 if (wf.mockCls.length) console.log('  wireframe-local classes (not scored): ' + wf.mockCls.join(' '));

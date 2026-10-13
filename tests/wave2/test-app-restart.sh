@@ -22,6 +22,8 @@
 # #262: a stranger on the admin port while our app runs → exit 4 before anything is stopped, the
 # stranger named by pid and alive; our app dead and a stranger on the app port → exit 4, nothing
 # started. (The stranger is a bare TCP listener, as a runtime's admin port is to curl.)
+# #160: the port/tree helpers moved to _common.sh; an older _common.sh stops with exit 2 + the
+# sync remedy (this is the case where it would otherwise die on "command not found").
 # Needs node and curl; skips (exit 0, says so) without them.
 set -uo pipefail
 
@@ -204,6 +206,15 @@ echo "-- secrets masked"
 OUT="$(restart "$P" --dry-run --cmd './mxcli run --local --db-password hunter2 -p Fixture.mpr')"
 hasnt "a password value never reaches the screen" "$OUT" "hunter2"
 alive "$DECOY" && ok "decoy survived the whole run" || bad "decoy killed"
+
+echo "-- #160: a bin/_common.sh older than the moved helpers → exit 2 naming sync, nothing stopped"
+O="$WORK/oldcommon"; mkapp "$O" "$PORT"
+sed '/^# Process identity — who holds a port/,$d' "$TOOLKIT/project-bin/_common.sh" > "$O/bin/_common.sh"
+grep -q mxtk_port_holder "$O/bin/_common.sh" && bad "[setup] could not strip the helpers" || ok "[setup] _common.sh without the shared helpers"
+OUT="$(restart "$O" --dry-run)"; RC=$?
+[ "$RC" -eq 2 ] && ok "exit 2" || bad "exit $RC: $(printf '%s' "$OUT" | tail -2)"
+has "names the remedy" "$OUT" "sync-project.sh"
+hasnt "no command-not-found mid-run" "$OUT" "command not found"
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"

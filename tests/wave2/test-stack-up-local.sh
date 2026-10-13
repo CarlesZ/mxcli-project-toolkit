@@ -11,14 +11,20 @@
 # rewrites only pid/appPort/adminPass. The "app" is a python http.server serving a login page with
 # a Mendix marker; the "mxcli" is `sleep` with its argv[0] set, so `ps` shows the command line the
 # script reads --watch from. docker/podman are stubbed out so no real container can answer.
-# Not fixtured: the Windows tasklist branch of pid_alive and the netstat branch of port_holder (CI
-# is Linux).
+# Not fixtured: the Windows tasklist branch of pid_alive, the netstat branch of mxtk_port_holder and
+# the PowerShell / `ps -o args=` branches of mxtk_pid_args (CI is Linux; Linux reads /proc).
+# T8-T10 (#160): no handshake, ownership proven by the listener's command line running
+# runtimelauncher.jar on this project's deployment dir (both layouts); a foreign one stays unverified.
+# T11-T13 (#262 follow-up): this project's own booting runtime on its port is NOT READY (exit 1),
+# never INSTRUMENT BLOCKED. T14 (#278): --track / --reap act on the project's own pid record only.
 # T7 (#262): a port the run --local loop needs is held by a process that is not this project's
 # loop (here the fake app itself, behind a dead handshake — Studio Pro's runtime in the field) →
 # exit 4, "INSTRUMENT BLOCKED", the holder named with its pid, and it is still alive afterwards.
 #
 # usage: test-stack-up-local.sh /path/to/test-stack-up.sh
-set -uo pipefail
+# No pipefail: every assertion is `printf "$OUT" | grep -q …`, and grep -q exits on the first match —
+# with pipefail the printf's SIGPIPE on a long $OUT then failed a passing assertion (seen on T2).
+set -u
 
 SRC="${1:?usage: test-stack-up-local.sh /path/to/test-stack-up.sh}"
 case "$SRC" in /*) ;; *) SRC="$PWD/$SRC" ;; esac
@@ -167,6 +173,133 @@ OUT="$(cd "$P" && bash bin/test-stack-up.sh --no-docker 2>&1)"; RC=$?
 P="$(mkproj t7c root)"; handshake "$P" "$DEAD_PID"; sed -i.bak "s/^  \"appPort\": [0-9]*/  \"appPort\": 1/; s/^  \"adminPort\": [0-9]*/  \"adminPort\": 1/" "$P/.mxcli/run-local.json"
 OUT="$(run "$P")"; RC=$?
 [ "$RC" -eq 1 ] && ! printf '%s' "$OUT" | grep -q "INSTRUMENT BLOCKED" && ok "free run --local ports: plain NOT READY, exit 1" || bad "free ports rc=$RC, want 1" "$OUT"
+
+# --- #160 and the #262 follow-up: the runtime's own command line ----------------------------
+# srv.py <mx|boot> <www> <portfile> [args the script ignores] — a listener whose command line can
+# carry `-jar …/runtimelauncher.jar <deployment dir>`, as the Mendix runtime's does (field capture,
+# run --local on Linux, 2026-09-25: `java … -jar …/runtimelauncher.jar <project>/app/deployment`).
+# mx serves the Mendix-marked login page; boot answers 503 (bound, not serving yet — a booting runtime).
+cat > "$WORK/srv.py" <<'PY'
+import functools, http.server, sys
+mode, www, pf = sys.argv[1:4]
+class Boot(http.server.BaseHTTPRequestHandler):
+    def do_GET(self): self.send_response(503); self.end_headers()
+    def log_message(self, *a): pass
+H = functools.partial(http.server.SimpleHTTPRequestHandler, directory=www) if mode == "mx" else Boot
+s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+open(pf, "w").write(str(s.server_address[1]))
+s.serve_forever()
+PY
+# srv <port var> <pid var> <mx|boot> [extra argv…]
+SRVN=0
+srv() {
+  local pv="$1" iv="$2" mode="$3" pf; shift 3; SRVN=$((SRVN + 1)); pf="$WORK/srv$SRVN.port"
+  "$PY" -I "$WORK/srv.py" "$mode" "$WORK/www" "$pf" "$@" >/dev/null 2>&1 &
+  PIDS="$PIDS $!"; printf -v "$iv" '%s' "$!"
+  for _ in $(seq 1 50); do [ -s "$pf" ] && break; sleep 0.1; done
+  printf -v "$pv" '%s' "$(cat "$pf" 2>/dev/null)"
+}
+JAR=/opt/mendix/runtime/launcher/runtimelauncher.jar
+if [ "$CAN_NAME" != 1 ]; then
+  echo "  [skip] T8-T13: neither lsof nor ss — no listener pid, so no command line to read"
+else
+echo "== T8 (#160): no handshake; :X runs runtimelauncher.jar on THIS project's deployment dir -> verified =="
+P="$(mkproj t8 root)"; mkdir -p "$P/deployment"
+srv R8 R8PID mx -jar "$JAR" "$P/deployment"
+# Another Mendix answers FIRST in the scan list — the old scan published it as ours-unverified.
+printf 'APP_PORTS="%s %s"\n' "$APP" "$R8" >> "$P/.claude/loop/stack.conf"
+OUT="$(run "$P")"; RC=$?
+[ "$RC" -eq 0 ] && ok "--check exits 0" || bad "--check rc=$RC" "$OUT"
+[ "$(envv "$P" APP_PORT)" = "$R8" ] && [ "$(envv "$P" APP_OWNERSHIP)" = verified ] && [ "$(envv "$P" APP_SOURCE)" = runtime ] \
+  && ok "stack.env: APP_PORT=$R8 verified runtime (the foreign Mendix on :$APP skipped)" || bad "stack.env wrong" "$(cat "$P/.claude/loop/stack.env" 2>&1)"
+printf '%s' "$OUT" | grep -q "runs this project's deployment dir" && ok "says why it is verified" || bad "no runtime verdict" "$OUT"
+printf '%s' "$OUT" | grep -q "App freshness unknown" && ok "freshness unknown (this script did not build it)" || bad "freshness claimed" "$OUT"
+
+echo "== T9 (#160): two-tree — runtimelauncher.jar on <root>/app/deployment -> verified =="
+P="$(mkproj t9 app)"; mkdir -p "$P/app/deployment"
+srv R9 R9PID mx -jar "$JAR" "$P/app/deployment/"
+printf 'APP_PORTS="%s"\n' "$R9" >> "$P/.claude/loop/stack.conf"
+OUT="$(run "$P")"; RC=$?
+[ "$RC" -eq 0 ] && [ "$(envv "$P" APP_OWNERSHIP)" = verified ] && [ "$(envv "$P" APP_SOURCE)" = runtime ] \
+  && ok "app/deployment recognised (trailing slash too)" || bad "two-tree runtime not verified (rc=$RC)" "$OUT"
+
+echo "== T10 (#160): runtimelauncher.jar on ANOTHER checkout's deployment dir -> unverified, as before =="
+P="$(mkproj t10 root)"; mkdir -p "$P/deployment" "$WORK/other/deployment"
+srv R10 R10PID mx -jar "$JAR" "$WORK/other/deployment"
+printf 'APP_PORTS="%s"\n' "$R10" >> "$P/.claude/loop/stack.conf"
+OUT="$(run "$P")"; RC=$?
+[ "$(envv "$P" APP_OWNERSHIP)" = unverified ] && [ "$(envv "$P" APP_SOURCE)" = scan ] \
+  && ok "another project's runtime stays unverified" || bad "foreign runtime verified" "$(cat "$P/.claude/loop/stack.env" 2>&1)"
+
+echo "== T11 (#262 follow-up): live record, its own child bound to the app port, booting -> NOT READY, exit 1 =="
+P="$(mkproj t11 root)"
+( "$PY" -I "$WORK/srv.py" boot "$WORK/www" "$WORK/t11.port" & wait ) >/dev/null 2>&1 &
+LOOP11=$!; PIDS="$PIDS $LOOP11"
+for _ in $(seq 1 50); do [ -s "$WORK/t11.port" ] && break; sleep 0.1; done
+B11="$(cat "$WORK/t11.port")"; PIDS="$PIDS $(pgrep -P "$LOOP11" | tr '\n' ' ')"   # portability-ok: fixture teardown list, by parent pid
+handshake "$P" "$LOOP11"
+sed -i.bak "s/^  \"appPort\": [0-9]*/  \"appPort\": $B11/; s/^  \"adminPort\": [0-9]*/  \"adminPort\": 1/" "$P/.mxcli/run-local.json"
+OUT="$(run "$P")"; RC=$?
+[ "$RC" -eq 1 ] && ok "--check exits 1 (was 4)" || bad "--check rc=$RC, want 1" "$OUT"
+printf '%s' "$OUT" | grep -q "INSTRUMENT BLOCKED" && bad "own booting runtime called a thief" "$OUT" || ok "not INSTRUMENT BLOCKED"
+printf '%s' "$OUT" | grep -q "this project's own runtime holds :$B11" && ok "names its own runtime on :$B11" || bad "own holder not named" "$OUT"
+
+echo "== T11b: live record, but ANOTHER checkout's runtime holds the app port -> still blocked, exit 4 =="
+P="$(mkproj t11b root)"
+srv F11 F11PID boot -jar "$JAR" "$WORK/other/deployment"
+handshake "$P" "$LOOP11"
+sed -i.bak "s/^  \"appPort\": [0-9]*/  \"appPort\": $F11/; s/^  \"adminPort\": [0-9]*/  \"adminPort\": 1/" "$P/.mxcli/run-local.json"
+OUT="$(run "$P")"; RC=$?
+[ "$RC" -eq 4 ] && printf '%s' "$OUT" | grep -q "INSTRUMENT BLOCKED — :$F11" && ok "foreign runtime still blocks (exit 4)" || bad "rc=$RC, want 4" "$OUT"
+
+echo "== T12 (#262 follow-up): dead record, a booting runtime on THIS deployment dir holds the port -> exit 1 =="
+P="$(mkproj t12 root)"; mkdir -p "$P/deployment"
+srv B12 B12PID boot -jar "$JAR" "$P/deployment"
+handshake "$P" "$DEAD_PID"
+sed -i.bak "s/^  \"appPort\": [0-9]*/  \"appPort\": $B12/; s/^  \"adminPort\": [0-9]*/  \"adminPort\": 1/" "$P/.mxcli/run-local.json"
+OUT="$(run "$P")"; RC=$?
+[ "$RC" -eq 1 ] && ! printf '%s' "$OUT" | grep -q "INSTRUMENT BLOCKED" && ok "exit 1, not blocked" || bad "rc=$RC, want 1 and not blocked" "$OUT"
+
+echo "== T13 (#262 follow-up): --no-docker, no record, Studio Pro booting THIS project on the port -> exit 1 =="
+P="$(mkproj t13 root)"; mkdir -p "$P/deployment"
+srv B13 B13PID boot -jar "$JAR" "$P/deployment"
+printf 'RUN_LOCAL_APP_PORT=%s\nRUN_LOCAL_ADMIN_PORT=1\n' "$B13" >> "$P/.claude/loop/stack.conf"
+OUT="$(cd "$P" && bash bin/test-stack-up.sh --no-docker 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q "own runtime holds its port" && ok "exit 1, says its own runtime is booting" || bad "rc=$RC, want 1" "$OUT"
+kill -0 "$B13PID" 2>/dev/null && ok "own runtime untouched" || bad "own runtime killed"
+fi
+
+echo "== T14 (#278): tracked test processes — only this project's own record, only stale ones =="
+P="$(mkproj t14 root)"
+( sleep 600 & wait ) & OLDRUN=$!; PIDS="$PIDS $OLDRUN"
+sleep 0.2; OLDKID="$(pgrep -P "$OLDRUN" | head -1)"; PIDS="$PIDS $OLDKID"   # portability-ok: fixture, by parent pid
+sleep 600 & YOUNG=$!; PIDS="$PIDS $YOUNG"
+sleep 600 & REUSED=$!; PIDS="$PIDS $REUSED"
+bash -c "exec -a 'node journey-runner.js' sleep 600" & DECOY14=$!; PIDS="$PIDS $DECOY14"
+( cd "$P" && bash bin/test-stack-up.sh --track "$OLDRUN" journey-runner ) >/dev/null 2>&1 && ok "--track records a live pid" || bad "--track failed"
+( cd "$P" && bash bin/test-stack-up.sh --track "$YOUNG" monitor ) >/dev/null 2>&1
+( cd "$P" && bash bin/test-stack-up.sh --track "$DEAD_PID" gone ) >/dev/null 2>&1 && bad "--track accepted a dead pid" || ok "--track refuses a dead pid"
+BG="$P/.claude/loop/bg-pids.tsv"
+# Age the first line; a REUSED pid: recorded start time differs from the running process's.
+sed -i.bak "s/^$OLDRUN	[0-9]*	/$OLDRUN	1000000000	/" "$BG"
+printf '%s\t1000000000\tThu Jan 1 00:00:00 1970\treused\n%s\t1000000000\tx\tdead\n' "$REUSED" "$DEAD_PID" >> "$BG"
+OUT="$(run "$P")"
+printf '%s' "$OUT" | grep -q "pid $OLDRUN — journey-runner" && ok "--check lists the stale own process" || bad "stale process not listed" "$OUT"
+printf '%s' "$OUT" | grep -qE "pid ($YOUNG|$REUSED|$DECOY14) " && bad "listed a young/reused/untracked pid" "$OUT" || ok "young, reused and untracked pids not listed"
+printf '%s' "$OUT" | grep -q -- "--reap" && ok "names the --reap command" || bad "no remedy named" "$OUT"
+[ "$(wc -l < "$BG" | tr -d ' ')" = 4 ] && ok "--check left the record unchanged" || bad "--check wrote the record"
+OUT="$(cd "$P" && bash bin/test-stack-up.sh --reap 2>&1)"; RC=$?
+sleep 0.5
+[ "$RC" -eq 0 ] && ok "--reap exits 0" || bad "--reap rc=$RC" "$OUT"
+kill -0 "$OLDRUN" 2>/dev/null && bad "stale tracked pid survived --reap" || ok "stale tracked pid stopped"
+# The child is reparented once its parent dies; until init reaps it, kill -0 sees a zombie.
+kid_alive() { kill -0 "$1" 2>/dev/null || return 1; [ "$(sed 's/.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f1)" != Z ]; }
+[ -n "$OLDKID" ] || bad "[setup] the tracked process had no child"
+kid_alive "$OLDKID" && bad "its child survived" || ok "  and its child"
+kill -0 "$YOUNG" 2>/dev/null && ok "young tracked pid untouched" || bad "young pid killed"
+kill -0 "$REUSED" 2>/dev/null && ok "reused pid (start time mismatch) untouched" || bad "reused pid killed"
+kill -0 "$DECOY14" 2>/dev/null && ok "untracked look-alike untouched" || bad "untracked process killed"
+[ "$(cut -f1 "$BG" | tr '\n' ' ')" = "$YOUNG " ] && ok "record pruned to the live entry" || bad "record not pruned" "$(cat "$BG")"
 
 echo
 echo "stack-up-local: $PASS passed, $FAIL failed"

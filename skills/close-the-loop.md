@@ -46,6 +46,7 @@ topics at once.
 | A script was executed against the `.mpr` | `docs/BUILD-LOG.md` | Append-only. One entry per exec: what it did · exec result · mxbuild result · manual SP work after |
 | A build-plan step is now done, blocked, or descoped | `architecture/build-plan.md` (+ the module's own plan) | Someone reading only the plan would otherwise redo it or skip it |
 | A gate answer — stage, entry mode, `CONFIRMED`/`ASSUMED`, waiver, opt-in | `PROJECT.md` | `gate-check.sh` and `checkpoint.sh` read it |
+| Feedback or a change the user asked for — typed, relayed from a stakeholder, or said over a screenshot | `PROJECT.md` → `## Change log`, before any edit (`change-intake.md`) | `gate-check.sh` counts the rows not yet applied or proven |
 | A decision a session learned — a pattern chosen and why, a disposition, an open question outside a gate, a slice requirement | `mxcli brain capture … -a @Module.Element`, then `promote` | Without the *why*, a future session could reasonably decide the opposite. Anchors into the model; `brain check` fails when they stop resolving, which `PROJECT.md` rows never do |
 | A lesson that transfers to another Mendix project | the shared toolkit's `skills/` | Still true with a different client, different module, different .mpr |
 | A confirmed, reproducible tool defect | `bug-logs/mxcli-bugs.md` | You could hand the repro to the tool's author |

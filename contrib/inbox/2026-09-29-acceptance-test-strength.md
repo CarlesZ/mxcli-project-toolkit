@@ -1,4 +1,4 @@
-# Acceptance testing: what made the toolkit build's tests stronger, and its three gaps
+# Acceptance testing: what made the toolkit build's tests stronger
 
 **From:** a field comparison (mxcli + toolkit build vs a Studio Pro MCP build, same frozen spec)
 **Date:** 2026-09-29
@@ -14,9 +14,6 @@ Keep (measured to matter):
   escalation bug (uncommitted change) the other build never exercised.
 - Fresh data per variant, not reuse of rehearsal data.
 
-Gaps found (the other build did these better):
-- Menu/permission refusal checked client-side only — add a server-side probe (expect HTTP 560
-  / access denied), not "the menu item is hidden".
-- Unexpected 400/422 API responses treated as informational — make them failures.
-- 20/20 was stitched from three runs — require one clean-database final run that includes the
-  timer scenarios.
+The three gaps this comparison found (server-side permission probe, unexpected 4xx as a failure,
+one clean-database final run) were promoted on 2026-10-13 into `skills/testing-shape.md` §4/§7 and
+`skills/test-result-audit.md` 2e (#172). The "Keep" items above are not yet promoted.

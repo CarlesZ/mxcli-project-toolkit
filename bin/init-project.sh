@@ -45,6 +45,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The CLAUDE.local.md "Session-start ritual" section. Same one-copy arrangement: sync-project.sh
 # heals the older, longer section and needs both texts. Why it is short: its header (#288).
 . "$SCRIPT_DIR/lib/ritual-template.sh"
+# The PROJECT.md "## Change log" section (skills/change-intake.md) — one copy, shared with
+# sync-project.sh, which appends it to projects scaffolded before it existed.
+. "$SCRIPT_DIR/lib/change-log.sh"
 
 # SOURCES_MODE: ask | ignore | track. "ask" prompts only when stdin is a TTY; with no TTY it
 # ignores and says so. Ignoring is the default because a source drop is routinely hundreds of
@@ -178,7 +181,8 @@ else
     # check — correct here, because freshness genuinely cannot be established without a repo.
     TOOLKIT_COMMIT_LINE="Toolkit commit: (set at session start — see CLAUDE.local.md's session-start ritual)"
   fi
-  cat > "$PROJECT_MD" <<EOF
+  {
+  cat <<EOF
 # PROJECT.md — ${PROJECT_NAME} Decision Register
 
 Every gate decision lands here as \`CONFIRMED\` or \`ASSUMED\`, never silently decided. See
@@ -209,6 +213,12 @@ Unit tests default: no
 | Stage | Decision | Status | Notes |
 |---|---|---|---|
 
+EOF
+  # The change log — feedback captured BEFORE any edit (skills/change-intake.md). One copy of the
+  # section lives in bin/lib/change-log.sh; sync-project.sh appends the same text to older projects.
+  mxtk_change_log_section
+  cat <<EOF
+
 ## Open questions
 
 | # | Question | Raised at | Status |
@@ -218,6 +228,7 @@ Unit tests default: no
 
 None yet.
 EOF
+  } > "$PROJECT_MD"
   echo "Created: PROJECT.md"
 fi
 

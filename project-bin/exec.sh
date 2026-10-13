@@ -824,6 +824,9 @@ run_lint_gate() {
   # row at all (measured on the first wired run in a real project, 2026-09-24). Capture explicitly.
   LINT_RC=0
   bash "$PROJECT_ROOT/bin/lint-gate.sh" >"$_lo" 2>&1 || LINT_RC=$?
+  # lint-gate's non-blocking SEC014 note (#312: rule installed, decision not made) is otherwise
+  # visible only on a failing run, because the capture above is shown only then. Always echo it.
+  [ -f "$_lo" ] && { grep '^note: SEC014' "$_lo" 2>/dev/null | sed 's/^/    /' || true; }
   case "$LINT_RC" in
     0) LINT_DETAIL="lint unchanged vs baseline"; echo "  ✓ lint: no rule rose vs baseline" ;;
     1) # Rule ids are matched as [A-Z][A-Z0-9-]*[0-9]+, not [A-Z]+[0-9]+: mxcli's built-in

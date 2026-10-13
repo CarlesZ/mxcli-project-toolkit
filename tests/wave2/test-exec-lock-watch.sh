@@ -369,6 +369,21 @@ touch "$P/.mxcli/run-local.json"
 OUT="$(run "$P" mdlsource/page.mdl)"
 has "same script, SCSS older than the boot → watch applies it" "$OUT" "→ Watch: watch can apply this"
 
+echo "-- lint-gate's SEC014 note reaches a clean exec (#312)"
+# The note line is lint-gate.sh's own text in PR #312 (project-bin/lint-gate.sh, stderr, rc 0).
+cat > "$P/bin/lint-gate.sh" <<'LG'
+#!/usr/bin/env bash
+echo "note: SEC014 not configured — set .claude/lint-config.yaml rules: SEC014: options: external_roles (ask the user; 'none' is their decision)" >&2
+echo "PASS: no rule rose vs baseline"
+exit 0
+LG
+chmod +x "$P/bin/lint-gate.sh"
+OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && ok "clean lint run still exits 0" || bad "lint note changed the exit code (rc $RC)"
+has "the SEC014 note is shown on a clean run" "$OUT" "    note: SEC014 not configured"
+has "  and the run still reports lint clean" "$OUT" "lint: no rule rose"
+rm -f "$P/bin/lint-gate.sh"
+
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

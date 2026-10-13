@@ -93,18 +93,22 @@ else
 fi
 
 # --- 3. per-BRD conformance reports (conformance-check writes report-<date>-<BRD>.tsv) ---------
-# The newest date wins and every BRD file of that date is read; an older single-file report is
-# not mixed in (it used to be the ONLY file read, shown as measured although stale).
+# Golden: fixtures/conformance-per-brd/ — conformance-check.sh's real output on PR #307's own
+# per-BRD fixture layout (see its CAPTURE.txt), including a BRD id with a space. The newest date
+# wins and every file of that date is read; the older single-file report is not mixed in (it
+# used to be the ONLY file read, shown as measured although stale).
+GOLD="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixtures/conformance-per-brd"
 P="$WORK/perbrd"; lay_out "$P" "$P"
 rm -f "$P/docs/conformance/"report-*.tsv
-printf 'module\tclaim\tstored\tobserved\tverdict\nStale\t/old\t1\t1\tOK\n' > "$P/docs/conformance/report-2026-09-26.tsv"
-printf 'module\tclaim\tstored\tobserved\tverdict\nOrders\t/useCases\t3\t3\tOK\n' > "$P/docs/conformance/report-2026-10-12-F001.tsv"
-printf 'module\tclaim\tstored\tobserved\tverdict\nBilling\t/pages\t2\t4\tUNDERSTATED\n' > "$P/docs/conformance/report-2026-10-12-F002.tsv"
+cp "$GOLD"/report-*.tsv "$P/docs/conformance/"
+printf 'module\tpointer\tstored\tobserved\tverdict\nStale\t`/old`\tbuilt\tPRESENT\tOK\n' > "$P/docs/conformance/report-2026-09-26.tsv"
 ( cd "$P/tests/e2e" && node report-normalize.js --out docs/report.json ) >"$WORK/out3" 2>&1
 if [ -s "$P/docs/report.json" ]; then
-  mods="$(node -e 'const r=require(process.argv[1]); console.log(r.checks.filter(c=>c.instrument==="conformance"&&c.kind==="conformance").map(c=>c.module).sort().join(","))' "$P/docs/report.json")"
-  [ "$mods" = "Billing,Orders" ] && ok "per-BRD reports of the newest date are all read (Billing, Orders); the older single file is not" \
-    || bad "per-BRD conformance reports not aggregated" "$mods"
+  got="$(node -e 'const r=require(process.argv[1]); const c=r.checks.filter(c=>c.instrument==="conformance"&&c.kind==="conformance");
+    console.log([c.length, [...new Set(c.map(x=>x.module))].sort().join(","), c.every(x=>x.requirement && x.requirement.startsWith("/")), c.some(x=>/shipping/i.test(x.id))].join("|"))' "$P/docs/report.json")"
+  [ "$got" = "6|Orders,Shipping|true|true" ] \
+    && ok "all 3 per-BRD reports of the newest date read (6 rows, incl. 'F003 shipping'); every row keeps its /pointer requirement; the stale file is not read" \
+    || bad "per-BRD conformance reports not read as captured (rows|modules|requirements set|space BRD read)" "$got"
 else
   bad "per-BRD: no docs/report.json" "$(tr '\n' ' ' < "$WORK/out3" | cut -c1-300)"
 fi

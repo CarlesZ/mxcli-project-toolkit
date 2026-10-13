@@ -1,0 +1,9 @@
+Captured 2026-10-13, verbatim: the three report-<date>-<BRD>.tsv files that
+project-bin/conformance-check.sh writes on PR #307's branch (fix/graph-sweep-conformance,
+commit 8fc7c6a), run unscoped (`conformance-check.sh --quiet`, rc 0, "measured 6") on the
+single-tree layout that PR's own fixture builds (tests/wave2/test-conformance-per-brd-ledger.sh,
+setup single: Orders with per-BRD ledgers F001-orders and F002-invoicing, Shipping with
+"F003 shipping" — a BRD id with a space). The ledgers and the mxcli stub there are that
+fixture's; the TSVs are conformance-check.sh's real output. Pointers are written
+<BRD>:`/json/pointer`. Read by tests/wave2/test-report-normalize-two-tree.sh case 3.
+Re-capture when conformance-check.sh's report format changes.

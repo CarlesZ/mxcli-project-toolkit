@@ -1,0 +1,3 @@
+module	pointer	stored	observed	verdict	command
+Orders	F002-invoicing:`/domainEntities/0`	built	PRESENT	OK	DESCRIBE ENTITY Orders.Invoice
+Orders	F002-invoicing:`/microflows/0`	built	PRESENT	OK	DESCRIBE MICROFLOW Orders.ACT_Invoice_Send

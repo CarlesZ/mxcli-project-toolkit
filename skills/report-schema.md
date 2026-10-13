@@ -143,9 +143,11 @@ any real project. The **Deriving the values** section says where each one actual
     { "name": "positive-control", "verdict": "fault",   "reason": "not requested (--positive-control absent)" },
     { "name": "monkey",           "verdict": "skipped", "reason": "--skip-monkey" },
     { "name": "conformance",      "verdict": "pass",    "log": "docs/conformance/report-<date>.tsv" }
-      // conformance reads the NEWEST date among report-<date>.tsv and the per-BRD
-      // report-<date>-<BRD>.tsv files, and every file of that date (rows concatenated;
-      // "log" then lists them comma-separated). An older date is never mixed in.
+      // conformance reads the NEWEST date among report-<date>.tsv and report-<date>-<suffix>.tsv
+      // (any suffix — conformance-check writes one per BRD, and a BRD id may hold a space), and
+      // joins EVERY file of that date (rows concatenated; "log" lists them comma-separated). An
+      // older date is never mixed in. A per-BRD pointer "<BRD>:`/x`" gives requirement "/x";
+      // the BRD stays in the check id.
   ],
 
   // Rollups have denominators, so they are not checks.

@@ -1391,8 +1391,12 @@ function collectConformance(input, ctx) {
     // the decoration is reading it, not inventing it (rule 4). Anything that does not
     // start with "/" after stripping is NOT treated as a pointer — better null than a
     // synthesised one.
+    // Per-BRD reports prefix the pointer with its BRD: "F001-orders:`/microflows/0`" (a BRD id
+    // may hold a space). The prefix is stripped for the requirement and kept in the id, so the
+    // same pointer in two BRDs stays two checks.
     const cleaned = pointerRaw.replace(/`/g, '').replace(/\s*\(\d+\)\s*$/, '').trim();
-    const requirement = cleaned.startsWith('/') ? cleaned : null;
+    const pointer = cleaned.replace(/^[^/:]+:(?=\/)/, '');
+    const requirement = pointer.startsWith('/') ? pointer : null;
 
     let id = `conformance/${slug(mod)}/${slug(cleaned || pointerRaw)}`;
     let bump = 1;
@@ -1434,7 +1438,9 @@ function collectConformance(input, ctx) {
 // and report-<date>-<BRD>.tsv, and every file of that date (sorted). A per-BRD run and an
 // older single-file run never mix: only the newest date is read.
 function pickConformanceFiles(names) {
-  const re = /^report-(\d{4}-\d{2}-\d{2})(?:-[A-Za-z0-9_.-]+)?\.tsv$/;
+  // Any suffix: a BRD id may hold a space (conformance-check writes report-<date>-F003 shipping.tsv);
+  // a narrower class dropped that file and the stale-report bug came back.
+  const re = /^report-(\d{4}-\d{2}-\d{2})(?:-.+)?\.tsv$/;
   const hits = names.map(n => [n, re.exec(n)]).filter(([, m]) => m);
   if (!hits.length) return { date: null, files: [] };
   const date = hits.map(([, m]) => m[1]).sort().pop();
@@ -2642,10 +2648,23 @@ function selftest() {
   t('per-BRD files of the newest date, all of them; a stale older base file is ignored',
     pickConformanceFiles(['report-2026-09-30.tsv', 'report-2026-10-12-F002.tsv', 'report-2026-10-12-F001.tsv', 'report-2026-10-01-F001.tsv']),
     { date: '2026-10-12', files: ['report-2026-10-12-F001.tsv', 'report-2026-10-12-F002.tsv'] });
+  t('a BRD id with a space is a per-BRD file, never dropped for an older base file',
+    pickConformanceFiles(['report-2026-09-30.tsv', 'report-2026-10-12-F003 shipping.tsv']),
+    { date: '2026-10-12', files: ['report-2026-10-12-F003 shipping.tsv'] });
   t('no report files → none', pickConformanceFiles(['readme.txt']), { date: null, files: [] });
   const confMulti = normalize({ ...base, conformance: { status: 'ok', path: 'a, b',
     text: 'module\tpointer\tstored\tobserved\tverdict\nOrders\t/x\t1\t1\tOK\n' +
           '\nmodule\tpointer\tstored\tobserved\tverdict\nBilling\t/y\t2\t3\tSTALE\n' } });
+  const confBrd = normalize({ ...base, conformance: { status: 'ok', path: 'r.tsv',
+    text: 'module\tpointer\tstored\tobserved\tverdict\tcommand\n' +
+          'Shipping\tF003 shipping:`/microflows/0`\tbuilt\tPRESENT\tOK\tDESCRIBE MICROFLOW S.A\n' +
+          'Orders\tF001-orders:`/microflows/0`\tbuilt\tPRESENT\tOK\tDESCRIBE MICROFLOW O.A\n' +
+          'Orders\tF002-invoicing:`/microflows/0`\tbuilt\tPRESENT\tOK\tDESCRIBE MICROFLOW O.B\n' } });
+  const brdChecks = confBrd.checks.filter(c => c.instrument === 'conformance' && c.kind === 'conformance');
+  t('a per-BRD pointer "<BRD>:`/x`" keeps its requirement (/x), BRD id with a space included',
+    brdChecks.map(c => c.requirement), ['/microflows/0', '/microflows/0', '/microflows/0']);
+  t('the same pointer in two BRDs stays two distinct checks (BRD kept in the id)',
+    new Set(brdChecks.map(c => c.id)).size === 3 && brdChecks.every(c => !/~/.test(c.id)), true);
   t('concatenated per-BRD reports yield both modules',
     confMulti.checks.filter(c => c.instrument === 'conformance' && c.kind === 'conformance').map(c => c.module).sort(), ['Billing', 'Orders']);
 

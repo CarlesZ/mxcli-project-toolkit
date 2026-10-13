@@ -42,6 +42,12 @@ would read them. The asks from that run, with what was measured:
 | Save before `mx check`; reload instead of full restart | 229 errors hidden until a real save; 23 restarts |
 | Flag a missing end-of-parallel-path element in the consistency check | observed in that run; no count recorded |
 
+Two more items from that run were dropped from the table on purpose. Both are advice to whoever
+runs an MCP build, not asks of the server, so no owner can act on them: (a) parallel drafting
+sub-agents with the lead as the single writer, which the toolkit already does; (b) commit scripts
+and results, add unit tests, and make timers and external-system failures testable, which the
+toolkit's own test skills cover.
+
 Done when each ask is either in a local draft with its evidence row, or recorded as dropped with
 a reason — none left only in a chat or an inbox note.
 

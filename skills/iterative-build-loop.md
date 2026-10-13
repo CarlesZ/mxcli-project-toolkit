@@ -322,17 +322,20 @@ Every MDL script, and every one-off model patch (`--patch`), is applied with `./
 A raw `./mxcli exec` writes no BUILD-LOG row, takes no snapshot and runs no gate, so the change
 shows as "not recorded" to everything that reads the build log (status, done-drift, proof views).
 
-When a guard refuses, nothing in the model changed (the uncommitted-model and `--commit-first`
-refusals also write a `🚫 blocked` row; the Studio Pro and lock refusals only print). Your move
-is one of three — **commit, wait, or stop and report** — never an override:
+When a guard refuses, the script's change is not in the model. Most refusals also write a
+BUILD-LOG row (uncommitted model, `--commit-first`, a failed pre-exec check, a gate that could
+not run, PRE-EXISTING errors, a NEW gate error); the Studio Pro and lock refusals only print.
+Your move is one of three — **commit, wait, or stop and report** — never an override:
 
 | Refusal | Do this |
 |---|---|
 | Uncommitted model changes | Re-run with `--commit-first` (commits the `.mpr` + `mprcontents/` only), or commit them yourself, then re-run |
 | Studio Pro holds the model (also refuses `--commit-first`) | Stop. Ask the person to save (Cmd+S) and close the project; never kill Studio Pro |
-| Another session holds this project's exec lock | Wait for that run to finish, then re-run. A dead holder is taken over automatically — never `rm` the lock |
+| Another session holds this project's exec lock | The lock refuses at once; it does not queue. Re-run after the other apply finishes. A dead holder is taken over automatically — never `rm` the lock |
 | The mxbuild gate cannot run, even after its own download | Stop and report; run `bin/doctor.sh`. `ALLOW_UNVERIFIED=1` only when the person says so |
 | Pre-exec check or a NEW mxbuild error | Fix the script. That is the gate working |
+| `PRE-EXISTING <codes>` — errors already in the model before this script | Not the script's cause. Stop and report: it needs Studio Pro (e.g. "Update security") or a separate fix script, not a retry |
+| Any other refusal | Read the remedy exec.sh prints and do that; the table above is not the full list of guards |
 
 **Never set `FORCE_EXEC=1` on your own initiative** — only when the person tells you to, naming
 the risk. The failure it causes: an agent hits the uncommitted-model guard mid-loop, sets
@@ -342,13 +345,16 @@ between those two events.
 
 **The MCP write path stays allowed** where `learned-mdl-preflight.md` prescribes it (its
 Step 0 write-mode choice), and it is **accepted as unrecorded**: no exec row, no exec gate. Its record
-is the commit you make before the next exec (the pre-exec sequence below), with a message that
-starts `MCP:` and names what changed.
+is the commit you make before the next exec (the pre-exec sequence below, step 2), with a
+message that starts `MCP:` and names what changed.
 
-**Check before closing a phase:** every model-changing commit since the phase began is either
-covered by a BUILD-LOG row or is an `MCP:` commit. Count both: commits = exec rows + `MCP:`
-commits. A commit that is neither is a raw `mxcli exec` — re-run that script through exec.sh,
-or record why it cannot be.
+**Check before closing a phase:** every model-changing commit since the phase began is covered
+by one of three things — an `✅`/`⚠️ applied` BUILD-LOG row for the script it commits, a
+`--commit-first` commit (message `model: commit pending model changes before exec.sh …`), or an
+`MCP:` commit. Blocked and failed rows have no commit, so this is a coverage check, not an
+equality between counts. Done when all N model commits are covered, N of N. A commit covered by
+none of the three is a raw `mxcli exec` — re-run that script through exec.sh, or record why it
+cannot be.
 
 ### The gate checks the saved file — save, then check
 
@@ -364,15 +370,16 @@ The per-script apply grows with the model (field run, 2026-09-29: 22–30 s per 
 first slice, 55–65 s in the second, almost all of it mxbuild). What the gate already saves:
 the pre-flight baseline mxbuild is skipped when the verification stamp says the model is
 unchanged since its last clean build, so a run of clean applies costs **one** mxbuild each, not
-two. Concurrent applies from parallel agents queue on the exec lock instead of colliding (two of
-eleven failed applies in that run were concurrent mxbuild collisions, from before the lock).
+two. A second apply while one is running is refused by the exec lock instead of colliding (two
+of eleven failed applies in that run were concurrent mxbuild collisions, from before the lock);
+re-run it after the other apply finishes.
 
 `exec.sh` has **no** batched-gate mode. Do not imitate one with `SKIP_CHECK`, `SKIP_BASELINE`,
 `FORCE_EXEC` or raw `mxcli exec` runs between gates — each of those is an unrecorded or
 unverified write. If gate time dominates, reduce the number of applies at the granularity level
 (see "Iterative Granularity": layer scripts rather than per-page ones where partial recovery is
 unlikely, fewer stub-then-fill passes), keep parallel **drafting**, and let the exec lock
-serialise the applies.
+refuse overlapping applies — re-run a refused one after the other finishes.
 
 ### Pre-exec sequence when MCP work was done
 
@@ -380,7 +387,7 @@ Before running exec.sh after any MCP session:
 
 ```
 1. Cmd+S in Studio Pro (or run save-sp.sh)
-2. git add MyProject.mpr mprcontents/ && git commit -m "Commit MCP changes before exec"
+2. git add MyProject.mpr mprcontents/ && git commit -m "MCP: <what changed>"
 3. Close the project in Studio Pro
 4. ./bin/exec.sh mdlsource/my-script.mdl
 ```

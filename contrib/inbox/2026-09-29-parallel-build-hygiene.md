@@ -10,7 +10,8 @@
 
 Parallel drafting is the toolkit build's speed advantage (2.6 vs 5.5 min/row; equal calls per
 row), so keep it and remove its friction:
-- ~~Lock/queue mxbuild~~ — done: per-project exec lock in `project-bin/exec.sh` (#304).
+- Lock/queue mxbuild — half done: the per-project exec lock in `project-bin/exec.sh` (#304)
+  refuses a second apply at once (no collision), but does not queue it; the agent re-runs.
 - ~~Usage measurement~~ — promoted 2026-10-14 to `skills/measured-claims.md` §7 (re-measured:
   sub-agent transcripts carry partial output_tokens on early records, up to 7x low).
 - **Still open — batch the gate**: one mxbuild per 3–5 consecutive clean scripts; per-script

@@ -256,6 +256,8 @@ the early ones carry a partial `output_tokens` (e.g. `[4, 2631]` — first recor
 
 **Rule: sum usage once per `message.id`, from that message's LAST record.** Deduplicating by id
 is right (summing every record double-counts); keeping the *first* record is the undercount.
+`bin/token-burn.sh` keeps the first record per id as of 2026-10-13, so its sub-agent output is
+low until that is fixed (a fix is in flight) — check its header before citing its output totals.
 
 **Cost:** a field comparison of two builds (2026-09-29) briefly concluded "the other build writes
 2.4x more output" — an artefact of reading partial records in both builds' sub-agents. A

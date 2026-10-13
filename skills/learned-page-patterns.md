@@ -365,7 +365,8 @@ regressions, and about a fifth of the UI tokens went to round 2 repairing them.
    shares. One theme change fixes N pages; N page scripts fix N pages and drift.
 2. **Then the page scripts.** A drafter that has run `mxcli check` and `page-fidelity.js` on its
    script hands it over for applying with `./bin/exec.sh`. Do not pre-apply to a scratch copy
-   "to be sure": exec.sh's gate is that check, and its lock serialises parallel applies.
+   "to be sure": exec.sh's gate is that check. Its lock refuses a second apply while one runs — re-run after
+   the other apply finishes.
 3. **Re-look only the pages the round changed** — the list is the round's BUILD-LOG rows plus
    the pages an SCSS change reaches. Done when every page on that list has a fresh look
    (`ui-loop.md`), N of N.

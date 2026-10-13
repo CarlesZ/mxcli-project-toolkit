@@ -56,7 +56,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/cloud-dev-environment.md` | Setting up or resuming an mxcli project in a cloud/ephemeral container |
 | `skills/coverage-ledger.md` | Building the Stage 4 coverage ledger |
 | `bin/coverage-check.sh` | Checking a coverage ledger against its BRD |
-| `skills/iterative-build-loop.md` | Building a module with mxcli, or an exec.sh guard just refused a write |
+| `skills/iterative-build-loop.md` | An exec.sh guard refused a write (not a permission prompt), or building a module with mxcli |
 | `project-bin/conformance-check.sh` | Running the ledger rung alone |
 | `project-bin/graph-sweep.sh` | Running the wiring rung alone |
 | `project-bin/test-stack-up.sh` | Before any runtime test |

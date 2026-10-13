@@ -730,43 +730,58 @@ echo "      bin/install-claude-hooks.sh          # prints the tier table, instal
 # evidence (contrib-promoted, 2026-09-29): a lead session left at a 1M auto-compact window averaged
 # 363-466k context per call against ~128k for a comparable build — the cost gap was context re-read
 # per call, not call count; re-estimated at a 250k window the build cost fell by about a fifth.
-# Reads only what Claude Code itself reads (CLAUDE_CODE_AUTO_COMPACT_WINDOW, then an
-# "autoCompactWindow" number in the user or project settings.json; names checked against the
-# 2.1.x CLI) and never fails the scaffold.
-mxtk_compact_tokens() {   # "250k" | "1M" | "250000" | "auto" -> integer tokens, or empty
+# Reads what Claude Code reads — CLAUDE_CODE_AUTO_COMPACT_WINDOW, and every "autoCompactWindow"
+# value (number or string) in the project's settings.local.json / settings.json AND the user's
+# settings.json; names checked against the 2.1.x CLI — and warns if ANY of them is above 250k.
+# A value it cannot read is printed as "unparseable", never as "none set". Never fails the scaffold.
+mxtk_compact_tokens() {   # "250k" | "1M" | "250000" -> integer tokens; "auto"/garbage -> empty
   local v n mult=1
-  v="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+  v="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]"')"
   case "$v" in
     *k) n="${v%k}"; mult=1000 ;;
     *m) n="${v%m}"; mult=1000000 ;;
     *)  n="$v" ;;
   esac
-  case "$n" in ''|*[!0-9]*) return 0 ;; esac   # "auto", "1.5M", garbage: unknown, say nothing about it
-  printf '%s' "$(( 10#$n * mult ))"
+  case "$n" in ''|*[!0-9]*) return 0 ;; esac
+  n="$(printf '%s' "$n" | sed 's/^0*//')"; [ -n "$n" ] || n=0
+  # Beyond 12 digits shell arithmetic can overflow; anything that long is far above 250k anyway.
+  if [ "${#n}" -gt 12 ]; then printf '999999999999'; return 0; fi
+  printf '%s' "$(( n * mult ))"
 }
-_ac_limit=250000; _ac_val=""; _ac_from=""
-if [ -n "${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}" ]; then
-  _ac_val="$(mxtk_compact_tokens "$CLAUDE_CODE_AUTO_COMPACT_WINDOW")"
-  _ac_from="CLAUDE_CODE_AUTO_COMPACT_WINDOW=$CLAUDE_CODE_AUTO_COMPACT_WINDOW"
-else
-  for _ac_f in "$PROJECT_DIR/.claude/settings.local.json" "$PROJECT_DIR/.claude/settings.json" \
-               "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/settings.json"; do
-    [ -f "$_ac_f" ] || continue
-    # Largest number found wins: a per-model block may list several, and the warning is for the worst.
-    _ac_n="$( (grep -oE '"autoCompactWindow"[[:space:]]*:[[:space:]]*[0-9]+' "$_ac_f" 2>/dev/null || true) \
-              | grep -oE '[0-9]+$' | sort -n | tail -1 || true)"
-    if [ -n "$_ac_n" ]; then _ac_val="$_ac_n"; _ac_from="autoCompactWindow=$_ac_n in $_ac_f"; break; fi
-  done
+_ac_limit=250000; _ac_over=""; _ac_ok=""; _ac_bad=""; _ac_auto=""
+mxtk_compact_note() {     # $1 raw value, $2 where it came from
+  local t
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]"')" in
+    auto) _ac_auto="$_ac_auto; $2"; return 0 ;;
+  esac
+  t="$(mxtk_compact_tokens "$1")"
+  if [ -z "$t" ]; then _ac_bad="$_ac_bad; unparseable: $1 ($2)"
+  elif [ "$t" -gt "$_ac_limit" ]; then _ac_over="$_ac_over; $1 ($2)"
+  else _ac_ok="$_ac_ok; $1 ($2)"; fi
+}
+[ -z "${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}" ] || \
+  mxtk_compact_note "$CLAUDE_CODE_AUTO_COMPACT_WINDOW" "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+for _ac_f in "$PROJECT_DIR/.claude/settings.local.json" "$PROJECT_DIR/.claude/settings.json" \
+             "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/settings.json"; do
+  [ -f "$_ac_f" ] || continue
+  while IFS= read -r _ac_v; do
+    [ -n "$_ac_v" ] && mxtk_compact_note "$_ac_v" "autoCompactWindow in $_ac_f"
+  done <<< "$( (grep -oE '"autoCompactWindow"[[:space:]]*:[[:space:]]*("[^"]*"|[^,}[:space:]]+)' "$_ac_f" 2>/dev/null || true) \
+              | sed -E 's/^"autoCompactWindow"[[:space:]]*:[[:space:]]*//')"
+done
+if [ -n "$_ac_over" ]; then
+  echo "  - WARNING: auto-compact window is above 250k: ${_ac_over#; }."
+  echo "    A field build at a 1M window averaged 363-466k context per call — every token re-read on"
+  echo "    every call. Lower it with /autocompact 250k (or CLAUDE_CODE_AUTO_COMPACT_WINDOW=250k). Nothing was changed."
 fi
-if [ -n "$_ac_val" ] && [ "$_ac_val" -gt "$_ac_limit" ]; then
-  echo "  - WARNING: auto-compact window is above 250k ($_ac_from). A field build at a 1M window"
-  echo "    averaged 363-466k context per call — every token re-read on every call. Lower it with"
-  echo "    /autocompact 250k (or CLAUDE_CODE_AUTO_COMPACT_WINDOW=250k). Nothing was changed."
-elif [ -n "$_ac_val" ]; then
-  echo "  - Auto-compact window: $_ac_from (at or below 250k — ok)."
-else
-  echo "  - Auto-compact window: none set (\"auto\"), which on a 1M-context model compacts near 1M."
-  echo "    Recommended: /autocompact 250k — a field lead at 1M averaged 363-466k per call. Not set by this script."
+[ -z "$_ac_bad" ] || echo "  - Auto-compact window ${_ac_bad#; } — could not read it; check it is 250k or lower."
+if [ -z "$_ac_over" ] && [ -z "$_ac_bad" ]; then
+  if [ -n "$_ac_ok" ]; then
+    echo "  - Auto-compact window: ${_ac_ok#; } (at or below 250k — ok)."
+  else
+    echo "  - Auto-compact window: none set, or \"auto\" — which on a 1M-context model compacts near 1M."
+    echo "    Recommended: /autocompact 250k — a field lead at 1M averaged 363-466k per call. Not set by this script."
+  fi
 fi
 echo ""
 

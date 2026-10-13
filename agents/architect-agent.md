@@ -141,6 +141,7 @@ numbered `RUN` row, never a footnote and never omitted.
 3. Write `.mx-brd.json`, `architecture/` (blueprint, wiring diagrams, fit-gap.md), and once approved, `architecture/build-plan.md` — numbered, dependency-ordered, every new row with its `claims` block.
 3b. **If any process has a workflow: `architecture/workflow-count.md`, all ten rows with numbers** — see the section above. Owed at Stage 3, before the build plan names a workflow row.
 4. Record every decision in `PROJECT.md`.
+5. **Change requests (any stage after 3):** when dispatched with agreed `## Change log` rows of class `structure` or `visual` (page unbuilt), or a wireframe `UNSYNCED` marker, you flush `architecture/`, the module brief's structure, or the wireframe. BRDs stay with ba-agent (`change-intake.md` → Owners).
 
 ## Report back
 Boundaries/decisions proposed vs. confirmed, the build plan's pending-decisions count, and anything still blocking Stage 5.

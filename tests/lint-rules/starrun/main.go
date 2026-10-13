@@ -21,7 +21,7 @@
 // Fixture schema (every key optional, missing struct fields default to ""/false/0):
 //
 //	{"widgets":[{...}], "microflows":[{...}], "pages":[{...}],
-//	 "entities":[{...}], "associations":[{...}],
+//	 "entities":[{...}], "associations":[{...}], "strings":[{...}],
 //	 "activities":{"Mod.Flow":[{...}]}, "refs_from":{"Mod.Flow":[{...}]}}
 //
 // Field names are the mxcli Starlark projection names (mdl/linter/starlark.go):
@@ -51,6 +51,10 @@
 //	description to_delete_behavior from_delete_behavior
 //
 // reference: source_type source_id source_name target_type target_id target_name ref_kind module_name
+//
+// catalog_string (strings(language=None)): qualified_name object_type value context language
+//
+//	element_id module_name
 package main
 
 import (
@@ -73,6 +77,7 @@ type fixture struct {
 	RefsFrom     map[string][]map[string]any `json:"refs_from"`
 	Entities     []map[string]any            `json:"entities"`
 	Associations []map[string]any            `json:"associations"`
+	Strings      []map[string]any            `json:"strings"`
 }
 
 // Projection field lists with their zero values. Order does not matter to Starlark.
@@ -205,6 +210,25 @@ func main() {
 		"pages":        noArgs("pages", list("page", pageFields, fx.Pages)),
 		"entities":     noArgs("entities", list("entity", entityFields, fx.Entities)),
 		"associations": noArgs("associations", list("association", associationFields, fx.Associations)),
+		// strings(language=None) mirrors mxcli 0.25.0+: every catalog string, optionally
+		// filtered to one language.
+		"strings": starlark.NewBuiltin("strings", func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var lang starlark.Value = starlark.None
+			if err := starlark.UnpackArgs(b.Name(), args, kwargs, "language?", &lang); err != nil {
+				return nil, err
+			}
+			rows := fx.Strings
+			if l, ok := lang.(starlark.String); ok && string(l) != "" {
+				keep := make([]map[string]any, 0, len(rows))
+				for _, r := range rows {
+					if v, _ := r["language"].(string); v == string(l) {
+						keep = append(keep, r)
+					}
+				}
+				rows = keep
+			}
+			return list("catalog_string", stringFields, rows), nil
+		}),
 		// activities_for(q, nested=False) mirrors mxcli 0.25.0: the fixture lists every
 		// object of a flow, loop bodies included (with parent_loop_id / loop_depth), and the
 		// default call returns only the rows whose loop_depth is 0 or absent, exactly as the
@@ -322,4 +346,7 @@ var entityFields = fields{
 var associationFields = fields{
 	s: []string{"name", "qualified_name", "module_name", "from_entity", "to_entity", "type", "owner",
 		"storage_format", "description", "to_delete_behavior", "from_delete_behavior"},
+}
+var stringFields = fields{
+	s: []string{"qualified_name", "object_type", "value", "context", "language", "element_id", "module_name"},
 }

@@ -100,9 +100,14 @@ enum's internal value set) — there's nothing to drift, and syncing anyway is n
 changes something visually observable (new field, new button, changed flow, different state/color) —
 not for logic/microflow changes invisible in the UI.
 
-**Mechanism:** whichever agent confirms the decision (`ba-agent`, `architect-agent`, `mdl-agent`,
-`gate-agent`) names which BRD/wireframe file(s) the decision touches at the moment it logs the
-decision to `PROJECT.md`. If none, say so explicitly ("no BRD touched — internal/architectural only")
+**User feedback mid-build** ("also add X", a remark on a screenshot) starts one step earlier, in
+`change-intake.md`. It gets a `## Change log` row before any edit, the BRD or wireframe is edited
+before the MDL, and the script runs as `./bin/exec.sh --cr CR-NN`. This rule is that loop's
+BRD-sync step.
+
+**Mechanism:** the lead names which BRD/wireframe file(s) the decision touches at the moment it
+logs the decision to `PROJECT.md`. A helper that reaches the decision (`mdl-agent`, `gate-agent`)
+reports it to the lead rather than writing `PROJECT.md` itself (owners: `change-intake.md`). If none, say so explicitly ("no BRD touched — internal/architectural only")
 — a conscious skip, not a silent one.
 
 **Marker convention + enforcement** (ownership and cadence live in `conversion-runbook.md` §3b):

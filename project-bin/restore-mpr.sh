@@ -1,20 +1,45 @@
 #!/usr/bin/env bash
 # restore-mpr.sh — restore the .mpr + mprcontents/ from a snapshot-mpr.sh snapshot.
 #
-# Usage: ./bin/restore-mpr.sh [timestamp]    (defaults to the newest snapshot)
+# Usage: ./bin/restore-mpr.sh [timestamp | snapshot path]    (defaults to the newest snapshot)
+#   timestamp      a folder name under .mpr-snapshots/, e.g. 20261013-120000
+#   snapshot path  absolute, or relative to the directory you call from
 set -euo pipefail
 . "$(dirname "$0")/_common.sh"
 
 # Snapshots live under $PROJECT_ROOT; the model tree they restore INTO may not
 # (two-tree checkout: app/ holds the .mpr and mprcontents/). Resolve both.
 SNAP_DIR="$PROJECT_ROOT/.mpr-snapshots"
+
+# Resolve the argument BEFORE the cd below (2026-10-13, field report via PR #309): the usage line
+# promised [timestamp], but the argument was used as given after `cd "$MODEL_DIR"`, so a bare
+# `20261013-120000` was looked up in the model directory and failed with "snapshot ... is missing
+# App.mpr" — sending a recovering user to inspect a healthy snapshot. Order: a directory as given
+# (absolute or caller-relative), else a folder of that name under $SNAP_DIR, else refuse by name.
+SNAP=""
+if [ -n "${1:-}" ]; then
+  if [ -d "$1" ]; then
+    SNAP="$(cd "$1" && pwd)"
+  elif [ -d "$SNAP_DIR/$1" ]; then
+    SNAP="$SNAP_DIR/$1"
+  else
+    echo "ERROR: no snapshot named '$1' in $SNAP_DIR (and no such directory from $(pwd))."
+    NEWEST=$(ls -dt "$SNAP_DIR"/*/ 2>/dev/null | head -3) || true
+    if [ -n "$NEWEST" ]; then
+      echo "  Newest snapshots:"
+      printf '%s\n' "$NEWEST" | while IFS= read -r d; do echo "    $(basename "$d")"; done
+    fi
+    exit 1
+  fi
+fi
+
 MODEL_DIR="$(find_model_dir)" || exit 1
 cd "$MODEL_DIR"
 
 MPR_PATH="$(find_mpr)"
 MPR="$(basename "$MPR_PATH")"
 
-SNAP="${1:-$(ls -dt "$SNAP_DIR"/*/ 2>/dev/null | head -1)}"
+[ -n "$SNAP" ] || SNAP="$(ls -dt "$SNAP_DIR"/*/ 2>/dev/null | head -1)" || true
 [ -z "$SNAP" ] && { echo "ERROR: no timestamped snapshots in $SNAP_DIR (a flat .mpr-only copy is not a snapshot — it has no mprcontents/ and restores to garbage)"; exit 1; }
 [ ! -f "$SNAP/$MPR" ] && { echo "ERROR: snapshot $SNAP is missing $MPR"; exit 1; }
 

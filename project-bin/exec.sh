@@ -16,6 +16,13 @@
 #        ./bin/exec.sh --change-class <script.mdl>   (advisory ui-only/logic tag; writes nothing)
 #        ./bin/exec.sh --watch-compat <script.mdl>   (advisory: can `run --local --watch` apply
 #                                                     this, or does the app need a restart; writes nothing)
+#        ./bin/exec.sh --cr CR-07 <script.mdl>        (any mode: tag the run with its change request)
+#
+# --cr (2026-10-13): names the PROJECT.md "## Change log" row this run applies
+# (skills/change-intake.md). It lands in the BUILD-LOG detail cell as "cr: CR-07", the same way
+# the change-class tag does; the metrics-ledger columns are unchanged. Optional — a planned build
+# step has no CR. Its value: a BUILD-LOG row with a cr tag is the Closed-by evidence the change
+# log asks for, and an exec with neither a plan step nor a cr is the MDL-first change signature.
 #
 # --patch (2026-09-27): the same chain around a one-off script that edits the model directly
 # (a Python BSON patch for something mxcli cannot express, e.g. an association owner change).
@@ -155,6 +162,21 @@ mxtk_change_class() {  # $1 = MDL script; prints "<class>\t<why>"
       printf "ui-only\t%d page/snippet/layout statement(s), nothing else\n", ui
     }' "$1"
 }
+# --cr CR-NN may lead any mode. Parsed first, before anything needs a project, so a malformed id
+# is refused without touching the model.
+CR_ID=""
+if [ "${1:-}" = "--cr" ]; then
+  CR_ID="${2:-}"
+  case "$CR_ID" in
+    CR-[0-9]*) case "${CR_ID#CR-}" in *[!0-9]*) CR_ID="!" ;; esac ;;
+    *) CR_ID="!" ;;
+  esac
+  if [ "$CR_ID" = "!" ]; then
+    echo "✗ --cr takes a change-log id like CR-07 (PROJECT.md '## Change log', skills/change-intake.md); got '${2:-}'" >&2
+    exit 2
+  fi
+  shift 2
+fi
 if [ "${1:-}" = "--change-class" ]; then
   [ -f "${2:-}" ] || { echo "Usage: ./bin/exec.sh --change-class <script.mdl>" >&2; exit 2; }
   mxtk_change_class "$2"
@@ -276,7 +298,7 @@ LOG_NAME="$(basename "$SCRIPT")"
 [ "$PATCH_MODE" = "1" ] && LOG_NAME="patch: $LOG_NAME"
 
 if [ -z "$SCRIPT" ]; then
-  echo "Usage: ./bin/exec.sh [--commit-first] <script.mdl>"
+  echo "Usage: ./bin/exec.sh [--commit-first] [--cr CR-NN] <script.mdl>"
   echo "       ./bin/exec.sh [--commit-first] --patch <script> [args...]"
   exit 1
 fi
@@ -306,6 +328,7 @@ change_lane() {
     logic)   echo "re-run only the tests whose subject this change touched (changed microflows + their SHOW CALLERS, changed pages' journeys). Full mxcli test at module close, not here" ;;
   esac
 }
+[ -n "$CR_ID" ] && echo "→ Change request: $CR_ID (PROJECT.md '## Change log'; cite this run's commit in its Closed-by)"
 if [ -n "$CHANGE_CLASS" ]; then
   echo "→ Change class: $CHANGE_CLASS ($CHANGE_WHY)"
   echo "  test lane (skills/testing-shape.md §3): $(change_lane)"
@@ -377,7 +400,7 @@ HDR2
   # The gate cell is read from GATE_STATE rather than passed in, so no caller
   # can omit it — a blank cell in this table reads as "fine", which is the exact
   # false-green the gate exists to prevent.
-  _detail="$2${CHANGE_CLASS:+ · change: $CHANGE_CLASS}$_EXEC_APPROVAL_SUFFIX"
+  _detail="$2${CHANGE_CLASS:+ · change: $CHANGE_CLASS}${CR_ID:+ · cr: $CR_ID}$_EXEC_APPROVAL_SUFFIX"
   printf '| %s | `%s` | %s | %s | %s |\n' \
     "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$LOG_NAME" \
     "${GATE_STATE:-not-run}" "$1" "$_detail" >> "$BUILD_LOG"

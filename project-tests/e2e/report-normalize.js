@@ -549,6 +549,16 @@ function collectJourney(input, contracts, ctx) {
     note: 'PASS/FAIL/INVALID are distinct at the source; INVALID → fault',
     checksEmitted: checks.length,
   });
+  // An ABORTED run (journey-runner wrote `aborted: "preflight"` or `"signal SIGINT"`) is not
+  // a result: the suite stopped before or while walking. Its rows are kept so the reader sees
+  // why, but each is flagged notAResult and the instrument is a fault — never a green or a
+  // finding about the app.
+  if (d.aborted) {
+    for (const c of checks) { c.notAResult = true; c.abortedRun = String(d.aborted); }
+    Object.assign(instruments[instruments.length - 1], { verdict: 'fault', aborted: String(d.aborted),
+      reason: `${input.path} is an ABORTED run (${d.aborted}) — the suite stopped before or while walking; ` +
+              'its rows are kept and flagged notAResult, none of them is a result. Fix the cause and re-run.' });
+  }
   return { checks, instruments, walks: collectWalks(d, checks) };
 }
 
@@ -2272,6 +2282,9 @@ function normalize(inputs) {
 
   return {
     schemaVersion: SCHEMA_VERSION,
+    // The journey run was aborted (preflight refusal or a signal): its rows are kept and
+    // flagged notAResult, and nothing in this report is a journey result.
+    aborted: (jf && jf.aborted) ? String(jf.aborted) : null,
     project: {
       id: m.projectId || null,
       displayName: m.displayName || null,
@@ -2608,6 +2621,16 @@ function selftest() {
             results: [{ rung: 'setup', name: 'preflight: admin', verdict: 'INVALID', detail: 'x', requirement: '' }] } } });
   t('a setup row is kind "setup", not "ui"',
     jSetup.checks.filter(c => c.id === 'journey/_/preflight-admin').map(c => c.kind), ['setup']);
+
+  // An aborted run (preflight / signal) is kept but is never a result.
+  const jAb = normalize({ ...base, journeyFindings: { status: 'ok', path: 'journey-findings.json',
+    data: { capturedAt: '2026-01-01T00:00:00Z', positiveControl: false, aborted: 'preflight',
+            results: [{ rung: 'setup', name: 'preflight: admin', verdict: 'INVALID', detail: 'x', requirement: '' }] } } });
+  t('an aborted run marks the report aborted', jAb.aborted, 'preflight');
+  t('and faults the journey-runner instrument', inst(jAb, 'journey-runner').verdict, 'fault');
+  t('and flags every kept row notAResult',
+    jAb.checks.filter(c => c.instrument === 'journey-runner').every(c => c.notAResult === true && c.abortedRun === 'preflight'), true);
+  t('a completed run is not aborted', jSetup.aborted, null);
 
   // ---- 3b. the control instrument is per-rung, and a copied real run is not one ----
   const ctlRow = (rung, verdict) => ({

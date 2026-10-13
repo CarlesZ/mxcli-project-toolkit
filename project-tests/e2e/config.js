@@ -89,11 +89,10 @@ const CREDS = PROJ.credentials();
 // Only the last is refused by journey-runner's preflight. Refusing every non-env password
 // (as #302 first did) broke every project whose real password lives in project.config.js,
 // because nothing in the toolkit loads an env file before verify-module runs the journeys.
-// A credentials() that reports `source: 'template default'` is honoured as well.
 const TEMPLATE_PASSWORDS = ['Demo2025!'];   // project.config.template.js DEFAULT_PASS
 function passwordSource({ env = process.env, creds = CREDS } = {}) {
   if (env.TEST_PASS || env.APP_PASS) return 'env';
-  if (creds.source === 'template default' || TEMPLATE_PASSWORDS.includes(creds.pass)) return 'template placeholder';
+  if (TEMPLATE_PASSWORDS.includes(creds.pass)) return 'template placeholder';
   return 'project.config.js';
 }
 

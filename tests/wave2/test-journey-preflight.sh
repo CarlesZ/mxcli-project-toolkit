@@ -125,7 +125,6 @@ out('PS', [
   ps({ env: { APP_PASS: 'x' }, creds: { pass: 'Real-Proj-Pass' } }),
   ps({ env: {}, creds: { pass: 'Real-Proj-Pass' } }),
   ps({ env: {}, creds: { pass: 'Demo2025!' } }),
-  ps({ env: {}, creds: { pass: 'anything', source: 'template default' } }),
 ]);
 // the shipped template's DEFAULT_PASS is the placeholder this list names
 out('TPL_LISTED', (C.TEMPLATE_PASSWORDS || []).includes(E.TPL_PASS));
@@ -266,7 +265,7 @@ case "$(line CRED)" in *'"abort":2,"calls":0'*'SETUP  credentials: TEST_PASS is 
 echo "== T2b': only the template placeholder is refused (#302 follow-up) =="
 [ "$(line CRED_PROJ)" = '{"abort":null,"calls":1,"cred":false}' ] && ok "password set in project.config.js → no refusal, probe runs" || bad "project-set password refused (breaks every project after sync)" "$(line CRED_PROJ)"
 case "$(line CRED_TPL)" in *'"abort":2'*'placeholder password'*DEFAULT_PASS*) ok "template placeholder → refused, names DEFAULT_PASS as the fix" ;; *) bad "placeholder not refused" "$(line CRED_TPL)" ;; esac
-[ "$(line PS)" = '["env","env","project.config.js","template placeholder","template placeholder"]' ] && ok "passwordSource: env wins; project value is the project's; template value / 'template default' is the placeholder" || bad "passwordSource wrong" "$(line PS)"
+[ "$(line PS)" = '["env","env","project.config.js","template placeholder"]' ] && ok "passwordSource: env wins; project value is the project's; the template value is the placeholder" || bad "passwordSource wrong" "$(line PS)"
 [ -n "$TPL_PASS" ] && [ "$(line TPL_LISTED)" = true ] && ok "the shipped template's DEFAULT_PASS is the listed placeholder" || bad "template DEFAULT_PASS not in TEMPLATE_PASSWORDS (got '$TPL_PASS')" "$(line TPL_LISTED)"
 
 echo "== T2c: resetsData / --protect-state (#279) =="
@@ -357,6 +356,18 @@ FJ="$WORK/tests/e2e/artifacts/journey-findings.json"
 node -e 'const f=require(process.argv[1]); process.exit(f.aborted==="preflight" && f.results.length===1 && f.results[0].verdict==="INVALID" ? 0 : 1)' "$FJ" 2>/dev/null \
   && ok "findings slot overwritten with the aborted run (no stale file reads as this run)" || bad "findings file not written as aborted"
 grep -qF "$MARK" "$FJ" 2>/dev/null && bad "credential written to the findings file" || ok "credential not in the findings file"
+# The aborted findings file through the real normalizer: a report, marked aborted, no results.
+if [ -f "$E2E/report-normalize.js" ]; then
+  cp "$E2E/report-normalize.js" "$WORK/tests/e2e/"
+  ( cd "$WORK/tests/e2e" && APP_PORT=1 node report-normalize.js --out docs/report.json ) > "$WORK/rn.out" 2>&1
+  node -e 'const r=require(process.argv[1]); const j=r.checks.filter(c=>c.instrument==="journey-runner");
+    const i=r.instruments.find(x=>x.name==="journey-runner");
+    process.exit(r.aborted==="preflight" && j.length>0 && j.every(c=>c.notAResult===true) && i.verdict==="fault" ? 0 : 1)' "$WORK/docs/report.json" 2>/dev/null \
+    && ok "report-normalize marks the aborted run: report.aborted, rows flagged notAResult, instrument fault" \
+    || bad "aborted run normalised as results" "$(tail -3 "$WORK/rn.out"; node -e 'const r=require(process.argv[1]);console.log(r.aborted)' "$WORK/docs/report.json" 2>&1)"
+else
+  echo "  skip — report-normalize.js not beside $SUT"
+fi
 
 echo "== T10: real runner — missing env var, every journey affected → one SETUP line, no probe =="
 rm -f "$WORK/argv"

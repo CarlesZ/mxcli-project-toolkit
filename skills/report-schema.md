@@ -57,6 +57,9 @@ any real project. The **Deriving the values** section says where each one actual
 ```jsonc
 {
   "schemaVersion": "1.2",              // renderer refuses on major mismatch, warns on newer minor
+  "aborted": null,                     // "preflight" | "signal SIGINT" | … when journey-findings.json is an
+                                       // aborted run: its checks carry notAResult: true + abortedRun, and the
+                                       // journey-runner instrument is a fault. None of them is a result.
 
   "project": {
     "id": "acme-procurement",          // stable key; a fleet index groups on this
@@ -97,8 +100,9 @@ any real project. The **Deriving the values** section says where each one actual
     {
       "id": "journey/J-PR-01/step5/landing",     // stable, sortable, unique
       "instrument": "journey-runner",            // WHO measured
-      "kind": "ui",                              // ui | trace | data | outcome | control
+      "kind": "ui",                              // ui | trace | data | outcome | control | setup
                                                  // | build | lint | coverage | conformance | stack
+                                                 // setup = journey-runner preflight / precondition / APP-DOWN rows
       "module": "Procurement",                   // null for cross-cutting
       "journey": "J-PR-01",                      // null when not a journey check
       "stepIndex": 5,                            // ordinal position on the path

@@ -452,8 +452,16 @@ fi
 # requirements to check against" is precisely the hole that let several projects ship with no
 # coverage ledger at all, so coverage-check.sh and the review agent had nothing to run and their
 # absence read as silence.
-LEDGER="${LEDGER_FILE:-$ROOT/architecture/modules/$MODULE/coverage-ledger.md}"
-[ -f "$LEDGER" ] || LEDGER="$ROOT/architecture/coverage-ledger.md"
+# A ledger is a file OR a per-BRD directory (<Module>/coverage-ledger/<BRD>.md) — LEDGER_FILE
+# documents both (conformance-check.sh, coverage-preflight.sh). Testing only `-f` sent a directory
+# LEDGER_FILE silently to architecture/coverage-ledger.md (review of #307, 2026-10-13).
+resolve_ledger_hint() {
+  local l="${LEDGER_FILE:-$ROOT/architecture/modules/$MODULE/coverage-ledger.md}"
+  if [ -z "${LEDGER_FILE:-}" ] && [ ! -f "$l" ] && [ -d "${l%.md}" ]; then l="${l%.md}"; fi
+  [ -f "$l" ] || [ -d "$l" ] || l="$ROOT/architecture/coverage-ledger.md"
+  printf '%s\n' "$l"
+}
+LEDGER="$(resolve_ledger_hint)"
 BRD="${BRD_FILE:-}"
 if [ -z "$BRD" ]; then
   for pat in "$ROOT"/analysis/*/brd/*.brd.json "$ROOT"/analysis/*/knowledge-base/brd/*.brd.json; do

@@ -21,6 +21,7 @@
 #   2. build_mode 'full'   + action edges only, zero calls -> sweep runs (as on master)
 #   3. build_mode 'full'   + kind-less refs -> FAULT naming the mode and the per-kind counts
 #   4. build_mode 'fast'   + empty refs    -> FAULT, as before
+#   4b. refs typed, but none of the orphan-read kinds -> sweeps, with the orphan-list WARNING
 #   5. app-facts: 'source' + calls and action-only both pass the guard; kind-less FAULTs
 #
 # The catalog databases are SYNTHETIC: no real catalog.db is captured in this repo, and the
@@ -50,7 +51,7 @@ bad() { FAIL=$((FAIL+1)); echo "  FAIL — $1"; [ -n "${2:-}" ] && echo "       
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/catalog-calls.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
-# mkdb <db> <build_mode> <refs shape: calls|actions|kindless|empty>
+# mkdb <db> <build_mode> <refs shape: calls|actions|kindless|otherkind|empty>
 mkdb() {
   local db="$1" mode="$2" shape="$3"
   mkdir -p "$(dirname "$db")"; rm -f "$db"
@@ -78,6 +79,8 @@ mkdb() {
         echo "INSERT INTO refs VALUES ('PAGE','Orders.Order_Edit','Orders.ACT_Save','action','Orders');"
         echo "INSERT INTO refs VALUES ('MICROFLOW','Billing.ACT_Send','Orders.ACT_Save','action','Billing');"
         [ "$shape" = calls ] && echo "INSERT INTO refs VALUES ('MICROFLOW','Orders.ACT_Save','Orders.SUB_Total','call','Orders');" ;;
+      otherkind)
+        echo "INSERT INTO refs VALUES ('MICROFLOW','Orders.ACT_Save','Orders.Order','retrieve','Orders');" ;;
       kindless)
         echo "INSERT INTO refs VALUES ('PAGE','Orders.Order_Edit','Orders.ACT_Save','','Orders');"
         echo "INSERT INTO refs VALUES ('MICROFLOW','Orders.ACT_Save','Orders.SUB_Total',NULL,'Orders');" ;;
@@ -145,6 +148,21 @@ for layout in single two; do
   else
     bad "[$layout] empty refs not refused" "rc=$rc $(out)"
   fi
+
+  # --- 4b. typed refs, but none the orphan query reads: sweep, and say the orphan list is moot ----
+  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" full otherkind
+  rc="$(sweep "$P")"
+  if [ "$rc" = 0 ] && grep -q "WARNING: the catalog has no call/action/menu_item/show_page/datasource edges" "$WORK/out" \
+     && grep -q "retrieve=1" "$WORK/out"; then
+    ok "[$layout] no orphan-read kinds: sweeps with the orphan-list WARNING (retrieve=1 shown)"
+  else
+    bad "[$layout] missing orphan-read kinds not warned about" "rc=$rc $(out)"
+  fi
+  P="$(proj $layout)"; mkdb "$(mdir "$P")/.mxcli/catalog.db" full actions
+  sweep "$P" >/dev/null
+  ! grep -q "WARNING: the catalog has no call" "$WORK/out" \
+    && ok "[$layout] no orphan-list WARNING when an orphan-read kind is present" \
+    || bad "[$layout] orphan-list WARNING printed on an action-bearing catalog" "$(out)"
 
   # --- 5. app-facts: same guard, through a stub mxcli that drops a prepared catalog -------------
   if [ -f "$AF" ]; then

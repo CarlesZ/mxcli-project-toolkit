@@ -13,6 +13,8 @@
 #
 # Cases, each on BOTH layouts (single-tree, and two-tree with the .mpr under app/):
 #   1. --reuse-conformance <base>: both per-BRD siblings are read (2 Orders rows, not a FAULT)
+#   1b. a module with ONLY the per-BRD directory (no coverage-ledger.md index) is a ledger, not
+#      "no ledger"; and the reuse log field names the files read, not the absent base name
 #   2. its own run (stub conformance-check.sh in <project>/bin, which _tool prefers): rows from
 #      both per-BRD reports reach conformance.tsv
 #
@@ -87,6 +89,22 @@ for layout in single two; do
     ok "[$layout] reuse reads both per-BRD reports (2 Orders rows, Billing's filtered out)"
   else
     bad "[$layout] reuse did not slice both per-BRD reports" "slice=$(slice) $(out)"
+  fi
+
+  # --- 1b. directory-only ledger; log field names the files actually read ----------------------
+  setup "$layout"
+  rm -f "$P/architecture/modules/Orders/coverage-ledger.md"
+  report "$P/docs/conformance/report-$D-F001.tsv" F001
+  report "$P/docs/conformance/report-$D-F002.tsv" F002
+  run --reuse-conformance "docs/conformance/report-$D.tsv" >/dev/null
+  S="$P/.claude/loop/review/Orders/summary.tsv"
+  if grep -q "no architecture/modules/Orders/coverage-ledger.md" "$WORK/out"; then
+    bad "[$layout] directory-only ledger reported as no ledger" "$(out)"
+  elif [ "$(slice)" = 2 ] && grep -q "conformance (reused).PASS.*report-$D-F001.tsv, docs/conformance/report-$D-F002.tsv" "$S" \
+       && ! grep -q "PASS.0.-.docs/conformance/report-$D.tsv\$" "$S"; then
+    ok "[$layout] directory-only ledger measured; summary names report-$D-F001/F002.tsv"
+  else
+    bad "[$layout] directory-only ledger or log field wrong" "slice=$(slice) $(tr '\n' ' ' < "$S" 2>/dev/null)"
   fi
 
   # --- 2. own run: every report this run wrote, not just the newest ---------------------------

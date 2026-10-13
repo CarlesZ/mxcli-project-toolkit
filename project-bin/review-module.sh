@@ -316,9 +316,13 @@ conf_slice() {
 # measure, which is a FAULT and emphatically not a pass — "no ledger" is exactly the hole
 # that let projects ship with no coverage-ledger.md at all and read as silence.
 LEDGER="$ROOT/architecture/modules/$MODULE/coverage-ledger.md"
-if [ ! -f "$LEDGER" ]; then
+# A module may keep ONLY the per-BRD directory (<Module>/coverage-ledger/<BRD>.md) with no index
+# file beside it; that is a ledger, and conformance-check.sh / coverage-preflight.sh both read it.
+LEDGER_PB_DIR="${LEDGER%.md}"
+has_ledger() { [ -f "$LEDGER" ] || ls "$LEDGER_PB_DIR"/*.md >/dev/null 2>&1; }
+if ! has_ledger; then
   fault_instrument "conformance (ledger claims vs live model)" conformance \
-    "no architecture/modules/$MODULE/coverage-ledger.md" \
+    "no architecture/modules/$MODULE/coverage-ledger.md or coverage-ledger/*.md" \
     "This module has made no recorded claims, so none could be measured." \
     "Its conformance is UNMEASURED, not clean: there is no row here saying" \
     "'the model matches the decision' because there is no decision on file."
@@ -332,6 +336,10 @@ elif [ -n "$REUSE_CONF" ]; then
   RC_FILES=(); RC_N=0
   [ -f "$RC_PATH" ] && { RC_FILES[$RC_N]="$RC_PATH"; RC_N=$((RC_N+1)); }
   for f in "${RC_PATH%.tsv}"-*.tsv; do [ -f "$f" ] && { RC_FILES[$RC_N]="$f"; RC_N=$((RC_N+1)); }; done
+  # The files actually read, project-relative, for the log fields — on a per-BRD run the base
+  # name passed in does not exist, so naming it would point a reader at nothing.
+  RC_LIST=""
+  for f in ${RC_FILES[@]+"${RC_FILES[@]}"}; do RC_LIST="${RC_LIST:+$RC_LIST, }${f#$ROOT/}"; done
   if [ "$RC_N" -eq 0 ]; then
     c_warn "  ! INSTRUMENT FAULT"; echo " — $REUSE_CONF does not exist"
     echo "      The caller said it had already measured conformance and it had not."
@@ -346,13 +354,13 @@ elif [ -n "$REUSE_CONF" ]; then
       c_warn "  ! INSTRUMENT FAULT"; echo " — $REUSE_CONF carries no rows for $MODULE"
       echo "      Reusing it would report zero measurements as a clean module."
       printf 'conformance (reused)\tFAULT\t2\t-\t(no rows for %s)\n' "$MODULE" >> "$SUMMARY"
-      note_instrument conformance fault 2 "" "${REUSE_CONF}" \
+      note_instrument conformance fault 2 "" "$RC_LIST" \
         "reused report carries no rows for $MODULE — refusing to report a clean run over zero measurements"
       FAULTED=$((FAULTED+1))
     else
-      c_ok "  ✓ reused"; echo "  ($RC_ROWS rows from $RC_N report(s): ${REUSE_CONF%.tsv}[-<BRD>].tsv)"
-      printf 'conformance (reused)\tPASS\t0\t-\t%s\n' "$REUSE_CONF" >> "$SUMMARY"
-      note_instrument conformance pass 0 "" "$REUSE_CONF" ""
+      c_ok "  ✓ reused"; echo "  ($RC_ROWS rows from $RC_N report(s): $RC_LIST)"
+      printf 'conformance (reused)\tPASS\t0\t-\t%s\n' "$RC_LIST" >> "$SUMMARY"
+      note_instrument conformance pass 0 "" "$RC_LIST" ""
     fi
   fi
 else
@@ -411,7 +419,7 @@ cand="$(_tool coverage-check.sh)"
 # The BRD is named by the ledger itself; guessing with `ls | head -1` picks another
 # module's BRD and reports its leaves as this module's coverage.
 BRD=""
-if [ -f "$LEDGER" ]; then
+if has_ledger; then
   # ALL the BRDs the ledger names, not just the first — and the COUNT is reported, because
   # coverage-check.sh measures one BRD per run and a module with five of them was silently
   # having one fifth of its requirements measured and printed as the module's coverage
@@ -426,7 +434,7 @@ if [ -f "$LEDGER" ]; then
   while IFS= read -r cand; do
     [ -n "$cand" ] && [ -f "$ROOT/$cand" ] && BRD_ALL="$BRD_ALL$cand"$'\n'
   done <<EOF
-$(grep -oE '[A-Za-z0-9_/.-]*\.brd\.json' "$LEDGER" 2>/dev/null | sort -u)
+$(cat "$LEDGER" "$LEDGER_PB_DIR"/*.md 2>/dev/null | grep -oE '[A-Za-z0-9_/.-]*\.brd\.json' | sort -u)
 EOF
   BRD_N=$(printf '%s' "$BRD_ALL" | grep -c . || true)
   BRD_REL="$(printf '%s' "$BRD_ALL" | head -1)"
@@ -436,9 +444,9 @@ if [ -z "$COV" ]; then
   fault_instrument "coverage (BRD leaves: UNCLAIMED/PHANTOM/DOUBLE)" coverage \
     "coverage-check.sh not reachable (neither bin/ nor the toolkit)" \
     "Requirement traceability for $MODULE is UNMEASURED, not clean."
-elif [ ! -f "$LEDGER" ]; then
+elif ! has_ledger; then
   fault_instrument "coverage (BRD leaves: UNCLAIMED/PHANTOM/DOUBLE)" coverage \
-    "no coverage-ledger.md for $MODULE" \
+    "no coverage-ledger.md or coverage-ledger/*.md for $MODULE" \
     "Requirement traceability for $MODULE is UNMEASURED, not clean."
 elif [ -z "$BRD" ]; then
   fault_instrument "coverage (BRD leaves: UNCLAIMED/PHANTOM/DOUBLE)" coverage \

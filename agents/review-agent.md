@@ -141,8 +141,8 @@ current — that block is the single source of truth and gets corrected independ
 Both are read-only. Neither touches the `.mpr`. Both refuse to report a clean sweep from a stale
 or empty catalog rather than silently passing.
 
-**Stale-catalog self-heal:** if `graph-sweep.sh` faults because the catalog is stale, empty, or
-has no `call` edges (its `build_mode` label is reported, not judged — mxcli v0.24+ writes
+**Stale-catalog self-heal:** if `graph-sweep.sh` faults because the catalog is stale, its refs table
+is empty, or its refs carry no `RefKind` (its `build_mode` label is reported, not judged — mxcli v0.24+ writes
 `source` for a complete catalog), you may run `./mxcli -p <mpr> -c 'REFRESH CATALOG FULL'`
 yourself and retry once — this rebuilds the catalog database, it does not write to `.mpr` content, so it's outside what the
 project's write-approval rule protects. If the retry still faults, report it; don't loop.

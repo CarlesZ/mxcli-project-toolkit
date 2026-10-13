@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fixture for bin/lib/sec014-notice.sh and its one caller, bin/sync-project.sh: an installed
-# SEC014 with no `external_roles` in .claude/lint-config.yaml is reported once per sync, as a
-# sync warning, instead of as a `_rule` blindness finding that would fail every exec (#229
+# SEC014 with no `external_roles` in .claude/lint-config.yaml is reported on every sync, as a
+# NOTE (not a counted warning), instead of as a `_rule` blindness finding that would fail every exec (#229
 # pattern; review of PR #312).
 #
 # Usage: bash test-sec014-notice.sh [path-to-sync-project.sh]
@@ -80,8 +80,10 @@ else bad "sync-project.sh does not call mxtk_sec014_notice"; fi
 # The call sits inside the WIRED lint block, after the rules are installed.
 blk=$(awk '/mxtk_install_lint_rules "\$\(cd/{f=1} f{print} f&&/^fi$/{exit}' "$SYNC")
 case "$blk" in *mxtk_sec014_notice*) ok "the call runs after mxtk_install_lint_rules, in the same WIRED block" ;; *) bad "the call is not in the lint install block" ;; esac
-# Its output goes through warn(), so the sync counts it and does not end "all up to date".
-case "$blk" in *"warn \$_sec014_msg"*) ok "the notice is a sync warning (counted, not just printed)" ;; *) bad "the notice bypasses warn()" ;; esac
+# A NOTE, not warn(): a pristine scaffold has not decided yet, and test-bug12-sync.sh T0
+# requires a pristine sync to exit 0 with no warning under --strict.
+case "$blk" in *'echo "NOTE: $_sec014_msg"'*) ok "the notice prints as a NOTE line" ;; *) bad "the notice is not printed as a NOTE" ;; esac
+case "$blk" in *"warn \$_sec014_msg"*|*'warn "$_sec014_msg"'*) bad "the notice goes through warn(): a pristine sync would fail --strict" ;; *) ok "the notice does not count as a sync warning" ;; esac
 bash -n "$SYNC" && ok "sync-project.sh parses" || bad "sync-project.sh does not parse"
 
 echo

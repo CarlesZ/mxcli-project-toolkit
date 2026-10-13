@@ -39,7 +39,7 @@
 # entities.
 #
 # NOT CONFIGURED YET (option absent): the rule returns nothing, and bin/sync-project.sh
-# says so instead, once per sync, as a sync warning (bin/lib/sec014-notice.sh). A `_rule`
+# prints a NOTE instead, on every sync (bin/lib/sec014-notice.sh). A `_rule`
 # finding here would make lint-gate exit PASS-BLIND on every exec of every synced project until
 # someone answers a question — the #229 pattern. The silence is not a pass: the sync names it.
 # After configuring, SEC014 jumps 0 -> N in one run; re-baseline right then
@@ -144,7 +144,7 @@ def _role_matches(perm_role, roles):
 def check():
     raw = get_option("external_roles", UNSET)
     if raw == UNSET:
-        # Not decided yet: sync-project.sh reports it once per sync (see header).
+        # Not decided yet: sync-project.sh prints a NOTE on every sync (see header).
         return []
     if raw == None or type(raw) != "string":
         # lint-gate prints message[:160] only, so the fix goes in the message.

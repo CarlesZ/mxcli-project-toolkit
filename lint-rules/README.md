@@ -21,7 +21,7 @@ and configure the marked constants — **after** running `mxcli init`, never bef
 | `txt001_build_words_in_user_text.star` | TXT001 — user-visible text (titles, captions, templates, messages, menu items) holding build-process words: `Stage N`, `BR-10`, `F004`, TODO, a version tag, "(local, …)" | `PROJECT_WORDS` (sibling-app and project code names); `LEAK_PATTERNS` if "Stage N" is a real domain word |
 | `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no. ISO dates are a toolkit opinion, not a Mendix rule. A project whose display standard is not ISO turns it off in `.claude/lint-config.yaml` (`rules: TXT002: enabled: false`), never by deleting the file, which sync re-installs. See "Turning a toolkit rule off" below |
 | `ui001_widget_layout_traps.star` | UI001 — a list view inside a Data grid 2 column (its own "Load more" / "No items found" in every cell); an inline `width` on an Atlas input without `flex` (ignored) | `DATAGRID_TYPES`, `LISTVIEW_TYPES`, `INPUT_TYPES` (widget_type vocabulary: probe first) |
-| `sec014_external_role_write.star` | SEC014 — an external user role (partner, customer, portal) that can write every member, a state enumeration (`Status`, `State`, …), an audit attribute (`…At` / `…By`) or the association its own XPath uses for ownership: the client API lets it skip the approval microflow | **yes, required**, in `.claude/lint-config.yaml`: `rules: SEC014: options: external_roles: "Partner, Customer"` (one text, not a YAML list), or `"none"`. Until it is set the rule reports nothing and `bin/sync-project.sh` warns on every sync; a list, a blank value or an unknown role is a `_rule` finding |
+| `sec014_external_role_write.star` | SEC014 — an external user role (partner, customer, portal) that can write every member, a state enumeration (`Status`, `State`, …), an audit attribute (`…At` / `…By`) or the association its own XPath uses for ownership: the client API lets it skip the approval microflow | **yes, required**, in `.claude/lint-config.yaml`: `rules: SEC014: options: external_roles: "Partner, Customer"` (one text, not a YAML list), or `"none"`. Until it is set the rule reports nothing and `bin/sync-project.sh` prints a NOTE on every sync; a list, a blank value or an unknown role is a `_rule` finding |
 
 `err001` and `loop001` first field count (2026-10-12, mxcli 0.26.0, 21-module Mendix 11.12 model,
 876 microflows): ERR001 8 (3 true, 5 debatable — flows that return an error payload instead of
@@ -68,7 +68,7 @@ association its own XPath scopes on; a true positive by the rule's definition, t
 #268. Positive control with every user role configured: 7 findings across 6 entities, and a SQL
 replay of the same logic over `.mxcli/catalog.db` gives the same 7 (0 on the second model, which
 has no external role; `"none"` there gives 0 and no `_rule`). A list or a misspelt role each give
-exactly one `_rule` finding; an absent option gives nothing on exec and a sync warning instead. Both files also load and give the same counts on mxcli
+exactly one `_rule` finding; an absent option gives nothing on exec and a sync NOTE instead. Both files also load and give the same counts on mxcli
 0.17.0 and 0.24.0 (SEC014 avoids `associations()`, which does not exist before 0.25.0 and would
 make the file fail to load). Vocabulary landed in SEC014's header: `MEMBER_WRITE` rows carry
 qualified member and module-role names, attribute `data_type` for an enum is `Enumeration`.
@@ -146,13 +146,13 @@ survive `mxcli init` — and surviving matters, because init wipes every in-file
 which would otherwise make a genuine revert indistinguishable from a first install.
 
 **SEC014 needs two decisions from the user, not from an agent.** Until `external_roles` is
-set, SEC014 reports nothing on exec, and `bin/sync-project.sh` warns on every sync with the exact
+set, SEC014 reports nothing on exec, and `bin/sync-project.sh` prints a NOTE on every sync with the exact
 lines to add (`bin/lib/sec014-notice.sh`). It is not a `_rule` finding, because that would make
 lint-gate exit PASS-BLIND on every exec of every synced project until someone answered, which is
 the #229 pattern an unconfigured CONV020 caused. Which roles are external is the user's answer,
 asked in chat. `external_roles: "none"` switches off a security rule, so it is set only on the
 user's answer and recorded as a decision row in `PROJECT.md`. An agent never sets it to make the
-warning go away. The first run after configuring raises SEC014 from 0 to N at once, and lint-gate
+NOTE go away. The first run after configuring raises SEC014 from 0 to N at once, and lint-gate
 would blame that security-tier rise on whatever script ran next. So re-baseline in the same step:
 `bin/lint-gate.sh --update-baseline --reason "SEC014 configured" --approved-in-chat`, after the
 user has seen the findings.

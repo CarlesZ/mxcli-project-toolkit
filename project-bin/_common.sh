@@ -787,3 +787,131 @@ mxtk_sha256() {
   else openssl dgst -sha256 | sed 's/^.*= //'
   fi
 }
+
+# ---------------------------------------------------------------------------
+# Process identity — who holds a port, whose process it is. Shared by test-stack-up.sh and
+# app-restart.sh (moved here from both, #160; they had carried identical copies since #262).
+# All read-only: nothing below stops, signals or starts a process.
+# ---------------------------------------------------------------------------
+
+# mxtk_port_holder <port> — who LISTENs on it: prints "<pid>|<process name>" and returns 0, or
+# returns 1 when the port is free. "?|an unidentified process" when something accepts connections
+# but no tool here can name it (lsof without root cannot see another user's sockets).
+# Per platform: lsof (macOS, Linux), then ss (Linux without lsof), netstat -ano + tasklist (Windows).
+mxtk_port_holder() {
+  local p="$1" out pid="" name=""
+  case "$(mxtk_platform)" in
+    windows)
+      pid="$(netstat -ano 2>/dev/null | tr -d '\r' | awk -v p=":$p" '$1=="TCP" && $4=="LISTENING" && substr($2, length($2)-length(p)+1)==p { print $5; exit }')"
+      [ -n "$pid" ] && name="$(tasklist //FI "PID eq $pid" //FO CSV //NH 2>/dev/null | tr -d '\r' | head -1 | cut -d'"' -f2)" ;;
+    *)
+      if command -v lsof >/dev/null 2>&1; then
+        out="$(lsof -nP -iTCP:"$p" -sTCP:LISTEN -Fpc 2>/dev/null)"
+        pid="$(printf '%s\n' "$out" | sed -n 's/^p//p' | head -1)"
+        name="$(printf '%s\n' "$out" | sed -n 's/^c//p' | head -1)"
+      fi
+      if [ -z "$pid" ] && command -v ss >/dev/null 2>&1; then
+        out="$(ss -ltnpH "sport = :$p" 2>/dev/null | head -1)"
+        pid="$(printf '%s' "$out" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
+        name="$(printf '%s' "$out" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p')"
+      fi ;;
+  esac
+  if [ -n "$pid" ]; then printf '%s|%s\n' "$pid" "${name:-unknown}"; return 0; fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then printf '?|an unidentified process\n'; return 0; fi
+  return 1
+}
+
+# mxtk_holder_text "<pid>|<name>" — "studiopro pid 4711" plus its parent where ps can show one,
+# because a runtime Studio Pro started shows up as plain "java"; the parent names the owner.
+mxtk_holder_text() {
+  local pid="${1%%|*}" name="${1#*|}" pp pn
+  [ "$pid" = "?" ] && { printf '%s (pid unknown — no lsof/ss/netstat could name it)\n' "$name"; return; }
+  printf '%s pid %s' "$name" "$pid"
+  if [ "$(mxtk_platform)" != windows ]; then
+    pp="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    pn="$(ps -o comm= -p "${pp:-0}" 2>/dev/null | sed 's#.*/##')"
+    [ -n "$pp" ] && [ "$pp" != 1 ] && [ -n "$pn" ] && printf ' (parent: %s pid %s)' "$pn" "$pp"
+  fi
+  printf '\n'
+}
+
+# mxtk_pid_in_tree <pid> <root pid> — 0 when <pid> is <root pid> or a descendant of it (walked up
+# by parent pid, at most 10 levels). Git Bash's ps shows no parent of a Windows pid: returns 1 there
+# unless the two pids are equal, so a caller must treat "not in tree" on Windows as "unknown".
+mxtk_pid_in_tree() {
+  local p="$1" root="$2" i=0
+  [ -n "$p" ] && [ -n "$root" ] || return 1
+  while [ -n "$p" ] && [ "$p" != 0 ] && [ "$p" != 1 ] && [ "$i" -lt 10 ]; do
+    [ "$p" = "$root" ] && return 0
+    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"; i=$((i + 1))
+  done
+  return 1
+}
+
+# mxtk_pid_args <pid> — the process's command line. Linux: argv one per line from /proc (exact, a
+# space inside an argument survives). macOS: `ps -o args=`, ONE line (arguments joined by spaces).
+# Windows (Git Bash): Win32_Process.CommandLine via PowerShell, one line — Git Bash's ps cannot
+# show a Windows process's arguments. Returns 1 when nothing could be read.
+mxtk_pid_args() {
+  local pid="$1" out=""
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  case "$(mxtk_platform)" in
+    linux)
+      if [ -r "/proc/$pid/cmdline" ]; then out="$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null)"
+      else out="$(ps -o args= -p "$pid" 2>/dev/null)"; fi ;;
+    macos) out="$(ps -o args= -p "$pid" 2>/dev/null)" ;;
+    windows)
+      command -v powershell.exe >/dev/null 2>&1 \
+        && out="$(powershell.exe -NoProfile -NonInteractive -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=$pid').CommandLine" 2>/dev/null | tr -d '\r')" ;;
+  esac
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+}
+
+# mxtk_pid_runs_deployment <pid> <deployment dir>... — 0 when <pid> is a Mendix runtime started on
+# one of the named deployment directories: its command line runs runtimelauncher.jar and the
+# argument after the jar resolves to one of them. That is how both `mxcli run --local` and Studio
+# Pro's Run Locally start the runtime (field capture, run --local, Linux, 2026-09-25:
+# `java … -jar …/runtimelauncher.jar <project>/app/deployment`). A deployment directory belongs to
+# exactly one project checkout, so this is an ownership claim, not a "looks like Mendix" guess.
+# Linux compares exact argv after resolving symlinks (and a relative argument against the process's
+# cwd); macOS and Windows have only the joined line, so the directory is matched as text in both
+# its logical and physical spellings (Windows: drive form, case-insensitive). Unreadable → 1.
+mxtk_pid_runs_deployment() {
+  local pid="$1" args line next="" arg="" cwd d cand want
+  shift
+  args="$(mxtk_pid_args "$pid")" || return 1
+  case "$args" in *runtimelauncher.jar*) ;; *) return 1 ;; esac
+  if [ "$(mxtk_platform)" = linux ] && [ -r "/proc/$pid/cmdline" ]; then
+    while IFS= read -r line; do
+      [ -n "$next" ] && { arg="$line"; break; }
+      case "$line" in *runtimelauncher.jar) next=1 ;; esac
+    done <<EOF_ARGS
+$args
+EOF_ARGS
+    [ -n "$arg" ] || return 1
+    case "$arg" in /*) ;; *) cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null)" || return 1; arg="$cwd/$arg" ;; esac
+    arg="$(cd "$arg" 2>/dev/null && pwd -P)" || return 1
+    for d in "$@"; do
+      want="$(cd "$d" 2>/dev/null && pwd -P)" || continue
+      [ "$arg" = "$want" ] && return 0
+    done
+    return 1
+  fi
+  # One joined line: arguments are not delimited, so a directory is matched WHOLE — followed by the
+  # end of the line, a lone slash, or a space and a flag (" -"). A space and anything else could be
+  # the rest of a longer, spaced path: "/work/a" must not match "…runtimelauncher.jar /work/a b/x"
+  # (a foreign checkout read as ours, PR #319 review). Each <dir> arrives as ONE argument.
+  line="$(printf '%s' "$args" | head -1 | tr -d '"')"
+  [ "$(mxtk_platform)" = windows ] && line="$(printf '%s' "$line" | tr '\\' '/' | tr '[:upper:]' '[:lower:]')"
+  for d in "$@"; do
+    for cand in "${d%/}" "$(cd "$d" 2>/dev/null && pwd -P)"; do
+      [ -n "$cand" ] || continue
+      [ "$(mxtk_platform)" = windows ] && cand="$(native_path "$cand" | tr '\\' '/' | tr '[:upper:]' '[:lower:]')"
+      case "$line" in
+        *"runtimelauncher.jar $cand"|*"runtimelauncher.jar $cand/"|*"runtimelauncher.jar $cand -"*|*"runtimelauncher.jar $cand/ -"*) return 0 ;;
+      esac
+    done
+  done
+  return 1
+}

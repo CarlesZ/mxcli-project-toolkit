@@ -28,6 +28,8 @@
 #   bin/test-stack-up.sh             # report, then bring up what is missing (may run a Docker build)
 #   bin/test-stack-up.sh --no-docker # bring up auxiliaries only; never build. "SP is already running it".
 #   bin/test-stack-up.sh --restart   # skip the hot reload; rebuild and restart the container (old path)
+#   bin/test-stack-up.sh --track <pid> [label]  # record a background test process THIS project started
+#   bin/test-stack-up.sh --reap      # stop recorded processes older than MXTK_STALE_HOURS; nothing else
 #
 # WARM LOOP. After a model change the old loop was: exec.sh gate (mxbuild) -> `docker run` (mx check +
 # mxbuild again) -> container restart -> boot wait. Now: the app's model is recorded in
@@ -70,6 +72,34 @@
 # RUN_LOCAL_ADMIN_PORT (stack.conf), else mxcli's defaults 8080 / app port + 10 — and exits 4
 # naming the holder (lsof / ss; netstat on Windows) instead of advising a start that cannot work.
 #
+# RUNTIME PROOF WITHOUT A HANDSHAKE (#160, field run 2026-09-25, requirements-driven build). An app
+# with no run-local.json — Studio Pro's Run Locally, or a run --local older than the handshake — was
+# found by scan and published APP_OWNERSHIP=unverified, so every journey run needed APP_PORT
+# asserted by hand. The proof was there all along: the runtime's command line runs
+# `runtimelauncher.jar <project>/app/deployment`, and a deployment directory belongs to one checkout.
+# So a scanned Mendix port whose listener (lsof / ss / netstat) runs runtimelauncher.jar on THIS
+# project's deployment dir (<root>/deployment, <root>/app/deployment, or beside the real .mpr) is
+# `verified` with APP_SOURCE=runtime. Freshness stays `unknown` — this script did not build it.
+# Command line: /proc on Linux, `ps -o args=` on macOS, PowerShell CIM on Git Bash (_common.sh's
+# mxtk_pid_runs_deployment). Unreadable → `unverified`, exactly as before.
+#
+# OWN PROCESS ON THE PORT IS NOT A THIEF (follow-up to #262). The port check above must not name
+# this project's own runtime: while it boots it binds its ports before it serves a page, and the
+# check said "INSTRUMENT BLOCKED" (exit 4) about it. A holder is ours — reported NOT READY, exit 1
+# — when it is the live recorded run --local pid or a descendant of it, or when its command line
+# runs this project's deployment dir (that includes Studio Pro running THIS project). Anything else
+# still blocks.
+#
+# STALE TEST PROCESSES (#278, field run 2026-10-12). A night of retries left journey-runner and
+# monitor shells running for hours; a later run then hit the trial licence's session cap and was
+# INVALID. Every run of this script lists the recorded processes older than MXTK_STALE_HOURS
+# (default 4) and prints the one command that stops them; --reap does it. It acts ONLY on
+# .claude/loop/bg-pids.tsv — lines `<pid> TAB <epoch> TAB <ps lstart> TAB <label>` written by
+# `--track <pid> [label]` for a process this project started — never on a process found by name
+# or pattern, so another project's runner is out of reach by construction. A pid whose start time
+# no longer matches its line was reused by an unrelated process and is dropped, never signalled.
+# Not on Git Bash: its ps cannot show a Windows process's start time, so nothing is reaped there.
+#
 # PROJECT CONFIGURATION — no project name, port or service path is hardcoded here. Put anything
 # project-specific in <project>/.claude/loop/stack.conf, which this script sources if present:
 #
@@ -80,6 +110,7 @@
 #   MOCK_DIR="source/mock-api"                           # dir containing server.js
 #   MOCK_START="node server.js"                          # command run inside MOCK_DIR
 #   BOOT_TIMEOUT=240
+#   MXTK_STALE_HOURS=4                                   # age at which a tracked process is stale
 #
 # With no MOCK_HEALTH_URL the mock rung is reported as "not configured" and does not gate — most
 # projects have no mock, and a rung that fails for everyone gets switched off, taking the real
@@ -119,9 +150,17 @@ case "${1:-}" in
   --check)     MODE="check" ;;
   --no-docker) MODE="nodocker" ;;
   --restart)   MODE="restart" ;;
+  --reap)      MODE="reap" ;;
+  --track)     MODE="track" ;;
   "")          ;;
-  *) echo "usage: $0 [--check|--no-docker|--restart]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--check|--no-docker|--restart|--reap|--track <pid> [label]]" >&2; exit 2 ;;
 esac
+
+# Helpers moved to _common.sh (#160). A project whose bin/_common.sh predates them stops here with
+# the remedy instead of dying mid-run on "command not found".
+command -v mxtk_pid_runs_deployment >/dev/null 2>&1 || {
+  echo "test-stack-up: bin/_common.sh is older than this script (no mxtk_pid_runs_deployment)." >&2
+  echo "  → <toolkit>/bin/sync-project.sh $ROOT --upgrade-bin _common.sh   (backs up a hand-edited copy first)" >&2; exit 2; }
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; }
@@ -217,16 +256,22 @@ find_app_port() {
     warn "our container publishes :$owned but it is not serving Mendix yet" >&2
     echo "$owned|verified|docker"; return 1
   fi
-  # 2. No container of ours is running (SP-hosted run, or docker unavailable). Fall back to the
-  #    scan — but say so, because a hit here is UNVERIFIED ownership: it proves a Mendix answered,
-  #    not that it is ours.
+  # 2. No container of ours is running (SP-hosted run, or docker unavailable). Scan — and first
+  #    look for a port whose listener runs THIS project's deployment dir (see RUNTIME PROOF).
+  local hits="" h
   for p in $APP_PORTS; do
-    if mendix_at "$p"; then
-      warn "no container owned by $ROOT/.docker is running; :$p matched by scan — ownership UNVERIFIED" >&2
-      warn "  → recorded as APP_OWNERSHIP=unverified in stack.env. A test harness should REFUSE an" >&2
-      warn "    unverified port unless ALLOW_UNVERIFIED_APP=1, because :$p may be another project." >&2
-      echo "$p|unverified|scan"; return 0
-    fi
+    mendix_at "$p" || continue
+    hits="$hits $p"
+    h="$(mxtk_port_holder "$p")" || continue
+    [ "${h%%|*}" = "?" ] && continue
+    if mxtk_pid_runs_deployment "${h%%|*}" "${DEPLOY_DIRS[@]}"; then echo "$p|verified|runtime"; return 0; fi
+  done
+  # 3. Otherwise a hit is UNVERIFIED ownership: it proves a Mendix answered, not that it is ours.
+  for p in $hits; do
+    warn "no container owned by $ROOT/.docker is running; :$p matched by scan — ownership UNVERIFIED" >&2
+    warn "  → recorded as APP_OWNERSHIP=unverified in stack.env. A test harness should REFUSE an" >&2
+    warn "    unverified port unless ALLOW_UNVERIFIED_APP=1, because :$p may be another project." >&2
+    echo "$p|unverified|scan"; return 0
   done
   echo "|none|none"; return 1
 }
@@ -242,6 +287,10 @@ if [ -L "$MPR" ]; then
   case "$_t" in /*) ;; *) _t="$MPR_DIR/$_t" ;; esac
   MODEL_DIR="$(cd "$(dirname "$_t")" 2>/dev/null && pwd -P)" || MODEL_DIR="$MPR_DIR"
 fi
+# Where this project's runtime is deployed, on either layout. An ARRAY, never a space-joined string:
+# word-split, "/work/a b/proj/deployment" became the fragment "/work/a", which matched any
+# runtime under "/work/a b/…" on the joined-command-line branch — a foreign checkout read as ours.
+DEPLOY_DIRS=("$ROOT/deployment" "$ROOT/app/deployment" "$MPR_DIR/deployment" "$MODEL_DIR/deployment")
 LOCAL_HS="$MPR_DIR/.mxcli/run-local.json"
 pick_local_hs() {
   local d
@@ -260,45 +309,6 @@ pid_alive() {
     *)       kill -0 "$1" 2>/dev/null ;;
   esac
 }
-# port_holder <port> — who LISTENs on it: prints "<pid>|<process name>" and returns 0, or returns 1
-# when the port is free. "?|an unidentified process" when something accepts connections but no
-# tool here can name it (lsof without root cannot see another user's sockets). Never kills anything.
-# Per platform: lsof (macOS, Linux), then ss (Linux without lsof), netstat -ano + tasklist (Windows).
-port_holder() {
-  local p="$1" out pid="" name=""
-  case "$(mxtk_platform)" in
-    windows)
-      pid="$(netstat -ano 2>/dev/null | tr -d '\r' | awk -v p=":$p" '$1=="TCP" && $4=="LISTENING" && substr($2, length($2)-length(p)+1)==p { print $5; exit }')"
-      [ -n "$pid" ] && name="$(tasklist //FI "PID eq $pid" //FO CSV //NH 2>/dev/null | tr -d '\r' | head -1 | cut -d'"' -f2)" ;;
-    *)
-      if command -v lsof >/dev/null 2>&1; then
-        out="$(lsof -nP -iTCP:"$p" -sTCP:LISTEN -Fpc 2>/dev/null)"
-        pid="$(printf '%s\n' "$out" | sed -n 's/^p//p' | head -1)"
-        name="$(printf '%s\n' "$out" | sed -n 's/^c//p' | head -1)"
-      fi
-      if [ -z "$pid" ] && command -v ss >/dev/null 2>&1; then
-        out="$(ss -ltnpH "sport = :$p" 2>/dev/null | head -1)"
-        pid="$(printf '%s' "$out" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p')"
-        name="$(printf '%s' "$out" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p')"
-      fi ;;
-  esac
-  if [ -n "$pid" ]; then printf '%s|%s\n' "$pid" "${name:-unknown}"; return 0; fi
-  if (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then printf '?|an unidentified process\n'; return 0; fi
-  return 1
-}
-# holder_text "<pid>|<name>" — "studiopro pid 4711" plus its parent where ps can show one, because a
-# runtime Studio Pro started shows up as plain "java"; the parent is what names the owner.
-holder_text() {
-  local pid="${1%%|*}" name="${1#*|}" pp pn
-  [ "$pid" = "?" ] && { printf '%s (pid unknown — no lsof/ss/netstat could name it)\n' "$name"; return; }
-  printf '%s pid %s' "$name" "$pid"
-  if [ "$(mxtk_platform)" != windows ]; then
-    pp="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
-    pn="$(ps -o comm= -p "${pp:-0}" 2>/dev/null | sed 's#.*/##')"
-    [ -n "$pp" ] && [ "$pp" != 1 ] && [ -n "$pn" ] && printf ' (parent: %s pid %s)' "$pn" "$pp"
-  fi
-  printf '\n'
-}
 # The ports a `mxcli run --local` of this project will want: "<app> <admin>".
 run_local_ports() {
   local a="" m=""
@@ -307,12 +317,41 @@ run_local_ports() {
   m="${RUN_LOCAL_ADMIN_PORT:-${m:-$((a + 10))}}"
   echo "$a $m"
 }
+# own_holder "<pid>|<name>" — is this port holder this project's own process? Yes when it is the
+# live recorded run --local pid or under it (the runtime mxcli started), or when its command line
+# runs this project's deployment dir (a newer run --local still booting, Studio Pro running THIS
+# project). With a live record and a holder that cannot be placed — unnamed (a root-owned process
+# is "?" to a non-root lsof), or Windows where Git Bash shows no parent pids — it is presumed ours
+# only while the record is younger than BOOT_TIMEOUT: a boot has that long to answer. Past it the
+# presumption ends and the holder blocks (exit 4) — otherwise a real stranger would read "booting"
+# forever, which is #262's failure again.
+own_holder() {
+  local hp="${1%%|*}" lp=""
+  pick_local_hs && lp="$(hs_field pid)" && pid_alive "$lp" || lp=""
+  [ "$hp" != "?" ] && mxtk_pid_runs_deployment "$hp" "${DEPLOY_DIRS[@]}" && return 0
+  # A runtime whose command line names ANOTHER deployment dir is foreign, whatever else is true.
+  [ "$hp" != "?" ] && case "$(mxtk_pid_args "$hp" 2>/dev/null)" in *runtimelauncher.jar*) return 1 ;; esac
+  [ -n "$lp" ] || return 1
+  mxtk_pid_in_tree "$hp" "$lp" && return 0
+  if [ "$hp" = "?" ] || [ "$(mxtk_platform)" = windows ]; then
+    [ -n "$(find "$LOCAL_HS" -mmin -$(( (BOOT_TIMEOUT + 59) / 60 )) 2>/dev/null)" ] && return 0
+  fi
+  return 1
+}
 # Exit 4 if a run --local of this project could not bind its ports. Never stops the holder.
+# Returns 3 (and sets OWN_HOLDING) when a port is held by this project's own process — it is
+# booting or not serving a page yet: NOT READY, never blocked.
+OWN_HOLDING=""
 check_run_local_ports() {
   local p h kind=app
+  OWN_HOLDING=""
   for p in $(run_local_ports); do
-    if h="$(port_holder "$p")"; then
-      bad "INSTRUMENT BLOCKED — :$p (the run --local $kind port) is held by $(holder_text "$h")"
+    if h="$(mxtk_port_holder "$p")"; then
+      if own_holder "$h"; then
+        [ -n "$OWN_HOLDING" ] || OWN_HOLDING=":$p (the run --local $kind port) — $(mxtk_holder_text "$h")"
+        kind=admin; continue
+      fi
+      bad "INSTRUMENT BLOCKED — :$p (the run --local $kind port) is held by $(mxtk_holder_text "$h")"
       echo "  Not touching it. \`mxcli run --local\` here would collide: it reports 'Authentication failed'"
       echo "  against the other runtime's admin API, and a journey would test that runtime instead."
       echo "  → Stop that process yourself (Studio Pro: stop its run), or start on free ports:"
@@ -322,6 +361,12 @@ check_run_local_ports() {
     fi
     kind=admin
   done
+  if [ -n "$OWN_HOLDING" ]; then
+    warn "this project's own runtime holds $OWN_HOLDING"
+    warn "  → it is booting, or up without serving a page yet. Not blocked: wait, then re-run --check."
+    return 3
+  fi
+  return 0
 }
 local_loop_port() {
   local pid port
@@ -384,6 +429,8 @@ record_served() {
 # Echoes fresh | stale | unknown.
 served_state() {
   local want have
+  # Proven by its command line, not built by this script: no record of what model it booted.
+  [ "${APP_SOURCE:-}" = "runtime" ] && { echo unknown; return; }
   # run --local: mxcli rebuilt nothing for us to record; the handshake's mtime is the boot.
   if [ "${APP_SOURCE:-}" = "run-local" ]; then
     pick_local_hs || true
@@ -411,7 +458,94 @@ prove_app() {
   mendix_at "$APP_PORT"
 }
 
+# --- Tracked background test processes (#278) — see STALE TEST PROCESSES above -----------------
+BG_PIDS="${BG_PIDS:-$ROOT/.claude/loop/bg-pids.tsv}"
+STALE_HOURS="${MXTK_STALE_HOURS:-4}"
+case "$STALE_HOURS" in ''|*[!0-9]*) echo "MXTK_STALE_HOURS takes whole hours" >&2; exit 2 ;; esac
+# Fixed locale and zone, so a --track in one shell and a --reap in another spell the start time alike.
+pid_lstart() { LC_ALL=C TZ=UTC0 ps -o lstart= -p "$1" 2>/dev/null | sed 's/  */ /g; s/^ //; s/ $//'; }
+# bg_scan — prints "<state>|<pid>|<age h>|<label>" per record line: live | stale | gone (dead, or the
+# pid now belongs to a process that started at another time).
+bg_scan() {
+  local pid ep ls lab now
+  [ -f "$BG_PIDS" ] || return 0
+  now="$(date +%s)"
+  while IFS='	' read -r pid ep ls lab; do
+    case "$pid" in ''|*[!0-9]*) continue ;; esac
+    [ "$((10#$pid))" -gt 1 ] || { echo "gone|$pid|0|$lab"; continue; }   # init / own group: never a target
+    case "$ep" in ''|*[!0-9]*) ep="$now" ;; esac
+    if ! kill -0 "$pid" 2>/dev/null || [ "$(pid_lstart "$pid")" != "$ls" ]; then
+      echo "gone|$pid|0|$lab"
+    elif [ $(( (now - ep) / 3600 )) -ge "$STALE_HOURS" ]; then
+      echo "stale|$pid|$(( (now - ep) / 3600 ))|$lab"
+    else echo "live|$pid|$(( (now - ep) / 3600 ))|$lab"; fi
+  done < "$BG_PIDS"
+}
+# bg_prune — keep only the lines whose process still runs with its recorded start time.
+bg_prune() {
+  local keep pid
+  [ -f "$BG_PIDS" ] || return 0
+  keep="$(bg_scan | awk -F'|' '$1 != "gone" { print $2 }')"
+  : > "$BG_PIDS.tmp" || return 0
+  while IFS= read -r line; do
+    pid="${line%%	*}"
+    case " $(echo $keep) " in *" $pid "*) printf '%s\n' "$line" >> "$BG_PIDS.tmp" ;; esac
+  done < "$BG_PIDS"
+  mv "$BG_PIDS.tmp" "$BG_PIDS"
+}
+if [ "$MODE" = "track" ]; then
+  T_PID="${2:-}"; T_LABEL="${3:-process}"
+  case "$T_PID" in ''|*[!0-9]*) echo "usage: $0 --track <pid> [label]" >&2; exit 2 ;; esac
+  T_PID=$((10#$T_PID))   # "01" / "001" must not slip past the refusal below as strings
+  # Never pid 1, this script, or the shell that called it: --reap would later stop the caller itself.
+  case "$T_PID" in 0|1|"$$"|"$PPID") echo "test-stack-up: refusing to track pid $T_PID (init, this script, or the calling shell) — pass the background process's pid (\$! after starting it)" >&2; exit 2 ;; esac
+  [ "$(mxtk_platform)" = windows ] && { echo "test-stack-up: --track is not supported on Git Bash (no process start time to check a reused pid against); nothing recorded"; exit 0; }
+  T_LS="$(pid_lstart "$T_PID")"
+  [ -n "$T_LS" ] || { echo "test-stack-up: pid $T_PID is not running — nothing recorded" >&2; exit 1; }
+  mkdir -p "$(dirname "$BG_PIDS")" || exit 2
+  printf '%s\t%s\t%s\t%s\n' "$T_PID" "$(date +%s)" "$T_LS" "$(printf '%s' "$T_LABEL" | tr '\t\n' '  ')" >> "$BG_PIDS"
+  echo "tracked pid $T_PID ($T_LABEL) in ${BG_PIDS#$ROOT/}"
+  exit 0
+fi
+# bg_report — list the stale ones and the command that stops them. Read-only.
+bg_report() {
+  local st pid age lab n=0
+  while IFS='|' read -r st pid age lab; do
+    [ "$st" = stale ] || continue
+    [ $n -eq 0 ] && warn "test processes THIS project started are still running after ${STALE_HOURS}h+ (${BG_PIDS#$ROOT/}):"
+    warn "  pid $pid — $lab — ${age}h"; n=$((n + 1))
+  done <<EOF_BG
+$(bg_scan)
+EOF_BG
+  [ $n -gt 0 ] && warn "  → hung runs hold login sessions (licence session cap → INVALID runs). Stop them: $0 --reap"
+  return 0
+}
+if [ "$MODE" = "reap" ]; then
+  [ "$(mxtk_platform)" = windows ] && { echo "test-stack-up: --reap is not supported on Git Bash; stop the processes yourself"; exit 0; }
+  REAPED=0
+  while IFS='|' read -r st pid age lab; do
+    [ "$st" = stale ] || continue
+    # A hand-edited line can say anything: pid 0 or 1 is never signalled (kill 0 = our own group).
+    [ "$((10#$pid))" -gt 1 ] || { warn "pid $pid in ${BG_PIDS#$ROOT/} — never signalled"; continue; }
+    # Re-checked at the moment of the kill: the scan above may be seconds old.
+    _ls="$(awk -F'\t' -v p="$pid" '$1 == p { print $3; exit }' "$BG_PIDS")"
+    [ -n "$_ls" ] && [ "$(pid_lstart "$pid")" = "$_ls" ] || { warn "pid $pid changed since the scan — not touched"; continue; }
+    KIDS="$(pgrep -P "$pid" 2>/dev/null | tr '\n' ' ' || true)"   # portability-ok: pgrep -P (by parent pid of a recorded pid); Windows returned above
+    kill -TERM "$pid" $KIDS 2>/dev/null || true
+    for _ in 1 2 3 4 5; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+    for k in "$pid" $KIDS; do kill -0 "$k" 2>/dev/null && kill -KILL "$k" 2>/dev/null; done
+    ok "stopped pid $pid — $lab — ${age}h old${KIDS:+ (and its children $KIDS)}"; REAPED=$((REAPED + 1))
+  done <<EOF_BG
+$(bg_scan)
+EOF_BG
+  bg_prune
+  echo "reaped $REAPED stale tracked process(es); live and untracked processes untouched"
+  exit 0
+fi
+
 echo "── Test stack: $PROJ ──────────────────────────────────"
+bg_report
+[ "$MODE" != "check" ] && bg_prune
 
 # --- Studio Pro: report only, never act -------------------------------------
 # Matched on the process list rather than with pgrep: pgrep is macOS/BSD-and-Linux only, and the
@@ -439,6 +573,8 @@ IFS='|' read -r APP_PORT APP_OWNERSHIP APP_SOURCE <<<"$APP_FIND"
 if [ $APP_FOUND -eq 0 ]; then
   if [ "$APP_SOURCE" = "run-local" ]; then
     ok "App serving on :$APP_PORT (ownership verified — this project's mxcli run --local)"
+  elif [ "$APP_SOURCE" = "runtime" ]; then
+    ok "App serving on :$APP_PORT (ownership verified — its runtime runs this project's deployment dir)"
   elif [ "$APP_OWNERSHIP" = "verified" ]; then
     ok "App serving on :$APP_PORT (ownership verified — our container)"
   else
@@ -606,7 +742,7 @@ fi
 # --- Bring up the app -------------------------------------------------------
 if [ $APP_FOUND -ne 0 ]; then
   if [ "$MODE" = "nodocker" ]; then
-    check_run_local_ports
+    check_run_local_ports || { bad "App not serving yet — this project's own runtime holds its port. Re-run --check when it answers."; exit 1; }
     bad "App down and --no-docker given. Click Run Locally in Studio Pro (or, with no Studio Pro, ./mxcli run --local --watch), then re-run --check."
     exit 1
   fi
@@ -624,7 +760,7 @@ if [ $APP_FOUND -ne 0 ]; then
     [ -n "$_DK" ] || { wait "$_dk_pid"; _DK=$?; }
   fi
   if [ "$_DK" != 0 ]; then
-    check_run_local_ports
+    check_run_local_ports || { bad "App not serving yet — this project's own runtime holds its port. Re-run --check when it answers."; exit 1; }
     bad "App down and no Docker/Podman reachable, so this script cannot build the app container."
     echo "  Normal in a cloud container, and fine on a desktop without one. Run the app without it:"
     echo "    Studio Pro: Run Locally.  No Studio Pro:"

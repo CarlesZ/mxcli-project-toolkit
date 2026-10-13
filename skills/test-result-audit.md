@@ -163,6 +163,7 @@ exactly these three:
   happened to exist. A stitched total is reported as stitched, with the run ids, never as the
   verdict.
 A report that does not give one of these numbers fails that question; say which.
+An INVALID run has two causes outside the app (#278, field run 2026-10-12): a demo account locked out by failed logins from a runner started with its password variable unset, and the trial licence's session cap filled by hung runner shells from earlier retries (`bin/test-stack-up.sh` lists the ones this project tracked; `--reap` stops them). Name which, re-run after the lockout window or the reap, and never count either as FAIL.
 
 ### 3. Produce a written critique — not a rubber stamp
 

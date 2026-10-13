@@ -4,7 +4,7 @@
 # scrubbed, and the expected sums computed independently of the instrument.
 #
 #   T1  no transcript tree → NOT AVAILABLE in brief, screen and json (available:false), exit 0
-#   T2  --json: per-model arrays to the token, usage from each id's LAST record; 52 records dedupe to 22 messages; 1 synthetic
+#   T2  --json: per-model arrays to the token, usage from each id's per-field max (= last record on this capture); 52 records dedupe to 22 messages; 1 synthetic
 #       skipped; 2 files; subagent headline 61357
 #   T3  the two-tree layout: records whose cwd is <root>/app count — moving them out of the
 #       project drops the message count from 22 to 21
@@ -73,7 +73,7 @@ has "T1 json available:false" "$OUT" '"available": false'
 J="$(CLAUDE_CONFIG_DIR="$CFG" bash "$SUT" "$P" --json 2>&1 | tr -d '\n' | tr -s ' ' | sed 's/\[ /[/g; s/ \]/]/g')"
 has "T2 fable-5-1 array" "$J" '"claude-fable-5-1": [288, 31365, 2607781, 15524, 9]'
 # the subagent model's array, matched by its numbers (the model id is the captured one, see CAPTURE.md)
-echo "$J" | grep -Eq '"claude-[a-z]+-5": \[26, 59772, 998476, 1559, 13\]' && ok "T2 subagent-model array (LAST record per id: output 1559, the first record says 60)" || bad "T2 subagent-model array" "$J"
+echo "$J" | grep -Eq '"claude-[a-z]+-5": \[26, 59772, 998476, 1559, 13\]' && ok "T2 subagent-model array (per-field max (= last record on this capture) per id: output 1559, the first record says 60)" || bad "T2 subagent-model array" "$J"
 has "T2 22 messages"     "$J" '"messages": 22'
 has "T2 52 records (dedupe)" "$J" '"records": 52'
 has "T2 1 synthetic"     "$J" '"synthetic_skipped": 1'

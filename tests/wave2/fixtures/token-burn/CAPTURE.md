@@ -11,7 +11,7 @@ it was imagined:
   (the ~2× overcount if summed per record) — but NOT always the same `usage`: in the subagent
   transcript `msg` ids with a later record carry a larger `output_tokens` on that last record
   (60 on the first records of the 2026-09-17 messages, 1559 summed over last records). The
-  instrument takes each id's LAST record; the numbers below were recomputed that way;
+  instrument takes each id's per-field max (= its last record on this capture); the numbers below were recomputed that way;
 - `message.model` = `<synthetic>` on a harness-generated record (exactly one kept);
 - `cwd` is **per record**: a session launched in `~` spends records in `~`, `~/proj` and
   `~/proj/app`;

@@ -40,7 +40,8 @@ Calls per row are the same. The whole cost gap is **context re-read per call**:
 
 Output tokens and effort level are not the driver: lead-to-lead output per call is equal
 (~630 vs ~610 tokens). The recorded sub-agent output is undercounted in both builds
-(streamed usage records; `measure-usage.py` should read each message's final usage record).
+(streamed usage records; each message's final usage record is the right one — promoted to
+`skills/measured-claims.md` §7).
 
 ## Proposed improvements (hypotheses until re-measured)
 
@@ -49,8 +50,8 @@ Output tokens and effort level are not the driver: lead-to-lead output per call 
   Target: sub-agent mean context ≤ ~130k (the MCP build's level).
 - **Pass the slice, not the spec.** A build sub-agent gets its rows + the module's BRD, not
   the whole frozen spec.
-- **Autocompact default in what `init-project.sh` writes** (or a preflight warning when a
-  session runs with autocompact > 250k).
+- ~~Autocompact default~~ — done 2026-10-14 as an advisory: `bin/init-project.sh` warns when
+  the auto-compact window is above 250k and recommends `/autocompact 250k`; it writes nothing.
 - **Cap agent bundles / add autocompact for sub-agents** so a long-running drafter compacts
   instead of growing to 500k+.
 - **Measure it.** Add per-role mean-context-per-call to the time log so the next run shows

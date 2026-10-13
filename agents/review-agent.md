@@ -78,7 +78,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/close-the-loop.md` | Cutover and retrospective |
 | `skills/report-schema.md` | Writing or reading docs/report.json |
 | `skills/harness-architecture.md` | Installing, extending, debugging or porting the verification harness |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `skills/process-coherence-pass.md` | Checking whether the whole journey hangs together rather than each piece |
 | `project-bin/coherence-cadence.sh` | After every module's CONFIRM stage |

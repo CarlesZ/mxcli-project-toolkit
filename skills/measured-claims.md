@@ -235,6 +235,38 @@ mocked integration render empty" as a suspected instrument fault, not a finding.
 
 ---
 
+## 7. A transcript's first usage record for a message is not its usage — read the last
+
+**Verdict: CONFIRMED for sub-agent transcripts; not seen in a main-loop transcript.** Measured
+2026-10-13 on Claude Code 2.1.296 transcripts (`~/.claude/projects/<slug>/…`), grouping
+`assistant` records by `message.id` and comparing `usage.output_tokens` on the first and the last
+record of each message:
+
+| Transcript | Messages | Messages whose records disagree | Output, first record | Output, last record |
+|---|---:|---:|---:|---:|
+| main loop | 941 | **0** | 631,486 | 631,486 |
+| sub-agent a | 133 | 2 | 1,652 | 2,837 |
+| sub-agent b | 109 | 2 | 1,152 | 6,402 |
+| sub-agent c | 93 | 3 | 1,151 | **8,241** |
+| sub-agent d | 98 | 0 | 1,709 | 1,709 |
+
+The main loop is the control that did not move; the sub-agents moved by up to 7x. A streamed
+message is written as several records carrying one `message.id`, and in sub-agent transcripts
+the early ones carry a partial `output_tokens` (e.g. `[4, 2631]` — first record 4, final 2,631).
+
+**Rule: sum usage once per `message.id`, from that message's LAST record.** Deduplicating by id
+is right (summing every record double-counts); keeping the *first* record is the undercount.
+`bin/token-burn.sh` keeps the first record per id as of 2026-10-13, so its sub-agent output is
+low until that is fixed (a fix is in flight) — check its header before citing its output totals.
+
+**Cost:** a field comparison of two builds (2026-09-29) briefly concluded "the other build writes
+2.4x more output" — an artefact of reading partial records in both builds' sub-agents. A
+measurement that compares per-role or sub-agent output is wrong in the direction of whichever
+side uses more sub-agents. Replicated on one machine only; the main-loop arm shows the effect is
+sub-agent-specific, not universal — re-measure on your harness version before citing a ratio.
+
+---
+
 ## Adding an entry
 
 An entry earns its place only if it carries all four parts: the claim, the verdict, the

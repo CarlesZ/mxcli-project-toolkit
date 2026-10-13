@@ -50,6 +50,10 @@ echo "== T3: newest stamp sits past byte 8000 -> still seen =="
 { printf '<p>ModuleX: 1 of 1 pages reviewed</p>\nVALID AT: %s\n' "$OLD"; head -c 9000 /dev/zero | tr '\0' 'x'; printf '\nVALID AT: %s\n' "$NEW"; } > "$REP"
 [ "$(stale)" -eq 0 ] && ok "stamp past 8000 bytes seen" || bad "stamp past 8000 bytes ignored (STALE)"
 
+echo "== T3b: one stamp unresolvable here (squash/rebase/shallow) -> last-in-file, unmeasurable, not STALE =="
+printf '<p>ModuleX: 1 of 1 pages reviewed</p>\nVALID AT: %s\n<h2>Addendum</h2>\nVALID AT: deadbee1\n' "$OLD" > "$REP"
+[ "$(stale)" -eq 0 ] && ok "unresolvable stamp falls back to last-in-file (unmeasured)" || bad "older resolvable stamp picked over an unresolvable one (STALE)"
+
 # ── T4-T8: dated report (owes PROOF-OF-LOOK), commits and shot mtimes at fixed times ──
 Q="$WORK/q"; mkdir -p "$Q/architecture/modules/ModuleX" "$Q/mdlsource" "$Q/design/ui-reviews/shots"
 git -C "$Q" init -q . 2>/dev/null

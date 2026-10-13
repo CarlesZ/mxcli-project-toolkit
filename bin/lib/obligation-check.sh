@@ -19,7 +19,7 @@
 #   FAULT    a mark exists but cannot be read as evidence (no denominator on a pass that owes one)
 #   WAIVED   the register says this one is out of scope, with a reason
 #   ADOPTED  the project joined the pipeline above this obligation's stage
-#   NOT YET DUE  a project/cluster row whose from-stage the register's Current stage has not reached
+#   NOT YET DUE  final-look only: gate-check's derived Current stage has not reached its from-stage
 #   N/A      this project is not running the pipeline at all (a-la-carte; existing-app-assurance.md)
 
 set -uo pipefail
@@ -167,18 +167,23 @@ _ob_rank() { case "$1" in P|p) echo 0 ;; [0-7]) echo $(( $1 + 1 )) ;; *) echo 99
 # _ob_current_stage <register>  → prints P or 0-7 from the register's "## Current stage" line, or
 # nothing when it cannot be read (no section, or a hand-written line that names no stage).
 #
-# Why: the from-stage column was read only against --adopt, so a project/cluster row was owed
-# from the day PROJECT.md existed. final-look (from-stage 6, the whole-app LOOK run LAST) read
-# PENDING on a project still at Stage P — an obligation reported before it can be performed is
-# noise, and noise teaches people to skip the obligation lines (review of #303, 2026-10-13).
-# The readout is gate-check's own ("**Stage N — Title**, …", or "**All gates passed**"); the
-# scaffold line init-project.sh writes ("**Stage P — Kickoff**") parses the same way.
-# Unreadable → empty → the caller keeps the old behaviour (owed): "could not tell the stage"
-# must never read as "not due yet".
+# Why: the from-stage column was read only against --adopt, so final-look (from-stage 6, the
+# whole-app LOOK run LAST) read PENDING on a project still at Stage P (review of #303).
+#
+# ONLY gate-check's own derived readout counts — a line containing "(derived by gate-check".
+# A hand-written line, and the scaffold line init-project.sh writes ("**Stage P — Kickoff**"),
+# read as unreadable → empty → owed. Field evidence (review of #321): hand-written lines
+# disagreed with the gates in 8 of 12 projects and gate-check never overwrites them; the
+# scaffold line often never advances because projects query `gate-check.sh . 5` directly.
+# "Could not tell the stage" must never read as "not due yet".
 _ob_current_stage() {
   local reg="$1" line
   [ -f "$reg" ] || return 0
   line="$(awk '/^## Current stage/{f=1;next} f && /^## /{exit} f && /^\*\*/{print;exit}' "$reg" 2>/dev/null | tr -d '\r')"
+  case "$line" in
+    *"(derived by gate-check"*) ;;
+    *) return 0 ;;
+  esac
   case "$line" in
     "**All gates passed"*) printf '7'; return 0 ;;
   esac
@@ -270,22 +275,25 @@ _ob_has_denominator() {
 # "Newest" is by COMMIT TIME, not by position (#155). A report kept as one dated file with an
 # addendum per build row carries several stamps; whether the author appends addenda at the
 # bottom or prepends them under the headline, the stamp that says the most recent thing is the
-# one whose commit is newest. Unresolvable stamps are skipped; with none resolvable, the last
-# stamp in the file is returned (and the callers then treat it as unmeasurable).
+# one whose commit is newest. If ANY stamp does not resolve here (history rewritten by a squash
+# or rebase, a shallow clone), the order of the stamps cannot be measured, so the last stamp in
+# the file is returned, as before: picking an older resolvable stamp instead would report STALE
+# on a report this checker cannot actually date (review of #321).
 _ob_valid_at_stamps() {
   tr -d '\r' < "$1" 2>/dev/null \
     | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}' \
     | grep -oiE '[0-9a-f]{7,40}$'
 }
 _ob_newest_stamp() {
-  local root="$1" hit="$2" h t best="" best_t=-1 last=""
+  local root="$1" hit="$2" h t best="" best_t=-1 last="" unresolved=0
   while IFS= read -r h; do
     [ -n "$h" ] || continue
     last="$h"
     t="$(git -C "$root" show -s --format=%ct "${h}^{commit}" 2>/dev/null || true)"
-    [ -n "$t" ] || continue
+    if [ -z "$t" ]; then unresolved=1; continue; fi
     if [ "$t" -ge "$best_t" ]; then best="$h"; best_t="$t"; fi
   done <<< "$(_ob_valid_at_stamps "$hit")"
+  [ "$unresolved" = 1 ] && best=""
   printf '%s' "${best:-$last}"
 }
 _ob_stale() {
@@ -452,10 +460,11 @@ mxtk_obligations_report() {
       continue
     fi
 
-    # Not yet due: a project/cluster row whose stage the register has not reached. Module rows
-    # are not touched — they are owed by a module being OPENED FOR WORK (_ob_modules), which is
-    # its own "due" test, and their verdicts stay exactly as before.
-    if [ "$scope" != "module" ] && [ "$(_ob_rank "$from_stage")" -gt "$current_rank" ]; then
+    # Not yet due: final-look ONLY, the one row that by definition runs last. Every other row
+    # keeps its verdict whatever the readout says — an early stale FAIL holds the derived
+    # readout back while the build goes on, and a general rule would hide owed passes behind it
+    # (review of #321).
+    if [ "$ob" = "final-look" ] && [ "$(_ob_rank "$from_stage")" -gt "$current_rank" ]; then
       printf 'Obligation %-10s NOT YET DUE — owed from stage %s; the register'"'"'s Current stage is %s (%s)\n' \
         "$ob" "$from_stage" "$current" "$skill"
       continue

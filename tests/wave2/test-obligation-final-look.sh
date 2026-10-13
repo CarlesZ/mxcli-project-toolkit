@@ -12,8 +12,9 @@
 # Review of #303 (2026-10-13), T4-T10: the final LOOK owes the same PROOF-OF-LOOK lines as the
 # per-module LOOK (module-review.md § "The final LOOK" requires them; only ob=look was checked);
 # an unstamped final report is FAULT (with no VALID AT it could never go stale, so it would pass
-# forever); and the row is NOT YET DUE until the register's Current stage reaches its from-stage
-# (6) — it read PENDING from the day PROJECT.md existed. Module rows keep their verdicts.
+# forever); and final-look (ONLY) is NOT YET DUE until gate-check's DERIVED Current stage
+# reaches 6. A hand-written or scaffold stage line is unreadable → owed; every other row keeps
+# its verdict (review of #321: hand-written lines disagree with the gates in 8 of 12 projects).
 # Subject: obligation-check.sh. Producer of the report: module-review.md § "The final LOOK".
 set -uo pipefail
 ARG="${1:?usage: test-obligation-final-look.sh /path/to/bin/gate-check.sh (or lib/obligation-check.sh)}"
@@ -84,26 +85,38 @@ printf '# PROJECT.md\n\n## Current stage\n\n**Stage 5 — Build**, in progress (
 l="$(line)"
 case "$l" in *"NOT YET DUE"*) ok "final-look not owed before stage 6" ;; *) bad "expected NOT YET DUE, got: $l" ;; esac
 
-echo "== T9: register at Stage 6, or all gates passed -> owed (PENDING) =="
-printf '# PROJECT.md\n\n## Current stage\n\n**Stage 6 — Test**, in progress.\n' > "$P/PROJECT.md"
+D=' (derived by gate-check on 2026-10-13; re-run it rather than editing this line).'
+echo "== T9: derived Stage 6, or all gates passed -> owed (PENDING) =="
+printf '# PROJECT.md\n\n## Current stage\n\n**Stage 6 — Test**, in progress%s\n' "$D" > "$P/PROJECT.md"
 l="$(line)"
 case "$l" in *PENDING*) ok "owed at stage 6" ;; *) bad "expected PENDING at stage 6, got: $l" ;; esac
-printf '# PROJECT.md\n\n## Current stage\n\n**All gates passed** — through Stage 7 (Cutover)\n' > "$P/PROJECT.md"
+printf '# PROJECT.md\n\n## Current stage\n\n**All gates passed** — through Stage 7 (Cutover) — gates passed: P, 0%s\n' "$D" > "$P/PROJECT.md"
 l="$(line)"
 case "$l" in *PENDING*) ok "owed when all gates passed" ;; *) bad "expected PENDING after all gates, got: $l" ;; esac
 printf '# PROJECT.md\n\n## Current stage\n\nWe are somewhere in the build.\n' > "$P/PROJECT.md"
 l="$(line)"
 case "$l" in *PENDING*) ok "unreadable stage keeps the old verdict (owed)" ;; *) bad "unreadable stage changed the verdict: $l" ;; esac
 
-echo "== T10: module rows keep their verdicts at Stage P =="
-mod() { "$OBCHECK" "$P" 2>&1 | grep -E '^Obligation (look|sweep|journeys|fidelity|dispatch) ' | sed -E 's/ +/ /g'; }
-rm -f "$P/PROJECT.md"; before="$(mod)"
+echo "== T10: a hand-written stage line is not honoured -> owed =="
+printf '# PROJECT.md\n\n## Current stage\n\n**Stage 5 — Build**, in progress.\n' > "$P/PROJECT.md"
+l="$(line)"
+case "$l" in *PENDING*) ok "hand-written Stage 5 line ignored, final-look owed" ;; *) bad "hand-written line honoured: $l" ;; esac
+printf '# PROJECT.md\n\n## Current stage\n\n**Stage 5 verdict: COMPLETE**\n' > "$P/PROJECT.md"
+l="$(line)"
+case "$l" in *PENDING*) ok "free-form hand-written line ignored, final-look owed" ;; *) bad "free-form line honoured: $l" ;; esac
+
+echo "== T11: scaffold line with a module open -> final-look owed; module and other rows unchanged =="
+others() { "$OBCHECK" "$P" 2>&1 | grep -E '^Obligation ' | grep -vE '^Obligation final-look ' | sed -E 's/ +/ /g'; }
+rm -f "$P/PROJECT.md"; before="$(others)"
 printf '# PROJECT.md\n\n## Current stage\n\n**Stage P — Kickoff**, in progress.\n' > "$P/PROJECT.md"
-after="$(mod)"
-[ -n "$before" ] && [ "$before" = "$after" ] && ok "module verdicts identical with and without a Stage P register" \
-  || bad "module verdicts changed: before=[$before] after=[$after]"
+after="$(others)"
+l="$(line)"
+case "$l" in *PENDING*) ok "scaffold Stage P line ignored, final-look owed" ;; *) bad "scaffold line honoured: $l" ;; esac
+[ -n "$before" ] && [ "$before" = "$after" ] && ok "every other obligation line identical with and without the register" \
+  || bad "other verdicts changed: before=[$before] after=[$after]"
+printf '# PROJECT.md\n\n## Current stage\n\n**Stage 3 — Architecture**, in progress%s\n' "$D" > "$P/PROJECT.md"
 l="$("$OBCHECK" "$P" 2>&1 | grep -E '^Obligation skeleton ')"
-case "$l" in *"NOT YET DUE"*) ok "project row from stage 5 not due at Stage P" ;; *) bad "skeleton at Stage P: $l" ;; esac
+case "$l" in *PENDING*) ok "skeleton (from 5) still owed under a derived Stage 3 readout" ;; *) bad "skeleton hidden: $l" ;; esac
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

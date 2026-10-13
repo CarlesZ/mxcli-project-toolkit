@@ -51,7 +51,7 @@ function validate(j, brds) {
     if (!s.sql) add(at, 'no `sql`');
     if (s.name && seen.has(s.name)) add(at, `duplicate seed name "${s.name}"`);
     if (s.sql && !/\bAS\b/i.test(s.sql))
-      add(at, 'SQL has no column alias — oqlScalar reads the first cell and mxcli rejects an unaliased SELECT');
+      add(at, 'SQL has no column alias — oqlScalar reads the first SELECT alias and mxcli rejects an unaliased SELECT');
     for (const k of [...String(s.sql || '').matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]))
       if (!seen.has(k)) add(at, `references {{${k}}}, which is not an EARLIER seed — seeds resolve in array order`);
     if (s.name) seen.add(s.name);
@@ -111,7 +111,9 @@ function validate(j, brds) {
     // runner judges it once tracing is shown live — the step's `liveness` span, or any span from
     // the service since the journey began. `liveness` is read only for such a claim.
     const sp = st.spans;
-    if (sp) {
+    if (Array.isArray(sp)) {
+      add(`${at}.spans`, 'is an array — the old shape [{ mf, status }], which the runner never read (it records it INVALID); use { "ordered": [...], "mustNotFire": [...] }');
+    } else if (sp) {
       const ordered = sp.ordered || [];
       const mustNot = sp.mustNotFire || [];
       if (!Array.isArray(ordered)) add(`${at}.spans.ordered`, 'must be an array');

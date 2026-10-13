@@ -193,7 +193,7 @@ The runner waits the full capture window, then asks for evidence that tracing wa
 | Evidence | Verdict |
 |---|---|
 | the step declares `"liveness": "<span>"` (a span the step is known to produce, such as the page's data-source retrieve) and it was captured | judged: `tracing live` PASS, then each `did not run` |
-| no declared span; the service emitted ≥1 span since the journey started (`otel.liveness`) | judged, same rows |
+| no declared span; the service emitted ≥1 span since this journey started (2 s clock-skew margin, so the previous journey's spans do not count; `otel.liveness`) | judged, same rows |
 | declared span missing, service silent, or Jaeger unreachable | `INVALID`: the claim is not judged |
 
 The `trace-negative` control mutant covers this shape too. It injects the forbidden name into the

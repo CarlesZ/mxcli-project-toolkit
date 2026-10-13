@@ -64,7 +64,7 @@ echo "== T2: what the runner cannot read is still a problem =="
 run nothing; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'declares nothing the runner reads'; } \
   && ok "empty spans block → problem, says the runner records it INVALID" || bad "empty spans block accepted" "$OUT"
 printf '%s' "$OUT" | grep -q 'records it INVALID' && ok "message matches the runner's loud INVALID" || bad "message does not mention INVALID" "$OUT"
-run legacy; [ "$RC" -eq 1 ] && ok "array-shaped spans (no ordered/mustNotFire) → problem" || bad "legacy array shape accepted" "$OUT"
+run legacy; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'is an array — the old shape'; } && ok "array-shaped spans → problem naming the old shape" || bad "legacy array shape accepted or not named" "$OUT"
 run livenum; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'liveness: must be a non-empty string'; } \
   && ok "liveness of the wrong type → problem" || bad "bad liveness accepted" "$OUT"
 run livepos; { [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q 'only read for a negative-only claim'; } \

@@ -114,6 +114,25 @@ if (typeof R.traceRung !== 'function' || typeof O.liveness !== 'function') { con
   out('T_NOTHING', await run({ name: 'Save', spans: { ordered: [] } }, goldSpans, true));
   out('T_LEGACY', await run({ name: 'Save', spans: [{ mf: 'M.ACT_Save', status: 'OK' }] }, goldSpans, true));
   out('T_NOSPANS', await run({ name: 'Save' }, goldSpans, true));
+  out('T_EMPTYOBJ', await run({ name: 'Save', spans: {} }, goldSpans, true));
+
+  // review item 5: the liveness window starts at THIS journey's start (small skew margin only)
+  const newest = Math.max(...goldSpans.map(s => s.start)) / 1000;   // ms
+  const skew = R.LIVENESS_SKEW_MS;
+  body = full;
+  out('W_SKEW', skew);
+  out('W_PREV', (await O.liveness(newest + 30000 - skew)).ok);   // spans from 30 s before the journey: not evidence
+  out('W_OWN', (await O.liveness(newest - skew)).ok);            // a span right at the journey start: evidence
+
+  // review item 4: a project's older otel.js without liveness() — runner says so, never TypeError
+  const saved = O.liveness;
+  delete O.liveness;
+  try {
+    const rows = [];
+    await R.traceRung(neg, { t0: 0, since: 0, rec: (n, v, d) => rows.push(`${v} ${n} :: ${d}`), capture: async () => [] });
+    out('T_STALE_OTEL', rows);
+  } catch (e) { out('T_STALE_OTEL', `THREW ${e.constructor.name}: ${e.message}`); }
+  O.liveness = saved;
   out('T_POS_OK', (await run(pos, goldSpans, false)).map(r => r.split(' :: ')[0]));
 
   // the trace-negative mutant for a negative-only journey
@@ -182,7 +201,13 @@ case "$(line T_DECL_MISS)" in '["INVALID Cancel: spans :: '*'declared liveness s
   && ok "positive claim over the golden → unchanged rows" || bad "positive-claim rows changed" "$(line T_POS_OK)"
 
 case "$(line T_NOTHING)" in '["INVALID Save: spans :: spans block declares neither `ordered` nor `mustNotFire`'*) ok "spans block with neither field → loud INVALID (#150 item 3)" ;; *) bad "empty spans block skipped silently" "$(line T_NOTHING)" ;; esac
-case "$(line T_LEGACY)" in '["INVALID Save: spans :: '*) ok "array-shaped spans (a shape the runner does not read) → INVALID" ;; *) bad "unreadable spans shape skipped" "$(line T_LEGACY)" ;; esac
+case "$(line T_LEGACY)" in '["INVALID Save: spans :: spans is an array — the old shape'*'use { \"ordered\": [...], \"mustNotFire\": [...] }'*) ok "array-shaped spans → INVALID that names the old shape and the new one" ;; *) bad "array shape not named" "$(line T_LEGACY)" ;; esac
+case "$(line T_EMPTYOBJ)" in '["INVALID Save: spans :: spans is {}'*) ok "spans {} → INVALID that says it is empty" ;; *) bad "empty object not named" "$(line T_EMPTYOBJ)" ;; esac
+case "$(line T_STALE_OTEL)" in '["INVALID Cancel reset: spans :: negative-only claim needs otel.js liveness()'*'older than journey-runner.js'*) ok "older otel.js without liveness() → INVALID naming the stale otel.js, no TypeError" ;; *) bad "stale otel.js not handled" "$(line T_STALE_OTEL)" ;; esac
+S="$(line W_SKEW)"; { [ -n "$S" ] && [ "$S" -gt 0 ] && [ "$S" -le 5000 ]; } && ok "liveness skew margin is small ($S ms)" || bad "skew margin missing or wide" "$S"
+[ "$(line W_PREV)" = false ] && ok "spans from 30 s before the journey began are NOT liveness evidence" || bad "previous journey's spans counted" "$(line W_PREV)"
+[ "$(line W_OWN)" = true ] && ok "a span at the journey's own start is evidence" || bad "own span not counted" "$(line W_OWN)"
+if grep -q 'const jt0 = Date.now() - LIVENESS_SKEW_MS;' "$SUT"; then ok "runJourney's liveness window starts at the journey start minus the skew margin"; else bad "runJourney's liveness window is not the journey start"; fi
 [ "$(line T_NOSPANS)" = '[]' ] && ok "no spans block → no trace rows (nothing claimed)" || bad "a step without spans produced trace rows" "$(line T_NOSPANS)"
 
 echo "== T3: trace-negative positive control for a negative-only claim =="

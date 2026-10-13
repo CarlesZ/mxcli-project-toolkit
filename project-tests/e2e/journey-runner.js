@@ -127,6 +127,8 @@ const subst = (v, vars) =>
 // meant to stay declarative enough to generate from a module brief's golden-path
 // table.
 const PAUSE = ms => new Promise(r => setTimeout(r, ms));
+// Clock-skew margin for the liveness window (see runJourney's jt0).
+const LIVENESS_SKEW_MS = 2000;
 // The combobox waits below used to be fixed sleeps (400/1200/120/500 ms per field). Each now
 // waits for the thing it was sleeping for; SETTLE_MODE=fixed keeps the old sleeps for an A/B run.
 const FIXED = process.env.SETTLE_MODE === 'fixed';
@@ -323,7 +325,7 @@ async function act(page, a, vars, note) {
 // ── RUNG 2: ordered spans, as a function (called from runJourney) ───────────
 // Runs for a positive claim (ordered) OR a negative-only claim (mustNotFire with ordered
 // empty/absent) — a step whose whole proof is "this did NOT run" (#150). `capture` and
-// `live` are injected so tests/wave2/test-journey-negative-trace.sh drives it with a
+// `live` are injected so tests/wave2/test-journey-liveness.sh drives it with a
 // captured Jaeger trace and no browser. `rec(name, verdict, detail)` records one row.
 //
 // NEGATIVE-ONLY NEEDS A LIVENESS REFERENCE. Zero spans in the step window is what a correct
@@ -334,15 +336,24 @@ async function act(page, a, vars, note) {
 // the step's declared `spans.liveness` span, or any span from the service since the
 // journey began (otel.js liveness). No evidence → INVALID, naming which.
 async function traceRung(step, { t0, since, rec, capture = null, live = O.liveness }) {
-  const claimed = (step.spans && step.spans.ordered) || [];
-  const mustNot = (step.spans && step.spans.mustNotFire) || [];
   if (!step.spans) return;
   // A spans block that declares nothing this rung reads reads as a trace claim in the journey
-  // file and proves nothing — said out loud, never skipped (#150 item 3).
+  // file and proves nothing — said out loud, never skipped (#150 item 3). The array shape
+  // [{ mf, status }] is the old example.journey.json shape, named as such.
+  const shape = Array.isArray(step.spans) ? 'array'
+    : typeof step.spans !== 'object' ? typeof step.spans : 'object';
+  const claimed = (shape === 'object' && Array.isArray(step.spans.ordered)) ? step.spans.ordered : [];
+  const mustNot = (shape === 'object' && Array.isArray(step.spans.mustNotFire)) ? step.spans.mustNotFire : [];
   if (!claimed.length && !mustNot.length) {
+    const why = shape === 'array'
+      ? 'spans is an array — the old shape [{ mf, status }], which the runner never read; use { "ordered": [...], "mustNotFire": [...] }'
+      : shape !== 'object'
+        ? `spans is a ${shape} — use { "ordered": [...], "mustNotFire": [...] }`
+        : !Object.keys(step.spans).length
+          ? 'spans is {} — declares neither `ordered` nor `mustNotFire`'
+          : 'spans block declares neither `ordered` nor `mustNotFire`';
     rec(`${step.name}: spans`, 'INVALID',
-        'spans block declares neither `ordered` nor `mustNotFire` — nothing to evaluate; trace rung did NOT run. ' +
-        'Declare the claim or remove the block.');
+        `${why} — nothing to evaluate; trace rung did NOT run. Declare the claim or remove the block.`);
     return;
   }
   const negOnly = !claimed.length;
@@ -355,6 +366,16 @@ async function traceRung(step, { t0, since, rec, capture = null, live = O.livene
                       : await O.capture(t0, { min: 1, until: until });
   const real = spans.length;
   if (negOnly && (!real || probe)) {
+    // A project whose otel.js was hand-edited keeps it across a sync (it is not in the hold
+    // set with this file), so a new runner can meet an otel.js older than liveness(). Say so,
+    // never TypeError.
+    if (typeof live !== 'function') {
+      rec(`${step.name}: spans`, 'INVALID',
+          'negative-only claim needs otel.js liveness(), which this project\'s tests/e2e/otel.js does not export — ' +
+          'it is older than journey-runner.js (a locally edited copy kept by sync). Merge the toolkit\'s otel.js. ' +
+          'Trace rung did NOT run.');
+      return;
+    }
     const lv = await live(since, { name: probe, spans });
     if (!lv.ok) {
       rec(`${step.name}: spans`, 'INVALID',
@@ -690,9 +711,12 @@ async function resetToStart(page) {
 }
 
 async function runJourney(page, j) {
-  // Journey start, a little before: the window a negative-only span claim's liveness check
-  // reads (the navigation that resetToStart just made counts as evidence tracing is live).
-  const jt0 = Date.now() - 30000;
+  // Journey start: the window a negative-only span claim's liveness check reads. Only this
+  // journey's own spans count — never the previous journey's, nor other users' from before
+  // it began. LIVENESS_SKEW_MS (2 s) absorbs clock skew between this host and the runtime's
+  // span timestamps (Jaeger stamps with the runtime's clock); it is far shorter than any
+  // journey, so a span from the previous one cannot fall inside it in practice.
+  const jt0 = Date.now() - LIVENESS_SKEW_MS;
   console.log(`\n=== JOURNEY ${j.id} — ${j.title || ''}`);
   console.log(`    persona: ${j.persona || cfg.user}   requirements: ${(j.requirement || []).join(', ') || '(none declared)'}`);
 
@@ -1311,7 +1335,7 @@ module.exports = {
   runExitCode, personaMismatch,
   classifyAdminProbe, journeyNeedsAdmin, missingEnv, preflight, orderJourneys, stateTracker,
   judgeLanding,
-  traceRung, controlMutants, forbiddenSample, probeApp, appGate, flagAppDown,
+  traceRung, controlMutants, forbiddenSample, probeApp, appGate, flagAppDown, LIVENESS_SKEW_MS,
 };
 
 // ── Main ────────────────────────────────────────────────────────────────────

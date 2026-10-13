@@ -25,7 +25,7 @@ The domain is invented (purchase requests and a supplier catalogue). Nothing in 
 any real project.
 
 ```bash
-node examples/validate-journeys.js --selftest                                  # 16 rules, each watched going red
+node examples/validate-journeys.js --selftest                                  # 19 rules, each watched going red
 node examples/validate-journeys.js --brd examples/brd examples/journeys/*.json # the examples themselves
 node examples/validate-journeys.js --brd <brdDir> journeys/*.journey.json      # your project
 ```
@@ -91,7 +91,7 @@ none of the fields run exactly as before.
 | Field | Required? | Behaviour |
 |---|---|---|
 | `name` | yes | becomes `{{name}}` |
-| `sql` | yes | run through `helpers.oqlScalar` — **first cell of the first row**. Every column must be aliased (`AS n`); mxcli rejects an unaliased `SELECT`. |
+| `sql` | yes | run through `helpers.oqlScalar` — **the first SELECT alias of the first row** (never the alphabetically-first key mxcli prints). Every column must be aliased (`AS n`); mxcli rejects an unaliased `SELECT`. |
 
 - Seeds resolve **in array order** and may reference **earlier** seeds. That is the whole reason
   `supplierName` is keyed off `supplierCode` rather than being a second `LIMIT 1`: two unordered
@@ -184,7 +184,7 @@ proof is "X did not run" declares `mustNotFire` alone. Cancel on a reset confirm
 The step can rightly capture zero spans, and so does Jaeger down. So the runner waits the full
 capture window and then needs one piece of evidence that tracing was live:
 - the `liveness` span was captured; or, with no `liveness` declared,
-- any span from the service since the journey began.
+- any span from the service since this journey began (a 2 s clock-skew margin; the previous journey's spans do not count).
 
 With no evidence the step is `INVALID`, never a pass. If the step's capture is non-empty and no
 `liveness` is declared, those spans count as the evidence. Declare `liveness` whenever the step has
@@ -329,7 +329,7 @@ Stated so a reader is not surprised, and so whoever owns the spec can decide whi
 ## Honesty note
 
 The three example journeys **have never been executed.** There is no app behind
-`Procurement.PurchaseRequest`. They are validated statically — they parse, and they pass all 16 rules
+`Procurement.PurchaseRequest`. They are validated statically — they parse, and they pass all 19 rules
 in `validate-journeys.js`, whose own `--selftest` shows each of those rules going red on a
 deliberately broken input. Everything stated about runner behaviour was read out of
 `tests/e2e/journey-runner.js`, `helpers.js` and `otel.js`; anything that could not be settled by

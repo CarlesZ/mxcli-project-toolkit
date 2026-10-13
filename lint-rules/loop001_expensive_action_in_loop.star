@@ -115,7 +115,7 @@ def check():
         violations.append(violation(
             message="LOOP001 cannot run on this mxcli: activities have no loop_depth (added in mxcli 0.25.0). This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Microflow", document_name="LOOP001"),
-            suggestion="Upgrade mxcli to 0.25.0 or later, or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli to 0.25.0 or later, or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif loops_seen > 0 and body_rows_seen == 0:
         violations.append(violation(

@@ -6029,6 +6029,33 @@ backend's mutator already handles it (the two lists drifted).
 **Not covered by the fix:** `set Content`/`ContentParams` on a dynamic text (parser-level),
 container `RenderMode`, button `RenderType` — all still need `replace`.
 
+## BUG-156: `check -p --references` passes a microflow change that exec then refuses for lack of free room — and says it checked
+
+**Severity:** Medium — loud refusal, nothing written (exec.sh restores the snapshot), but the pre-flight that should have caught it says the opposite, so the failure costs a full exec cycle
+**mxcli version:** v0.25.0 · **Mendix version:** 11.14.0 · **Not filed upstream** (draft prepared, issue #263)
+**Discovered:** 2026-10-11, a consuming project (macOS, toolkit `9dd9be4`), reported by an outside contributor
+**Reproducible:** seen once in the field; no minimal repro yet
+
+`./mxcli check script.mdl -p App.mpr --references` passed the script and printed "no flow change
+exec would refuse". `bin/exec.sh --patch` then refused it:
+
+```
+create or modify microflow Common.IVK_X: this change cannot be spliced into the stored flow ... insert before return $LiveResult: there is no free room for the fragment ... drawn over the ActionActivity at (2025, 200)
+```
+
+`check` does not run the splice / free-room test that exec runs, yet its message reads as if it had.
+Nothing inside ALTER gets round it: `check --help` has no layout or free-room option, `alter microflow`
+insert takes no `@position`, cannot move existing objects, and cannot replace a fragment that returns.
+
+**Workaround (field-used):** `drop microflow` + `create microflow` in the same script, so the flow is
+laid out fresh. Before dropping, `show access on microflow Mod.Name` — the field case had no grants;
+re-granting after a drop + create was not exercised. A dropped-and-restated microflow is also a
+whole-document restatement: `learned-mdl-preflight.md` row 21 (describe first, keep sibling edits)
+applies. The planning rule is row 28 there.
+
+**Upstream ask:** have `check -p` run the same splice/free-room test exec runs, or stop printing
+"no flow change exec would refuse" when it has not.
+
 ## BUG-DRAFT-loop-var-expression-typecheck: the expression type checker is skipped inside a `LOOP` body — the identical expression is caught on a parameter and missed on a loop variable (2026-09-15)
 
 > **FILED UPSTREAM 2026-09-15 — https://github.com/mendixlabs/mxcli/issues/1100**

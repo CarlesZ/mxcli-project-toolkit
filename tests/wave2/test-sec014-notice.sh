@@ -73,6 +73,61 @@ p=$(mkp e 1 'rules:
 '); notice "$p" >/dev/null && bad "e \"none\" still nagged" || ok "e \"none\" (a recorded decision) -> silent"
 p=$(mkp f 0 "$STOCK_CFG"); notice "$p" >/dev/null && bad "f notice without the rule installed" || ok "f rule not installed -> silent"
 
+echo "== external_roles must sit under the SEC014 key =="
+p=$(mkp g 1 'rules:
+  CONV020:
+    options:
+      external_roles: "Partner"
+  SEC014:
+    severity: warning
+'); notice "$p" >/dev/null && ok "g external_roles under another rule does not count" || bad "g external_roles under CONV020 counted as SEC014's"
+p=$(mkp h 1 'rules:
+  SEC014:
+    severity: warning
+  CONV009:
+    options:
+      maxObjects: 20
+external_roles: "Partner"
+'); notice "$p" >/dev/null && ok "h external_roles at top level (outside SEC014) does not count" || bad "h top-level external_roles counted"
+p=$(mkp i 1 'rules:
+  SEC014:
+    enabled: false   # user decision, PROJECT.md D-9
+'); notice "$p" >/dev/null && bad "i enabled: false under SEC014 still nagged" || ok "i enabled: false under SEC014 (same user decision as \"none\") -> silent"
+p=$(mkp j 1 'rules:
+  SEC014: {options: {external_roles: "Partner"}}
+'); notice "$p" >/dev/null && bad "j inline-map form not recognised" || ok "j inline map under SEC014 -> silent"
+p=$(mkp k 1 'rules:
+  "SEC014":
+    options:
+      # external_roles: "Partner"
+      external_roles: "Partner, Customer"
+'); notice "$p" >/dev/null && bad "k quoted key not recognised" || ok "k quoted \"SEC014\" key, commented line above the real one -> silent"
+
+echo "== lint-gate.sh prints one uncounted note line =="
+GATE="$(dirname "$SYNC")/../project-bin/lint-gate.sh"
+if [ ! -f "$GATE" ]; then bad "project-bin/lint-gate.sh not found next to the toolkit"
+else
+  gate_run() { # project-dir -> sets GOUT (stderr+stdout) and GRC
+    mkdir -p "$1/bin"; cp "$GATE" "$1/bin/lint-gate.sh"
+    [ -f "$(dirname "$GATE")/_common.sh" ] && cp "$(dirname "$GATE")/_common.sh" "$1/bin/"
+    : > "$1/app.mpr"
+    GOUT="$(cd "$1" && bash bin/lint-gate.sh 2>&1)"; GRC=$?
+  }
+  p=$(mkp la 1 "$STOCK_CFG"); gate_run "$p"; rc_unset=$GRC
+  n=$(printf '%s\n' "$GOUT" | grep -c '^note: SEC014 not configured')
+  [ "$n" -eq 1 ] && ok "la unconfigured: exactly one note line" || bad "la expected 1 note line, got $n" "$GOUT"
+  case "$GOUT" in *"rules: SEC014: options: external_roles"*"'none' is their decision"*) ok "la note names the key and that 'none' is the user's call" ;; *) bad "la note text" "$GOUT" ;; esac
+  p=$(mkp lb 1 'rules:
+  SEC014:
+    options:
+      external_roles: "Partner"
+'); gate_run "$p"; rc_set=$GRC
+  case "$GOUT" in *"SEC014 not configured"*) bad "lb configured project still gets the note" ;; *) ok "lb configured -> no note" ;; esac
+  [ "$rc_unset" -eq "$rc_set" ] && ok "the note changes no exit code ($rc_unset both ways, no mxcli in the scratch project)" || bad "exit code differs: $rc_unset vs $rc_set"
+  p=$(mkp lc 0 "$STOCK_CFG"); gate_run "$p"
+  case "$GOUT" in *"SEC014 not configured"*) bad "lc note without SEC014 installed" ;; *) ok "lc SEC014 not installed -> no note" ;; esac
+fi
+
 echo "== wired into sync-project.sh =="
 if grep -q 'lib/sec014-notice.sh' "$SYNC" && grep -q 'mxtk_sec014_notice "\$PROJECT_DIR"' "$SYNC"; then
   ok "sync-project.sh sources the lib and calls it"

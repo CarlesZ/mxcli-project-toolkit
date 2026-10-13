@@ -137,7 +137,7 @@ says a role is external. Lint Batch 4 shipped both rows; the field-run counts ar
 
 | # | Rule | Category | Evidence | Needs | Status |
 |---|---|---|---|---|---|
-| 49 | External role (configured) can write all members, a state enumeration (`Status`/`State`/`Result`/`Stage`/`Phase`), an audit `…At`/`…By` attribute, or the association its own XPath scopes ownership on (SEC014) | security | #268: a partner role held `create, read *, write *` on two self-owned entities with a state attribute; lint showed only CONV006 +4, re-baselined; a manual review found it five days later | `permissions_for()` `MEMBER_WRITE` rows, `attributes_for().data_type` (`Enumeration`), `user_roles()` / `role_mappings()`; `external_roles` option, text not list. Probed 2026-10-13 | drafted (Batch 4) |
+| 49 | External role (configured) can write all members, a state enumeration (`Status`/`State`/`Result`/`Stage`/`Phase`), an audit `…At`/`…By` attribute, or the association its own XPath scopes ownership on (SEC014) | security | #268: a partner role held `create, read *, write *` on two self-owned entities with a state attribute; lint showed only CONV006 +4, re-baselined; a manual review found it five days later | `permissions_for()` `MEMBER_WRITE` rows, `attributes_for().data_type` (`Enumeration`), `user_roles()` / `role_mappings()`; `external_roles` option, text not list; absent = sync warning, not a `_rule` finding. Probed 2026-10-13 | drafted (Batch 4) |
 | 50 | CONV009 threshold read from `lint-config.yaml` (`maxObjects`, `countLoopBodies`) instead of the stock hard-coded 15 | quality | #267: the generated config's own example does nothing; three apps at 36 / 30 / 5 findings, one app split flows only to satisfy the 15 | `get_option()`; `total_activity_count` (mxcli >= 0.25.0) for loop bodies. Default kept at 15: raising it for every project is a maintainer call | drafted (Batch 4) |
 
 ## Cheap extras (one afternoon each, when a batch has room)
@@ -172,7 +172,7 @@ a second backlog section. Forum only to weight by incident frequency.
 ## History
 
 - 2026-10-13 — Batch 6 added from #268 / #267 (rows 49–50). Lint Batch 4 shipped them as `SEC014`
-  and a toolkit-owned `CONV009` (status `drafted`, 26 unit cases). First field run, mxcli 0.26.0:
+  and a toolkit-owned `CONV009` (status `drafted`, 32 unit cases). First field run, mxcli 0.26.0:
   SEC014 1 finding with the one external role configured, positive control 7 that a SQL replay
   matches; CONV009 5 / 5 / 10 at 15 / 20 / 10, while stock CONV009 stayed at 5 with `maxObjects: 20`.
 - 2026-10-13 — Batch 5 added from #276 / #280 / #282 (rows 32–48). Lint Batch 3 shipped rows

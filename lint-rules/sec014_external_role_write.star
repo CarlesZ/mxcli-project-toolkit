@@ -25,7 +25,8 @@
 #     SEC014:
 #       options:
 #         external_roles: "Partner, Customer"   # user role or module role names, comma-separated
-#         # external_roles: "none"               # this app has no external role: rule is off, on the record
+#         # external_roles: "none"               # rule off: ONLY on the user's answer, asked in chat
+#                                                # and recorded in PROJECT.md; never to silence a notice
 #         # state_names: "Status, State, Result, Stage, Phase"   # the default list
 #
 # The value is ONE TEXT, not a YAML list: mxcli passes only bool / int / float / text
@@ -37,8 +38,16 @@
 # listing the members. Skipped: System / Administration, non-persistable and external
 # entities.
 #
-# SELF-CHECKS (a rule that cannot see must say so, never report a clean pass):
-#   - external_roles unset, empty or a list: `_rule` finding. Set it, or set "none".
+# NOT CONFIGURED YET (option absent): the rule returns nothing, and bin/sync-project.sh
+# says so instead, once per sync, as a sync warning (bin/lib/sec014-notice.sh). A `_rule`
+# finding here would make lint-gate exit PASS-BLIND on every exec of every synced project until
+# someone answers a question — the #229 pattern. The silence is not a pass: the sync names it.
+# After configuring, SEC014 jumps 0 -> N in one run; re-baseline right then
+# (lint-gate.sh --update-baseline --reason "SEC014 configured" --approved-in-chat), or the
+# rise is blamed on whatever script runs next.
+#
+# SELF-CHECKS (configured but unusable: the rule must say so, never report a clean pass):
+#   - external_roles empty, or a YAML list: `_rule` finding.
 #   - a configured name matches no user role and no module role: `_rule` finding (typo, or
 #     user_roles() / role_mappings() return nothing on this mxcli).
 #   - persistable entities exist and permissions_for() returns no row for any of them: the
@@ -65,6 +74,7 @@ DEFAULT_STATE_NAMES = "Status, State, Result, Stage, Phase"
 # "Nearby" and "Flat" do not match.
 AUDIT_PATTERN = "[a-z0-9_](At|By)$"
 OFF_VALUES = ("none", "-", "off")
+UNSET = "__mxtk_unset__"
 
 
 def _bare(name):
@@ -132,19 +142,23 @@ def _role_matches(perm_role, roles):
 
 
 def check():
-    raw = get_option("external_roles", "")
+    raw = get_option("external_roles", UNSET)
+    if raw == UNSET:
+        # Not decided yet: sync-project.sh reports it once per sync (see header).
+        return []
     if raw == None or type(raw) != "string":
+        # lint-gate prints message[:160] only, so the fix goes in the message.
         return [_blind(
-            "SEC014 option external_roles is {} ({}), not text. A YAML list reaches Starlark as None. This rule inspected NOTHING.".format(repr(raw), type(raw)),
-            "Write it as one text: `external_roles: \"Partner, Customer\"` under `rules: SEC014: options:` in .claude/lint-config.yaml.",
+            "SEC014 blind: external_roles is a list/non-text; write one text in .claude/lint-config.yaml rules: SEC014: options: external_roles: \"A, B\"",
+            "mxcli passes a YAML list to Starlark as None (got {}). Write the roles as one comma-separated text.".format(type(raw)),
         )]
     if raw.strip().lower() in OFF_VALUES:
         return []
     names = _split(raw)
     if not names:
         return [_blind(
-            "SEC014 has no external roles configured, so it cannot tell a partner / customer / portal role from an internal one. This rule inspected NOTHING.",
-            "Name them in .claude/lint-config.yaml: `rules: SEC014: options: external_roles: \"Partner, Customer\"`, or `external_roles: \"none\"` if this app has no external users.",
+            "SEC014 blind: external_roles empty. Ask the user; set .claude/lint-config.yaml rules: SEC014: options: external_roles (\"none\" only on their answer)",
+            "\"none\" turns this security rule off: only on the user's answer in chat, recorded in PROJECT.md, never to silence this finding.",
         )]
 
     raw_states = get_option("state_names", DEFAULT_STATE_NAMES)
@@ -156,8 +170,8 @@ def check():
     violations = []
     if unknown:
         violations.append(_blind(
-            "SEC014 external role(s) {} match no user role and no module role ({} roles seen). Those roles were NOT inspected.".format(
-                ", ".join(["'" + u + "'" for u in unknown]), role_count),
+            "SEC014 blind: no such role {} ({} seen); fix .claude/lint-config.yaml rules: SEC014: options: external_roles".format(
+                ", ".join(["'" + u + "'" for u in unknown])[:40], role_count),
             "Check the spelling against `SHOW USER ROLES` / `SHOW MODULE ROLES`; if roles exist and none is seen, user_roles() / role_mappings() return nothing on this mxcli.",
         ))
     if not resolved:
@@ -226,7 +240,7 @@ def check():
 
     if persistable > 0 and perm_rows == 0:
         violations.append(_blind(
-            "SEC014 saw {} persistable entities and permissions_for() returned no access rule for any of them: the catalog is not FULL. This rule inspected NOTHING.".format(persistable),
+            "SEC014 blind: {} persistable entities, no access rule rows: catalog not FULL. Run REFRESH CATALOG FULL, then lint again.".format(persistable),
             "Run `REFRESH CATALOG FULL` (permissions are only indexed in full mode), then lint again.",
         ))
 

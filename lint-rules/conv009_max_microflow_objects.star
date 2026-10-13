@@ -37,7 +37,9 @@
 #   - maxObjects / countLoopBodies set to something unusable (a list, text, 0): `_rule`
 #     finding, and the rule does not silently fall back to 15.
 #   - countLoopBodies on an mxcli without total_activity_count: `_rule` finding.
-#   - flows exist and every one reports 0 objects: activity_count is not populated.
+#   - every flow reports 0 objects, yet activities_for() finds a real object (not a start,
+#     end or merge) in one of them: activity_count is not populated. Zero everywhere with
+#     nothing behind it is an early greenfield model (empty microflows), not blindness.
 
 RULE_ID = "CONV009"
 RULE_NAME = "MaxMicroflowObjects"
@@ -46,8 +48,11 @@ CATEGORY = "quality"
 SEVERITY = "info"
 
 DEFAULT_MAX_OBJECTS = 15
-# Below this many flows, "every flow has 0 objects" is a plausible empty model.
-MIN_FLOWS_FOR_BLINDNESS = 3
+# activities_for() rows that activity_count never counts (probed 2026-10-13, mxcli 0.26.0:
+# every flow has one StartEvent, empty flows have only start and end).
+NOT_COUNTED = ("StartEvent", "EndEvent", "ExclusiveMerge")
+# How many zero-count flows to cross-check with activities_for() before calling it.
+PROBE_FLOWS = 20
 
 
 def _blind(msg, suggestion):
@@ -94,11 +99,9 @@ def check():
             "Upgrade mxcli, or drop countLoopBodies from .claude/lint-config.yaml.",
         )]
 
-    counted = 0
     nonzero = 0
     for mf in flows:
         n = mf.total_activity_count if nested else mf.activity_count
-        counted += 1
         if n > 0:
             nonzero += 1
         if n <= max_objects:
@@ -113,10 +116,14 @@ def check():
             suggestion="Extract logical sections into SUB_ {}s to keep each at or under {} objects".format(noun, max_objects),
         ))
 
-    if counted >= MIN_FLOWS_FOR_BLINDNESS and nonzero == 0:
-        violations.append(_blind(
-            "CONV009 saw {} flows and every one reports 0 objects: activity_count is not populated on this mxcli. This rule inspected NOTHING.".format(counted),
-            "Probe: sqlite3 .mxcli/catalog.db \"SELECT ActivityCount, COUNT(*) FROM microflows GROUP BY 1;\" — then upgrade mxcli or report it upstream.",
-        ))
+    if len(flows) > 0 and nonzero == 0:
+        for mf in flows[:PROBE_FLOWS]:
+            real = [a for a in activities_for(mf.qualified_name) if a.activity_type not in NOT_COUNTED]
+            if real:
+                violations.append(_blind(
+                    "CONV009 blind: all {} flows report 0 objects, but {} has {}: activity_count is not populated on this mxcli.".format(len(flows), mf.qualified_name, len(real)),
+                    "Probe: sqlite3 .mxcli/catalog.db \"SELECT ActivityCount, COUNT(*) FROM microflows GROUP BY 1;\" — then upgrade mxcli or report it upstream.",
+                ))
+                break
 
     return violations

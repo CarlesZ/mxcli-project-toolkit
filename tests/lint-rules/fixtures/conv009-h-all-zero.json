@@ -1,4 +1,46 @@
 {
+ "activities": {
+  "Sales.A": [
+   {
+    "activity_type": "StartEvent",
+    "microflow_qualified_name": "Sales.A"
+   },
+   {
+    "activity_type": "EndEvent",
+    "microflow_qualified_name": "Sales.A"
+   }
+  ],
+  "Sales.B": [
+   {
+    "activity_type": "StartEvent",
+    "microflow_qualified_name": "Sales.B"
+   },
+   {
+    "activity_type": "EndEvent",
+    "microflow_qualified_name": "Sales.B"
+   }
+  ],
+  "Sales.C": [
+   {
+    "activity_type": "StartEvent",
+    "microflow_qualified_name": "Sales.C"
+   },
+   {
+    "activity_type": "EndEvent",
+    "microflow_qualified_name": "Sales.C"
+   }
+  ],
+  "Sales.D": [
+   {
+    "activity_type": "StartEvent",
+    "microflow_qualified_name": "Sales.D"
+   },
+   {
+    "activity_type": "EndEvent",
+    "microflow_qualified_name": "Sales.D"
+   }
+  ]
+ },
  "microflows": [
   {
    "activity_count": 0,

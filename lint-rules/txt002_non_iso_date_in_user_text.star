@@ -28,8 +28,10 @@
 # a DateTime attribute rendered with the locale's default format — that is a widget format
 # setting, not a string.
 #
-# If this project's display standard is deliberately not ISO, delete this rule rather than
-# loosening the patterns until it is quiet.
+# ISO dates are a toolkit opinion, not a Mendix rule. If this project's display standard is
+# deliberately not ISO, turn the rule off in .claude/lint-config.yaml
+# (`rules: TXT002: enabled: false`) and record the decision in PROJECT.md. Do not delete or
+# loosen this file: sync re-installs a deleted rule and reports an edited one on every run.
 #
 # REQUIRES mxcli >= 0.25.0 (the strings() builtin) and a FULL catalog. On an older binary
 # this file does not load at all — mxcli prints "rule file skipped" on stderr and no `_rule`

@@ -73,11 +73,11 @@ PY
 
 echo "== SEC014 =="
 run "$R1" sec014-a-unset
-check "a external_roles unset -> 1 _rule finding, nothing inspected" 'len(v)==1 and v[0]["module"]=="_rule" and "no external roles configured" in v[0]["message"]'
+check "a external_roles absent -> 0 here; bin/sync-project.sh reports it instead (no PASS-BLIND on every exec)" 'len(v)==0'
 run "$R1" sec014-b-none
 check "b external_roles \"none\" -> 0 (the app has no external role, on the record)" 'len(v)==0'
 run "$R1" sec014-c-list
-check "c external_roles as a YAML list (reaches Starlark as None) -> 1 _rule finding" 'len(v)==1 and v[0]["module"]=="_rule" and "not text" in v[0]["message"]'
+check "c external_roles as a YAML list (reaches Starlark as None) -> 1 _rule finding" 'len(v)==1 and v[0]["module"]=="_rule" and "list/non-text" in v[0]["message"]'
 run "$R1" sec014-d-write-all
 check "d write * by the external role -> 1 finding (internal role with the same grant not flagged)" 'len(v)==1 and v[0]["document_name"]=="Portal.Offer" and "external role '"'"'Partner'"'"'" in v[0]["message"]'
 check "d message lists all members, state, both audit attrs, the ownership association" 'all(s in v[0]["message"] for s in ["all 6 attributes (write *)","state Status","audit ApprovedBy, SubmittedAt","ownership association Offer_Partner"])'
@@ -96,6 +96,12 @@ run "$R1" sec014-j-skipped
 check "j Administration, non-persistable and external entities skipped -> 0" 'len(v)==0'
 run "$R1" sec014-k-two-roles
 check "k two roles (';' and ',' separators, a duplicate) -> one finding per entity x role" 'sorted(x["message"].split("external role ")[1].split(" ")[0] for x in v)==["'"'"'Customer'"'"'","'"'"'Partner'"'"'"]'
+run "$R1" sec014-m-empty
+check "m external_roles set but blank -> 1 _rule finding naming \"none\" as the user's answer" 'len(v)==1 and v[0]["module"]=="_rule" and "\"none\" only on their answer" in v[0]["message"]'
+for f in sec014-c-list sec014-h-unknown-role sec014-i-not-full sec014-m-empty; do
+  run "$R1" "$f"
+  check "${f#sec014-} _rule message fits lint-gate's 160-char print and names the place to fix it" 'all(len(x["message"])<=160 for x in v) and ("lint-config.yaml" in v[0]["message"] or "REFRESH CATALOG FULL" in v[0]["message"])'
+done
 run "$R1" sec014-l-mapping-only
 check "l user_roles() empty, role_mappings() names the role -> still resolved, 1 finding" 'len(v)==1 and v[0]["module"]=="Portal"'
 
@@ -115,7 +121,9 @@ check "f maxObjects: 0 -> 1 _rule finding" 'len(v)==1 and v[0]["module"]=="_rule
 run "$R2" conv009-g-loop-text
 check "g countLoopBodies: \"yes\" -> 1 _rule finding" 'len(v)==1 and v[0]["module"]=="_rule" and "countLoopBodies" in v[0]["message"]'
 run "$R2" conv009-h-all-zero
-check "h four flows all at 0 objects -> 1 _rule finding 'not populated'" 'len(v)==1 and v[0]["module"]=="_rule" and "not populated" in v[0]["message"]'
+check "h four empty flows (start/end only) -> 0: an early greenfield model is not blindness" 'len(v)==0'
+run "$R2" conv009-m-zero-but-objects
+check "m every flow 0 objects but activities_for() finds an action -> 1 _rule 'not populated'" 'len(v)==1 and v[0]["module"]=="_rule" and "not populated" in v[0]["message"] and "Sales.C has 2" in v[0]["message"]'
 run "$R2" conv009-i-empty
 check "i no flows -> 0 (an empty model is not blindness)" 'len(v)==0'
 run "$R2" conv009-j-nanoflow

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# sec014-notice.sh — the one place a project hears that SEC014 is not configured yet.
+#
+# SEC014 (lint-rules/sec014_external_role_write.star) cannot tell an external role (partner,
+# customer, portal) from an internal one; the project has to name them in
+# .claude/lint-config.yaml (`rules: SEC014: options: external_roles: "A, B"`). Until it does,
+# the rule reports nothing on exec — a `_rule` blindness finding there would make lint-gate
+# exit PASS-BLIND on every exec of every synced project until someone edits a config file,
+# which is the #229 pattern (an unconfigured CONV020 logged 20 LINT BLIND rows in two apps).
+# The not-yet-decided state is said HERE instead, once per sync, as a sync warning, until the
+# option is set. A misconfigured value (a list, an unknown role) is still a `_rule` finding.
+#
+# Producer of the input: bin/sync-project.sh and bin/init-project.sh install the rule via
+# mxtk_install_lint_rules; lint-config.yaml is written by `mxcli init`.
+#
+# Usage: . bin/lib/sec014-notice.sh; mxtk_sec014_notice <project_dir>
+#   prints the notice lines and returns 0 when one is owed; prints nothing and returns 1 when
+#   the rule is not installed or external_roles is set (any value, "none" included).
+# Keep bash-3.2 compatible.
+
+mxtk_sec014_notice() {
+  _p="${1:?project dir}"
+  [ -f "$_p/.claude/lint-rules/sec014_external_role_write.star" ] || return 1
+  if [ -f "$_p/.claude/lint-config.yaml" ] &&
+     grep -Eq '^[[:space:]]*external_roles[[:space:]]*:' "$_p/.claude/lint-config.yaml"; then
+    return 1
+  fi
+  echo "SEC014 (external role can write state / audit / owner members) is installed but checks nothing:"
+  echo "no external_roles in .claude/lint-config.yaml. Ask the user which user roles are external"
+  echo "(partner, customer, portal), then add:"
+  echo "    rules:"
+  echo "      SEC014:"
+  echo "        options:"
+  echo "          external_roles: \"RoleA, RoleB\"   # one text, not a YAML list"
+  echo "\"none\" switches this security rule off: only on the user's answer in chat, recorded in"
+  echo "PROJECT.md — never to silence this notice. The first configured run raises SEC014 0 -> N, so"
+  echo "re-baseline right after: bin/lint-gate.sh --update-baseline --reason \"SEC014 configured\" --approved-in-chat"
+  return 0
+}

@@ -19,9 +19,9 @@ and configure the marked constants — **after** running `mxcli init`, never bef
 | `perf002_nested_data_widgets.star` | PERF002 — a data view / list view / data grid / gallery nested inside two or more other data widgets on the same page: re-queries per row at every level | `MAX_NESTING`, `DATA_WIDGET_CANDIDATES`, `EXCLUDE` (widget_type vocabulary: probe first) |
 | `perf004_npe_system_user_assoc.star` | PERF004 — an association between a non-persistable entity and System.User / System.Session (or an entity generalizing them), which pins session objects to the shared side | `NON_PERSISTABLE_CANDIDATES`, `SYSTEM_TARGETS` (entity_type vocabulary: probe first) |
 | `txt001_build_words_in_user_text.star` | TXT001 — user-visible text (titles, captions, templates, messages, menu items) holding build-process words: `Stage N`, `BR-10`, `F004`, TODO, a version tag, "(local, …)" | `PROJECT_WORDS` (sibling-app and project code names); `LEAK_PATTERNS` if "Stage N" is a real domain word |
-| `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no — delete it deliberately if the project's display standard is not ISO |
+| `txt002_non_iso_date_in_user_text.star` | TXT002 — user-visible text holding a non-ISO literal date (10/12/2026, 12 Oct 2026) or a day/month format pattern (dd MMM, MM/dd); blind to format strings inside expressions | no. ISO dates are a toolkit opinion, not a Mendix rule. A project whose display standard is not ISO turns it off in `.claude/lint-config.yaml` (`rules: TXT002: enabled: false`), never by deleting the file, which sync re-installs. See "Turning a toolkit rule off" below |
 | `ui001_widget_layout_traps.star` | UI001 — a list view inside a Data grid 2 column (its own "Load more" / "No items found" in every cell); an inline `width` on an Atlas input without `flex` (ignored) | `DATAGRID_TYPES`, `LISTVIEW_TYPES`, `INPUT_TYPES` (widget_type vocabulary: probe first) |
-| `sec014_external_role_write.star` | SEC014 — an external user role (partner, customer, portal) that can write every member, a state enumeration (`Status`, `State`, …), an audit attribute (`…At` / `…By`) or the association its own XPath uses for ownership: the client API lets it skip the approval microflow | **yes, required**, in `.claude/lint-config.yaml`: `rules: SEC014: options: external_roles: "Partner, Customer"` (one text, not a YAML list), or `"none"`. Unset is a `_rule` finding, so the gate reports PASS-BLIND until it is set |
+| `sec014_external_role_write.star` | SEC014 — an external user role (partner, customer, portal) that can write every member, a state enumeration (`Status`, `State`, …), an audit attribute (`…At` / `…By`) or the association its own XPath uses for ownership: the client API lets it skip the approval microflow | **yes, required**, in `.claude/lint-config.yaml`: `rules: SEC014: options: external_roles: "Partner, Customer"` (one text, not a YAML list), or `"none"`. Until it is set the rule reports nothing and `bin/sync-project.sh` warns on every sync; a list, a blank value or an unknown role is a `_rule` finding |
 
 `err001` and `loop001` first field count (2026-10-12, mxcli 0.26.0, 21-module Mendix 11.12 model,
 876 microflows): ERR001 8 (3 true, 5 debatable — flows that return an error payload instead of
@@ -67,12 +67,12 @@ write on all 7 attributes of a decision entity, one of them an audit attribute, 
 association its own XPath scopes on; a true positive by the rule's definition, the same shape as
 #268. Positive control with every user role configured: 7 findings across 6 entities, and a SQL
 replay of the same logic over `.mxcli/catalog.db` gives the same 7 (0 on the second model, which
-has no external role; `"none"` there gives 0 and no `_rule`). Unset, a list, or a misspelt role
-each give exactly one `_rule` finding. Both files also load and give the same counts on mxcli
+has no external role; `"none"` there gives 0 and no `_rule`). A list or a misspelt role each give
+exactly one `_rule` finding; an absent option gives nothing on exec and a sync warning instead. Both files also load and give the same counts on mxcli
 0.17.0 and 0.24.0 (SEC014 avoids `associations()`, which does not exist before 0.25.0 and would
 make the file fail to load). Vocabulary landed in SEC014's header: `MEMBER_WRITE` rows carry
 qualified member and module-role names, attribute `data_type` for an enum is `Enumeration`.
-Unit cases: `tests/lint-rules/test-batch4-rules.sh` (26; the harness gained `get_option`,
+Unit cases: `tests/lint-rules/test-batch4-rules.sh` (32; the harness gained `get_option`,
 `permissions_for`, `attributes_for`, `user_roles`, `role_mappings` mocks).
 
 `data_change_microflows` and `entity_business_key` are **repaired copies of rules `mxcli init`
@@ -144,6 +144,35 @@ project's file still matches it, nobody here edited it; if the toolkit's file st
 the template has not moved. The receipt lives outside `lint-rules/`, which is what makes it
 survive `mxcli init` — and surviving matters, because init wipes every in-file marker at once,
 which would otherwise make a genuine revert indistinguishable from a first install.
+
+**SEC014 needs two decisions from the user, not from an agent.** Until `external_roles` is
+set, SEC014 reports nothing on exec, and `bin/sync-project.sh` warns on every sync with the exact
+lines to add (`bin/lib/sec014-notice.sh`). It is not a `_rule` finding, because that would make
+lint-gate exit PASS-BLIND on every exec of every synced project until someone answered, which is
+the #229 pattern an unconfigured CONV020 caused. Which roles are external is the user's answer,
+asked in chat. `external_roles: "none"` switches off a security rule, so it is set only on the
+user's answer and recorded as a decision row in `PROJECT.md`. An agent never sets it to make the
+warning go away. The first run after configuring raises SEC014 from 0 to N at once, and lint-gate
+would blame that security-tier rise on whatever script ran next. So re-baseline in the same step:
+`bin/lint-gate.sh --update-baseline --reason "SEC014 configured" --approved-in-chat`, after the
+user has seen the findings.
+
+**Turning a toolkit rule off** is a line in `.claude/lint-config.yaml`, never a deleted or
+edited file. Sync re-installs a deleted rule, and it reports an edited one as locally modified
+on every run. TXT002 is the usual case, because ISO dates are this toolkit's opinion rather than
+a Mendix rule:
+
+```yaml
+rules:
+  TXT002:
+    enabled: false   # display standard is not ISO: decided <date>, see PROJECT.md
+```
+
+mxcli skips a rule whose `enabled` is false. That applies to Starlark rules too, by `RULE_ID`
+(verified 2026-10-13 on mxcli 0.26.0: a toolkit rule with 1 finding gave 0 once disabled). Record
+the decision in `PROJECT.md`, as for SEC014's `"none"`. If you also want sync to stop installing
+the file, use the opt-out list in PR #308 (`.claude/lint-rules-disabled.txt`) once that PR is
+merged.
 
 **Tuning a toolkit rule never means editing it.** `conv009` and `sec014` read their settings
 with `get_option()` from `.claude/lint-config.yaml` (`rules: <RULE_ID>: options:`), so the file

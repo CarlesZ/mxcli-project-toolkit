@@ -1444,6 +1444,15 @@ fi
 if [ "$WIRED" -eq 1 ]; then
   mxtk_install_lint_rules "$(cd "$SCRIPT_DIR/.." && pwd)" "$PROJECT_DIR" "$DRY_RUN" "$UPGRADE_LINT"
   CHANGES=$((CHANGES + ${MXTK_LINT_CHANGES:-0}))
+  # SEC014 says "not configured" here, once per sync, never on exec (bin/lib/sec014-notice.sh).
+  . "$SCRIPT_DIR/lib/sec014-notice.sh"
+  if _sec014_msg=$(mxtk_sec014_notice "$PROJECT_DIR"); then
+    _old_ifs=$IFS; IFS='
+'
+    # shellcheck disable=SC2086
+    warn $_sec014_msg
+    IFS=$_old_ifs
+  fi
 fi
 
 # ── Script smoke — do the refreshed copies actually load on THIS machine? ────────────────

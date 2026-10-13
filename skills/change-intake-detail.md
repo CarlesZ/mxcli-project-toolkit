@@ -104,7 +104,7 @@ A row the user rejects is kept, with Status `rejected — <reason>`. A rejected 
 3. Then write the MDL and run it with `./bin/exec.sh --cr CR-NN <script>`. The tag lands in the BUILD-LOG detail cell, and that BUILD-LOG row is the evidence for Step 5.
 4. Set the status to `applied` and fill Closed-by with the commit that holds the artifact edit.
 
-**Owners** (this replaces the split that `agent-roles.md` lanes contradicted):
+**Owners**, expanded. The source is `change-intake.md` → Owners; this table only spells it out (it replaces the split that `agent-roles.md` lanes contradicted):
 
 | Duty | Owner |
 |---|---|

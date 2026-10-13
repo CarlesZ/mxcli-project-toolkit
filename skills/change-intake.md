@@ -5,6 +5,8 @@
 
 **Trigger:** the user, or a relayed stakeholder, asks for anything to differ from artifacts or build. Not a gate answer or review finding.
 
+Wrong: "Sure — adding it now" → MDL, no row (12 of 12 field changes).
+
 ## Row first, in `PROJECT.md` `## Change log`
 
 Columns: CR-NN (never reused), Date, Source, Verbatim ask (`\|` for a pipe), Class, Size, Entry artifact, Status, Closed-by. One ask, one row. Status: open → refined → agreed → applied → proven, or `rejected — reason` (kept).
@@ -24,9 +26,9 @@ Columns: CR-NN (never reused), Date, Source, Verbatim ask (`\|` for a pipe), Cla
 - **L** (new feature or module, or contradicts `CONFIRMED`): ask now (two options, a recommendation); re-enter the owning stage.
 - **Relayed**: `open` until the next gate asks. **Ambiguous**: one "A or B?".
 
-## Owners
+## Owners (single source)
 
-Lead: all CR/decision rows, S edits; helpers never write `PROJECT.md`. ba-agent: BRDs, briefs. architect-agent: wireframes, `design/`, `architecture/`.
+Lead: all CR/decision rows, S edits; helpers never write `PROJECT.md`. ba-agent: BRDs, briefs. architect-agent: wireframes, `design/`, `architecture/`. When the lead edits inline, no `UNSYNCED` marker is needed; use one only for a deferred flush.
 
 ## Done when
 

@@ -17,7 +17,7 @@
 # toolkit pull) — both mandatory chain steps. Rows are written by the lead per change-intake.md.
 #
 # WARN-ONLY. gate-check.sh reports what mxtk_change_log_scan counts as a WARN line and never
-# blocks on it. change-intake.md says when that changes, and why not yet.
+# blocks on it. change-intake-detail.md "The mechanical check" says when that changes, and why not yet.
 #
 # Sourced, never executed. Callers are `set -euo pipefail`, so keep this side-effect free.
 

@@ -2333,7 +2333,7 @@ fi
 # never written once, and a gate cannot see a marker nobody wrote. A change log makes the ask
 # countable; whether its counts are right on real projects is not yet known, and a blocking
 # guard built on an unproven count is how this repo has shipped false FAILs before.
-# change-intake.md names the condition under which this becomes blocking.
+# change-intake-detail.md "The mechanical check" names the condition under which this becomes blocking.
 CR_STATUS="PASS"; CR_NOTE=""; CR_ROWS=""
 if [ "$REG_AMBIGUOUS" = "1" ] || [ -z "$REGISTER" ] || [ ! -f "$REGISTER" ]; then
   CR_STATUS="MANUAL"

@@ -190,6 +190,30 @@ and regression risk had been checked, the honest answer was no: nobody who had n
 code had read it. The same day showed the cost of unread diffs in another form — the always-loaded
 skill text hit its 80,000-word cap because each PR added words that nobody outside the PR weighed.
 
+## Always-loaded skill text — the word budget
+
+`bin/render-routing.sh --check` caps the always-loaded (baseline) skill set at 80,000 words. Room is
+made by **moving** text, never by deleting the text that does the work.
+
+1. **Protected — never removed to make room:** rules, STOP rows, denominators / completion
+   criteria, and the one-line failure example each rule is paired with. Removing one needs its own
+   PR that argues the rule itself is obsolete, with an independent review.
+2. **Movable:** incident narratives, worked examples, tables of past numbers, and a rule stated a
+   second time in another baseline file. Each moves to an on-demand file and leaves a one-line
+   pointer (path) at the same spot. A move keeps the text; nothing is lost.
+3. **Every PR that adds baseline words** states the before/after count from
+   `render-routing.sh --check` in its body, and why each addition is needed at the trigger moment.
+   The independent reviewer checks that (see "Merging a PR").
+4. **At the cap, a feature PR never squeezes other text to fit.** Room comes from a separate trim
+   PR that only moves movable text; its reviewer compares removed against moved line by line, and
+   any protected line that disappeared is a HOLD.
+5. **Trim before the cap, not at it:** when the baseline passes 76,000 words (95%), the next PR
+   that adds baseline words is preceded by a trim PR.
+
+**Why (2026-10-13).** The baseline hit 79,975 of 80,000 while six open PRs each added words; a
+"make it fit" instruction inside a feature PR merged two redundant sentences in a testing skill to
+squeeze under. That one was harmless, but nothing stopped the next one from cutting a STOP row.
+
 ## Changelog and contributions
 
 **Every user-visible change appends its `CHANGELOG.md` line in the same commit.** That is the

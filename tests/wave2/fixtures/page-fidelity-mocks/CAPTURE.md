@@ -139,3 +139,14 @@ frame, with the layout's `region-topbar` / `region-sidebar` / `region-content` c
 Master: `71% classes 0/2` (the layout's region classes scored as the page's). Fixed, with the
 layout in the input or named with `--chrome`: `100% classes 0/0`, both reported as chrome.
 Without either, the default chrome set is unchanged and the classes are still owed.
+
+## alter-multiline — review counter-case for the caption match (2026-10-13)
+
+**Synthetic**, all three files: the independent review's counter-case, kept as written apart
+from the marker comments and the `btn btn-success` classes on the Approve button. It pins three
+things the first cut of the caption match got wrong: an ALTER `set (…) on w` spread over
+several lines (the segment ended at the first newline and dropped `'Approve order'`); a
+plural wireframe heading (`Orders`) against a singular title (`'Order'`), which whole-word
+matching without a plural fold read as missing; and a ButtonStyle set by that ALTER. Misses
+that remain are real: `Save changes` vs the caption `'Save'`, an icon-only Edit button with an
+empty caption, and `Recent activity`, whose second word is a bound parameter.

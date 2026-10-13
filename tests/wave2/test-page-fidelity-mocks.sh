@@ -227,6 +227,26 @@ OUT17=$(cd "$TMP" && printf '%s\n' "$PAGEONLY" | node "$SUT" --no-log --chrome r
 has   "--chrome names them instead"                                "$OUT17" "classes 0/0"
 has   "--chrome classes are reported as chrome too"                "$OUT17" "chrome (layout-supplied, not scored): region-sidebar region-content"
 
+echo "  -- a multi-line ALTER set, plurals, and a re-styled button (review of #318)"
+# alter-multiline-* is a SYNTHETIC counter-case (see CAPTURE.md). The first cut of the caption
+# match ended an ALTER `set` segment at the first newline and dropped 'Approve order'; and
+# whole-word matching read "Orders" against the title 'Order' as missing.
+AM="$FIX/alter-multiline"
+OUT18=$(cd "$TMP" && node "$SUT" --no-log "$AM.html" Order_Overview "$AM-page.mdl" "$AM-alter.mdl" 2>&1)
+echo "$OUT18" | sed 's/^/    | /'
+hasnt "a caption set by a multi-line ALTER is seen"         "$OUT18" "action:  Approve order"
+hasnt "a plural heading matches its singular title"         "$OUT18" "heading: Orders"
+has   "the multi-line ALTER's ButtonStyle is seen"          "$OUT18" "classes 2/2"
+has   "a different caption is still a miss"                 "$OUT18" "action:  Save changes"
+RESTYLE="$TMP/restyle.mdl"
+printf "create page M.R (Title: 'R', Layout: Atlas_Core.Atlas_Default) {\n  actionbutton bGo (Caption: 'Go', Action: close_page, ButtonStyle: Warning)\n}\nalter page M.R {\n  set ButtonStyle = Success on bGo;\n}\n" > "$RESTYLE"
+printf '<main><h1>R</h1><button class="btn btn-warning">Go</button></main>' > "$TMP/restyle.html"
+OUT19=$(cd "$TMP" && node "$SUT" --no-log "$TMP/restyle.html" R "$RESTYLE" 2>&1)
+has   "an ALTER that re-styles a button drops its old class" "$OUT19" "classes: btn-warning"
+hasnt "no layout hint when no missed class looks like chrome" "$OUT19" "is not in the input"
+hasnt "no layout hint for page classes (seg-tabs, dg-*)"     "$OUT6"  "is not in the input"
+has   "the hint names the layout when region-* is missed"   "$OUT16" "layout LayoutTest.App_Default is not in the input"
+
 echo
 printf 'test-page-fidelity-mocks: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

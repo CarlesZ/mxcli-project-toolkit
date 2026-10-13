@@ -568,6 +568,14 @@ function mdlWidgets(mdl) {
   return { widgets: out, masked };
 }
 
+// One ALTER `set` statement, on the MASKED text (string contents blank): from `set` to its
+// `on <widget>`, or — page-level, no `on` — to the `;`/`}` or the next ALTER operation that ends
+// it. NOT to the end of the line: mxcli accepts the parenthesised form over several lines
+// (`set (\n  Caption = '…',\n  ButtonStyle = Success\n) on btnApprove`), and a segment that
+// stopped at the first newline dropped that caption.
+const ALTER_OP = '\\b(?:set|insert|drop|replace)\\b';
+const SET_STMT = new RegExp('\\bset\\b((?:(?!' + ALTER_OP + ')[^;{}])*?)(?:\\bon\\s+"?([A-Za-z_][A-Za-z0-9_]*)"?|(?=[;}]|' + ALTER_OP + '))', 'gi');
+
 function mdlTexts(mdl) {
   const { widgets, masked } = mdlWidgets(mdl);
   const t = { headings: [], actions: [], content: [] };
@@ -590,7 +598,7 @@ function mdlTexts(mdl) {
   }
   // ALTER … set (Caption = '…', …) on w   /   set Title = '…' (page-level, no `on`). mxcli
   // accepts `:` inside the parenthesised form too (`set (Content: '…') on brandText`).
-  for (const m of masked.matchAll(/\bset\b([^;{}]*?)(?:\bon\s+"?([A-Za-z_][A-Za-z0-9_]*)"?|(?=[;}\n]))/gi)) {
+  for (const m of masked.matchAll(SET_STMT)) {
     const seg = mdl.slice(m.index, m.index + m[0].length);
     const type = m[2] ? (kind[m[2]] || null) : null;
     for (const p of seg.matchAll(new RegExp('\\b(Title|Caption|Content|Label|Placeholder)\\s*[:=]\\s*' + LIT, 'gi')))
@@ -601,9 +609,14 @@ function mdlTexts(mdl) {
 
 // The words a wireframe string must show: the >3-char words, or — when it has none ("New",
 // "OK", "Add") — all of its words, so a short label is matched instead of passing vacuously.
-const keyWords = txt => { const w = words(txt); return w.length ? w : norm(txt).split(' ').filter(Boolean); };
+// Whole words, with a light SYMMETRIC plural fold (applied to both sides): "Open tasks" is the
+// caption "Open task", "Orders" the title "Order", "Boxes" the label "Box". The substring test
+// credited those for free; whole-word matching without the fold read them as missing.
+const stem = w => w.length > 3 && /(ss|x|z|ch|sh)es$/.test(w) ? w.slice(0, -2)
+  : w.length > 3 && /[^s]s$/.test(w) ? w.slice(0, -1) : w;
+const keyWords = txt => { const w = words(txt); return (w.length ? w : norm(txt).split(' ').filter(Boolean)).map(stem); };
 function makeHit(lits) {
-  const sets = lits.map(l => new Set(norm(l).split(' ').filter(Boolean)));
+  const sets = lits.map(l => new Set(norm(l).split(' ').filter(Boolean).map(stem)));
   return txt => {
     const w = keyWords(txt);
     if (!w.length) return true;
@@ -621,17 +634,23 @@ function makeHit(lits) {
 // the only way a page script styles a button. Link buttons are NOT mapped: their rendered
 // classes have not been measured.
 function buttonClasses(mdl) {
-  const out = new Set();
   const { widgets, masked } = mdlWidgets(mdl);
-  const kind = {};
+  const kind = {}, style = {};            // style: actionbutton name -> its CURRENT ButtonStyle
   for (const w of widgets) {
     kind[w.name] = w.type;
     if (w.type !== 'actionbutton') continue;
     const st = w.props.match(/\bButtonStyle\s*:\s*"?([A-Za-z]+)"?/i);
-    out.add('btn'); out.add('btn-' + (st ? st[1] : 'default').toLowerCase());
+    style[w.name] = (st ? st[1] : 'default').toLowerCase();
   }
-  for (const m of masked.matchAll(/\bset\b[^;{}]*?\bButtonStyle\s*[:=]\s*"?([A-Za-z]+)"?[^;{}]*?\bon\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi))
-    if (!kind[m[2]] || kind[m[2]] === 'actionbutton') { out.add('btn'); out.add('btn-' + m[1].toLowerCase()); }
+  // An ALTER that sets ButtonStyle REPLACES the button's style (the old btn-<x> is gone from the
+  // DOM); on a button not declared in the input it can only add.
+  for (const m of masked.matchAll(SET_STMT)) {
+    if (!m[2] || (kind[m[2]] && kind[m[2]] !== 'actionbutton')) continue;
+    const st = m[1].match(/\bButtonStyle\s*[:=]\s*"?([A-Za-z]+)"?/i);
+    if (st) style[m[2]] = st[1].toLowerCase();
+  }
+  const out = new Set();
+  for (const k of Object.keys(style)) { out.add('btn'); out.add('btn-' + style[k]); }
   return out;
 }
 
@@ -772,7 +791,8 @@ if (bareImg && s.bd.miss.some(r => r.image))
     ' set them (ALTER PAGE … set ImageUrl = [Attr]) as another input');
 if (s.c.chrome.length) console.log('  chrome (layout-supplied, not scored): ' + s.c.chrome.join(' '));
 if (lay.found) console.log('  layout ' + lay.name + ' read from input: ' + lay.classes.size + ' class(es) treated as chrome');
-else if (lay.name && s.c.miss.length && !CHROME.length)
+// Only when a missed class LOOKS like frame chrome — a hint on every page with any miss is noise.
+else if (lay.name && !CHROME.length && s.c.miss.some(c => /(^|-)(topbar|sidebar|rail|nav|navbar|navigation|menu|menubar|brand|region|layout|shell|appbar|userchip|avatar)(-|$)/.test(c)))
   console.log('  layout ' + lay.name + ' is not in the input — if a missed class is one it renders, pass' +
     ' `describe layout ' + lay.name + '` output as another input, or name it with --chrome a,b');
 if (wf.mockUsed.length) console.log('  bound-data mocks (wireframe-local, text not scored): ' + wf.mockUsed.join(' '));

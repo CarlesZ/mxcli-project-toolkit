@@ -37,8 +37,9 @@
 # is refused, since baselining stock counts is how the five-day case went in. A rule that still
 # carries the header but differs is a hand edit — install-lint-rules.sh reports those, this does
 # not. No receipt, or a row without a kind = no check (the next sync writes kinds). A non-stock
-# rule removed by the user's decision is listed, with a reason, in .claude/lint-rules-disabled.txt
-# (see lint-rules/README.md "Opting out of a rule"). LINT_RULES_REVERTED_OK=1 runs anyway, with
+# rule the user opted out of is listed, with a reason, in .claude/lint-rules-disabled.txt, and
+# switched off with `enabled: false` in lint-config.yaml (see lint-rules/README.md "Opting out
+# of a rule"; never delete the file). LINT_RULES_REVERTED_OK=1 runs anyway, with
 # the warning (a check run only: --update-baseline stays refused).
 #
 # ACCEPTING DEBT IS RECORDED, NOT SILENT (2026-10-12). Three toolkit-built apps re-baselined
@@ -139,6 +140,29 @@ while [ $# -gt 0 ]; do
 done
 SECURITY_FILE="$ROOT/.claude/lint-security-rules.txt"
 ACCEPT_LOG="$ROOT/.claude/lint-acceptances.tsv"
+
+# SEC014 not decided yet (#268 review): with no `external_roles` under SEC014 in
+# lint-config.yaml the rule reports nothing, by design (a `_rule` finding would fail every exec
+# of every synced project, the #229 pattern). Say so on every run, on stderr, uncounted: no
+# exit-code change, no lint row. Same test as bin/lib/sec014-notice.sh (inline: a project has
+# no bin/lib); `enabled: false` there is the same user decision as "none".
+if [ -f "$ROOT/.claude/lint-rules/sec014_external_role_write.star" ]; then
+  _sec014_cfg="$ROOT/.claude/lint-config.yaml"
+  if [ ! -f "$_sec014_cfg" ] || ! awk '
+    /^[[:space:]]*#/ { next }
+    { match($0, /^ */); ind = RLENGTH }
+    insec && NF && ind <= secind { insec = 0 }
+    /^[[:space:]]*"?SEC014"?[[:space:]]*:/ {
+      insec = 1; secind = ind
+      if ($0 ~ /external_roles[[:space:]]*:/ || $0 ~ /enabled[[:space:]]*:[[:space:]]*false/) found = 1
+      next
+    }
+    insec && /^[[:space:]]*external_roles[[:space:]]*:/ { found = 1 }
+    insec && /^[[:space:]]*enabled[[:space:]]*:[[:space:]]*false/ { found = 1 }
+    END { exit found ? 0 : 1 }' "$_sec014_cfg"; then
+    echo "note: SEC014 not configured — set .claude/lint-config.yaml rules: SEC014: options: external_roles (ask the user; 'none' is their decision)" >&2
+  fi
+fi
 
 # This script does not source _common.sh (see header); resolve the binary the same way it
 # does — mxcli.exe first on Git Bash, since the Dev Container may have left a Linux `mxcli`.

@@ -98,3 +98,5 @@ jobs:
         run: bash tests/lint-rules/test-batch2-rules.sh
       - name: Lint-rule unit suite, batch 3 (tests/lint-rules/test-batch3-rules.sh)
         run: bash tests/lint-rules/test-batch3-rules.sh
+      - name: Lint-rule unit suite, batch 4 (tests/lint-rules/test-batch4-rules.sh)
+        run: bash tests/lint-rules/test-batch4-rules.sh

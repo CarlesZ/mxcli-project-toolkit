@@ -136,7 +136,7 @@ def check():
         violations.append(violation(
             message="TXT001 cannot run on this mxcli: strings() rows lack value / context / object_type. This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Text", document_name="TXT001"),
-            suggestion="Upgrade mxcli (strings() fields as of 0.26.0), or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli (strings() fields as of 0.26.0), or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif len(ss) == 0 and len(pages()) >= MIN_PAGES_FOR_BLINDNESS:
         violations.append(violation(

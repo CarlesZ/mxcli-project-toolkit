@@ -1444,6 +1444,13 @@ fi
 if [ "$WIRED" -eq 1 ]; then
   mxtk_install_lint_rules "$(cd "$SCRIPT_DIR/.." && pwd)" "$PROJECT_DIR" "$DRY_RUN" "$UPGRADE_LINT"
   CHANGES=$((CHANGES + ${MXTK_LINT_CHANGES:-0}))
+  # SEC014 says "not configured" here, on every sync, never on exec (bin/lib/sec014-notice.sh).
+  # A NOTE, not warn(): a fresh scaffold has not decided yet, and a pristine sync must stay
+  # clean under --strict (tests/wave2/test-bug12-sync.sh T0).
+  . "$SCRIPT_DIR/lib/sec014-notice.sh"
+  if _sec014_msg=$(mxtk_sec014_notice "$PROJECT_DIR"); then
+    echo "NOTE: $_sec014_msg" | sed '2,$s/^/      /'
+  fi
 fi
 
 # ── Script smoke — do the refreshed copies actually load on THIS machine? ────────────────

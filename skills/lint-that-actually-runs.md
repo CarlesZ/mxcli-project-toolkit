@@ -67,6 +67,26 @@ if mf.microflow_type == "MICROFLOW" and len(acts) > 15:
 
 Ledger: BUG-63 (addendum 2026-09-25).
 
+**`options:` in `lint-config.yaml` reaches only rules that call `get_option()`.** Nothing
+checks the key: a rule that never reads it ignores it silently, exit 0, same count. The file
+`mxcli init` writes uses stock CONV009 as its example, and stock CONV009 (0.17.0 to 0.26.0)
+hard-codes 15:
+
+```yaml
+rules:
+  CONV009:
+    options:
+      maxObjects: 20   # stock rule: still 5 findings at 15 on a field model; toolkit rule: 5 at 20, 10 at 10
+```
+
+The toolkit ships its own `conv009_max_microflow_objects.star`, which reads `maxObjects`
+(default **15**, the stock value; `microflow-preflight.md` splits at 20 counting loop bodies,
+so `maxObjects: 20` plus `countLoopBodies: true` matches it) through the replace-the-stock path
+in `lint-rules/STOCK-HASHES.txt`. Before you tune any other rule, grep it for `get_option`. If the
+call is not there, the option does nothing. Also, an option reaches Starlark only as a bool, a
+number or a text. A YAML list or map arrives as `None`, so write a list as one text:
+`external_roles: "Partner, Customer"`.
+
 ## 2. A rule that matches nothing must say so
 
 Fixing the casing is not the end of it. A rule can reach the model and still inspect nothing,

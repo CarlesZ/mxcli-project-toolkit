@@ -100,6 +100,19 @@ before every journey that consumes X. A journey whose precondition did not hold 
 and is not walked. Without the headers it would show up as a seed INVALID. Journeys without
 headers run in file order, as before.
 
+**APP-DOWN is not FAIL (#285).** The preflight probes the app only once. In one field run a
+watch rebuild took the runtime down mid-suite, and every later journey FAILed as if its feature
+were broken. The runner now probes `baseUrl` before each journey: 3 tries, 5 s apart. Any HTTP
+answer below 500 counts as up.
+
+- **Down before a journey:** an `APP-DOWN` line. The journey is recorded `INVALID` with
+  `appDown: true` and is not walked.
+- **Down after a journey:** that journey's FAIL rows are flagged `[APP-DOWN after this journey …]`
+  and keep FAIL, because the app may have died of what the journey found.
+
+The summary names both lists. Restart the app and rerun only those journeys. `APP_PROBE=0` turns
+the probe off.
+
 Logout runs on every exit path: normal end, a crash, and SIGINT/SIGTERM. A run whose logout is
 not confirmed says so. Declared state does not make a rerun idempotent. A journey that consumes
 its own fixture still needs a reset/seed journey that `leaves` that state again.
@@ -148,7 +161,7 @@ prove. (#149: a journey declaring a non-admin persona walked green under the adm
 |---|---|---|---|
 | 1 | **Landing guard** | the step's `ready` widget is visible | Without it, every later assertion runs against the *previous* page and screenshots it under the new page's title |
 | 2 | **What the screen says** | `textPresent` / `textAbsent` | The machine can do the work correctly and the screen still lie about it. This is the rung that found the one real product defect in the pilot |
-| 3 | **Ordered spans** | microflows fired, **in order**, plus `mustNotFire` | `assertFired` is existence-only: it cannot tell a skipped step from a reordered one |
+| 3 | **Ordered spans** | microflows fired, **in order**, plus `mustNotFire` | `assertFired` is existence-only: it cannot tell a skipped step from a reordered one. A `mustNotFire`-only claim needs a liveness reference — see below |
 | 4 | **Data effects** | row-count delta, `assocMustBeSet`, `mustPointAt` | See below — three distinct claims that look like one |
 | 5 | **Outcome** | one OQL query over the end state | Per-step deltas can each be right while the journey's net result is wrong |
 
@@ -165,6 +178,27 @@ mustPointAt    the FK points at the SEEDED value → "…at the RIGHT one"
 with no link to the unit it is for is a broken golden path even though it saved.
 
 `mustPointAt` is the third claim and the expensive one to skip. **Set-ness is not correctness.**
+
+### A negative-only span claim needs a liveness reference
+
+A step whose whole proof is "X did not run" declares `spans: { "mustNotFire": ["ACT_X_Reset"] }`
+with no `ordered`. Cancel on a "Reset all state?" confirmation is an example. Such a step can
+correctly capture **zero spans**. Jaeger down or OTel off also gives zero spans.
+
+- **Before #150:** both cases read `INVALID — zero spans captured`, so the claim could never pass.
+- **Wrong fix:** reading zero spans as PASS passes the claim with tracing dead.
+
+The runner waits the full capture window, then asks for evidence that tracing was live:
+
+| Evidence | Verdict |
+|---|---|
+| the step declares `"liveness": "<span>"` (a span the step is known to produce, such as the page's data-source retrieve) and it was captured | judged: `tracing live` PASS, then each `did not run` |
+| no declared span; the service emitted ≥1 span since the journey started (`otel.liveness`) | judged, same rows |
+| declared span missing, service silent, or Jaeger unreachable | `INVALID`: the claim is not judged |
+
+The `trace-negative` control mutant covers this shape too. It injects the forbidden name into the
+step's capture **after** the liveness check, so `did not run` must go red. With tracing dead the
+mutant reads INVALID and the rung stays unproven.
 
 ---
 

@@ -10,9 +10,10 @@
 
 Parallel drafting is the toolkit build's speed advantage (2.6 vs 5.5 min/row; equal calls per
 row), so keep it and remove its friction:
-- **Lock/queue mxbuild** across agents (exec.sh lock file or scratch-clone check). [measured: 2 collisions]
-- **Batch the gate**: one mxbuild per 3–5 consecutive clean scripts; per-script only after a
-  failure. [hypothesis: 10–20 min wall time saved in slice 2]
-- **Usage measurement**: streamed transcript lines carry partial usage; the measure script must
-  take each message's final usage record — sub-agent output was undercounted in both builds,
-  which briefly produced a false "MCP build writes 2.4x more output" conclusion.
+- ~~Lock/queue mxbuild~~ — done: per-project exec lock in `project-bin/exec.sh` (#304).
+- ~~Usage measurement~~ — promoted 2026-10-14 to `skills/measured-claims.md` §7 (re-measured:
+  sub-agent transcripts carry partial output_tokens on early records, up to 7x low).
+- **Still open — batch the gate**: one mxbuild per 3–5 consecutive clean scripts; per-script
+  only after a failure. [hypothesis: 10–20 min wall time saved in slice 2]. Needs an `exec.sh`
+  mode (it has none today; `skills/iterative-build-loop.md` → "Gate cost as the model grows"
+  says not to imitate one with overrides).

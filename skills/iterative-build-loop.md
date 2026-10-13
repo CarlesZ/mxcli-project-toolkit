@@ -316,6 +316,64 @@ rm -f "$MPR.lock"
 echo "✓ SP restarting — click Run Locally when it finishes loading."
 ```
 
+### Every model write goes through `bin/exec.sh` — and what to do when a guard refuses
+
+Every MDL script, and every one-off model patch (`--patch`), is applied with `./bin/exec.sh`.
+A raw `./mxcli exec` writes no BUILD-LOG row, takes no snapshot and runs no gate, so the change
+shows as "not recorded" to everything that reads the build log (status, done-drift, proof views).
+
+When a guard refuses, nothing in the model changed (the uncommitted-model and `--commit-first`
+refusals also write a `🚫 blocked` row; the Studio Pro and lock refusals only print). Your move
+is one of three — **commit, wait, or stop and report** — never an override:
+
+| Refusal | Do this |
+|---|---|
+| Uncommitted model changes | Re-run with `--commit-first` (commits the `.mpr` + `mprcontents/` only), or commit them yourself, then re-run |
+| Studio Pro holds the model (also refuses `--commit-first`) | Stop. Ask the person to save (Cmd+S) and close the project; never kill Studio Pro |
+| Another session holds this project's exec lock | Wait for that run to finish, then re-run. A dead holder is taken over automatically — never `rm` the lock |
+| The mxbuild gate cannot run, even after its own download | Stop and report; run `bin/doctor.sh`. `ALLOW_UNVERIFIED=1` only when the person says so |
+| Pre-exec check or a NEW mxbuild error | Fix the script. That is the gate working |
+
+**Never set `FORCE_EXEC=1` on your own initiative** — only when the person tells you to, naming
+the risk. The failure it causes: an agent hits the uncommitted-model guard mid-loop, sets
+`FORCE_EXEC=1` to keep going, the next script's gate fails, and the auto-restore silently drops
+every MCP change made since the last commit (problem 4 above). The guard is the only thing
+between those two events.
+
+**The MCP write path stays allowed** where `learned-mdl-preflight.md` prescribes it (its
+Step 0 write-mode choice), and it is **accepted as unrecorded**: no exec row, no exec gate. Its record
+is the commit you make before the next exec (the pre-exec sequence below), with a message that
+starts `MCP:` and names what changed.
+
+**Check before closing a phase:** every model-changing commit since the phase began is either
+covered by a BUILD-LOG row or is an `MCP:` commit. Count both: commits = exec rows + `MCP:`
+commits. A commit that is neither is a raw `mxcli exec` — re-run that script through exec.sh,
+or record why it cannot be.
+
+### The gate checks the saved file — save, then check
+
+`exec.sh`'s mxbuild gate reads the `.mpr` on disk, never an editor's in-memory model, so after
+any Studio Pro or MCP edit, **save first, then check**. The failure this prevents (field
+comparison, 2026-09-29): an MCP build ran `mx check` against a stale disk copy and 229 errors
+stayed hidden until a real save. Step 1 of the sequence below is that save; exec.sh's
+Studio-Pro-holds-the-model refusal exists for the same reason.
+
+### Gate cost as the model grows — what to batch, and what not to
+
+The per-script apply grows with the model (field run, 2026-09-29: 22–30 s per script in the
+first slice, 55–65 s in the second, almost all of it mxbuild). What the gate already saves:
+the pre-flight baseline mxbuild is skipped when the verification stamp says the model is
+unchanged since its last clean build, so a run of clean applies costs **one** mxbuild each, not
+two. Concurrent applies from parallel agents queue on the exec lock instead of colliding (two of
+eleven failed applies in that run were concurrent mxbuild collisions, from before the lock).
+
+`exec.sh` has **no** batched-gate mode. Do not imitate one with `SKIP_CHECK`, `SKIP_BASELINE`,
+`FORCE_EXEC` or raw `mxcli exec` runs between gates — each of those is an unrecorded or
+unverified write. If gate time dominates, reduce the number of applies at the granularity level
+(see "Iterative Granularity": layer scripts rather than per-page ones where partial recovery is
+unlikely, fewer stub-then-fill passes), keep parallel **drafting**, and let the exec lock
+serialise the applies.
+
 ### Pre-exec sequence when MCP work was done
 
 Before running exec.sh after any MCP session:

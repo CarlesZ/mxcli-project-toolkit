@@ -71,17 +71,17 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `bug-logs/mxcli-bugs.md` | Reading a whole class of tool defects (a retest, a new mxcli release, an audit) |
 | `skills/cloud-dev-environment.md` | Setting up or resuming an mxcli project in a cloud/ephemeral container |
 | `skills/microflow-loop-antipatterns.md` | Reading what loop bodies do (LOOP_TQ, deferred commit, nested loop, REST in loop, transaction control per item, scheduled-event reachability) from described MDL; the catalog holds top-level activities only and cannot see inside a loop |
-| `skills/iterative-build-loop.md` | Building a module with mxcli |
+| `skills/iterative-build-loop.md` | Building a module with mxcli, or an exec.sh guard just refused a write |
 | `skills/mdl-cookbook-microflows.md` | Writing MDL microflow scripts |
 | `skills/build/mdl/oneshot-mdl-method.md` | Writing a single MDL script that takes a project from nothing to a working vertical slice |
-| `skills/learned-page-patterns.md` | Building and auditing Mendix pages |
+| `skills/learned-page-patterns.md` | Building and auditing Mendix pages, or starting a UI fix round across many pages |
 | `skills/oneshot-page-structure-patterns.md` | Generating a whole page tree in one script |
 | `skills/mendix-agents.md` | Building a Mendix AI agent |
 | `skills/mendix-agent-ui.md` | Embedding a copilot chat panel |
 | `skills/mendix-agent-setup.md` | Standing up a project's GenAI agents in any environment |
 | `skills/company-brain.md` | Setting up or wiring a COMPANY BRAIN |
 | `skills/close-the-loop.md` | Cutover and retrospective |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `project-bin/coherence-cadence.sh` | After every module's CONFIRM stage |
 | `skills/mpr-corruption-and-sp-load-errors.md` | Studio Pro will not load the project, or the .mpr looks gutted |

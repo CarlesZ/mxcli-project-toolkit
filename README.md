@@ -525,7 +525,7 @@ Every mxcli project has a `.ai-context/skills/` directory (bundled by `mxcli ini
 | Changing an EXISTING Mendix app — adding a feature, altering a flow, restructuring a module — when it has no BRDs, no architecture doc and no wireframes: the knowledge base comes from the live model (Path D), stages 2–4 run over what changes plus what it touches, nothing more, and the Track B regression baseline is the precondition; audit-only stays in existing-app-assurance | `skills/existing-app-change.md` |
 | Setting up or wiring a COMPANY BRAIN — the private tier between the toolkit and a project for own skills, conventions, lint rules, MDL snippets and approved MPKs; and deciding whether something goes to the toolkit, the company brain or docs/brain/ | `skills/company-brain.md` |
 | Cutover and retrospective — promoting proven patterns back into the toolkit | `skills/close-the-loop.md` |
-| Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence — a claim not in the register may not be cited | `skills/measured-claims.md` |
+| Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts — a claim not in the register may not be cited | `skills/measured-claims.md` |
 | Any review pass that runs more than once — module-review, coherence, monkey, wiring-sweep: findings accumulate across runs, a per-run report cannot show a trend | `skills/improvement-register.md` |
 
 **Source — reading a legacy system (migration entry mode)**
@@ -587,7 +587,7 @@ Every mxcli project has a `.ai-context/skills/` directory (bundled by `mxcli ini
 | Task | Skill to load |
 |---|---|
 | Dispatching a build step to a helper — generate its one-file pack (the brief's Build steps row, mxcli brain brief, live DESCRIBEs, example, folder) and hand over the path instead of a reading list. Measured: 25-38% fewer tool calls and 30-41% less time, same quality; the token saving is not proven | `project-bin/context-pack.sh` |
-| Building a module with mxcli — verified, iterative, coverage-checklist gated | `skills/iterative-build-loop.md` |
+| Building a module with mxcli, or an exec.sh guard just refused a write — verified, iterative, coverage-checklist gated; on a refusal: commit, wait or stop, never FORCE_EXEC | `skills/iterative-build-loop.md` |
 | After marking a module done, or any time "how much is built vs proven" is asked — renders build-plan.html from done- prefixes and verify-module.sh/improvement-register.md, kept as two honestly separate views; --json writes architecture/build-plan.json parsed from build-plan.md's Phase headings (a plan with no Phase headings gets no file) | `project-bin/build-plan-status.sh` |
 | Turning a client-derived Mendix app into a clean, shareable demo with zero client fingerprint — branding, data, custom widgets | `skills/anonymize-client-app-for-demo.md` |
 | Handing a headless-built model to a person — opening it in Studio Pro, a free sandbox, or a colleague's machine: the model travels, the demo data and runtime config (keys, an agent's bound model) do not, and each needs its own re-establish step | `skills/handoff-to-studio-pro.md` |
@@ -610,7 +610,7 @@ Every mxcli project has a `.ai-context/skills/` directory (bundled by `mxcli ini
 
 | Task | Skill to load |
 |---|---|
-| Building and auditing Mendix pages — widget patterns, datasource shapes | `skills/learned-page-patterns.md` |
+| Building and auditing Mendix pages, or starting a UI fix round across many pages — widget patterns, datasource shapes; for a round: SCSS first, four regressions to check | `skills/learned-page-patterns.md` |
 | Generating a whole page tree in one script — the structure patterns that survive it | `skills/oneshot-page-structure-patterns.md` |
 | Building or auditing a collapsible sidebar nav — Atlas Core's collapsed state needs icons assigned per menu item or it silently clips label text | `skills/learned-sidebar-collapse-icons.md` |
 | Building or altering any data grid — native DATAGRID vs pluggable DG2 decision rule, the ALTER PAGE INSERT corruption, sort-by and filter-binding traps | `skills/learned-dg2-patterns.md` |

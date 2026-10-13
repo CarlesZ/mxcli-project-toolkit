@@ -26,6 +26,25 @@ mxcli. No → toolkit. A finding that is really both ("`check` passed a construc
 `learned-detection-gaps.md` did not list it") is **two** submissions, one per repo, each citing the
 other's number once it exists.
 
+**A third owner, outside both repos: the Studio Pro MCP server.** A gap in what the MCP path can
+write or check (a model element it cannot create, a batch it applies out of order, a check that
+reads an unsaved model) is neither an mxcli defect nor a toolkit one — the test above answers
+"no" for mxcli and "yes, still wrong without the toolkit". Do not file it in either repo and do
+not paper over it with a toolkit rule; draft it locally (§4 shape, §5 scrub) for the person to
+pass to that server's owners, and note the draft's path in `PROJECT.md`. Failure it prevents: a
+2026-09-29 field comparison logged its MCP asks only in a toolkit inbox note, where no MCP owner
+would read them. The asks from that run, with what was measured:
+
+| Ask | Evidence from the run |
+|---|---|
+| Write support for security, user roles, role home pages, snippets, scheduled events, import/export mappings, published REST, pluggable-widget property schema | 406 screen-driving calls (22% of the build) on screens the MCP path could not write; those rows ran 12–21 min each vs 2.6–3.5 min for domain and logic; 9 manual steps by the person |
+| Atomic writes with a fixed batch order | a reverse-order batch miswired 16 associations |
+| Save before `mx check`; reload instead of full restart | 229 errors hidden until a real save; 23 restarts |
+| Flag a missing end-of-parallel-path element in the consistency check | observed in that run; no count recorded |
+
+Done when each ask is either in a local draft with its evidence row, or recorded as dropped with
+a reason — none left only in a chat or an inbox note.
+
 ## 2. Before anything else: is it already written down?
 
 > **A gap that reads as "the toolkit already said this and it was not followed" is not a toolkit

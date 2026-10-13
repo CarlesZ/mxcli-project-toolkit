@@ -71,7 +71,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/mendix-agents.md` | Building a Mendix AI agent |
 | `skills/company-brain.md` | Setting up or wiring a COMPANY BRAIN |
 | `skills/close-the-loop.md` | Cutover and retrospective |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `project-bin/build-plan-status.sh` | After marking a module done, or any time "how much is built vs proven" is asked |
 | `skills/workflow-structure-rules.md` | Designing or reviewing a Workflow's SHAPE before or after the MDL |

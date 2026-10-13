@@ -160,6 +160,36 @@ checkpoint script, and an expert user's reaction was "I can't even compact?":
 7. **A guard must never block the action that resolves it.** Blocking the remedy is
    perverse: warn once, then let it through.
 
+## Merging a PR — independent review before every merge
+
+**A merge go from the maintainer is not a review.** Before any PR merges, an agent that did
+**not** write it reviews the diff and returns a verdict. The builder's own report and green CI
+never count: the builder grades its own work, and CI proves only the tests the builder wrote.
+
+1. **Who reviews.** A fresh agent given the PR diff and the linked issues, never the builder's
+   summary or conclusion. One reviewer per PR, plus one composition check when several PRs in a
+   batch touch the same files.
+2. **What it answers, each with file:line.** *Value*: does it fix the issue as reported, and is
+   anything overbuilt? *Regression risk*: what changes for an existing project after
+   `sync-project.sh` (new FAIL / BLIND / refusals, exit codes, output another tool parses, gate
+   verdicts that flip), across both layouts and macOS / Git Bash? *Correctness*: real bugs, tests
+   that do not test what they claim, hand-written golden input where a capture was required.
+   *Context cost*: words added to always-loaded skill files.
+3. **Verdict.** `MERGE`, `MERGE-AFTER-FIX` (exact fixes listed; the fixes are pushed and
+   re-reviewed before merge) or `HOLD` (goes back to the maintainer with the reason). Only `MERGE`
+   merges.
+4. **Report the verdict with the merge.** The message announcing a merge names the reviewer's
+   verdict and its top finding next to CI, so the maintainer sees what was checked.
+5. **No exceptions for size or urgency.** A one-line fix, a docs-only PR and an outside
+   contributor's PR all get the same review. "Small", "only skill text" and "CI is green" are how
+   the exceptions start.
+
+**Why (real incident, 2026-10-13).** Nine PRs merged in one day on the builders' own reports and
+green CI, each carrying its builder's "all checks pass". When the maintainer asked whether value
+and regression risk had been checked, the honest answer was no: nobody who had not written the
+code had read it. The same day showed the cost of unread diffs in another form — the always-loaded
+skill text hit its 80,000-word cap because each PR added words that nobody outside the PR weighed.
+
 ## Changelog and contributions
 
 **Every user-visible change appends its `CHANGELOG.md` line in the same commit.** That is the

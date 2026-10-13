@@ -159,7 +159,8 @@ esac
 # Helpers moved to _common.sh (#160). A project whose bin/_common.sh predates them stops here with
 # the remedy instead of dying mid-run on "command not found".
 command -v mxtk_pid_runs_deployment >/dev/null 2>&1 || {
-  echo "test-stack-up: bin/_common.sh is older than this script (no mxtk_pid_runs_deployment) — run the toolkit's bin/sync-project.sh" >&2; exit 2; }
+  echo "test-stack-up: bin/_common.sh is older than this script (no mxtk_pid_runs_deployment)." >&2
+  echo "  → <toolkit>/bin/sync-project.sh $ROOT --upgrade-bin _common.sh   (backs up a hand-edited copy first)" >&2; exit 2; }
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; }
@@ -263,7 +264,7 @@ find_app_port() {
     hits="$hits $p"
     h="$(mxtk_port_holder "$p")" || continue
     [ "${h%%|*}" = "?" ] && continue
-    if mxtk_pid_runs_deployment "${h%%|*}" $DEPLOY_DIRS; then echo "$p|verified|runtime"; return 0; fi
+    if mxtk_pid_runs_deployment "${h%%|*}" "${DEPLOY_DIRS[@]}"; then echo "$p|verified|runtime"; return 0; fi
   done
   # 3. Otherwise a hit is UNVERIFIED ownership: it proves a Mendix answered, not that it is ours.
   for p in $hits; do
@@ -286,9 +287,10 @@ if [ -L "$MPR" ]; then
   case "$_t" in /*) ;; *) _t="$MPR_DIR/$_t" ;; esac
   MODEL_DIR="$(cd "$(dirname "$_t")" 2>/dev/null && pwd -P)" || MODEL_DIR="$MPR_DIR"
 fi
-# Where this project's runtime is deployed, on either layout. Paths with spaces are not split-safe
-# here; mxtk_pid_runs_deployment then simply finds no match (unverified, as before).
-DEPLOY_DIRS="$ROOT/deployment $ROOT/app/deployment $MPR_DIR/deployment $MODEL_DIR/deployment"
+# Where this project's runtime is deployed, on either layout. An ARRAY, never a space-joined string:
+# word-split, "/work/a b/proj/deployment" became the fragment "/work/a", which matched any
+# runtime under "/work/a b/…" on the joined-command-line branch — a foreign checkout read as ours.
+DEPLOY_DIRS=("$ROOT/deployment" "$ROOT/app/deployment" "$MPR_DIR/deployment" "$MODEL_DIR/deployment")
 LOCAL_HS="$MPR_DIR/.mxcli/run-local.json"
 pick_local_hs() {
   local d
@@ -318,19 +320,23 @@ run_local_ports() {
 # own_holder "<pid>|<name>" — is this port holder this project's own process? Yes when it is the
 # live recorded run --local pid or under it (the runtime mxcli started), or when its command line
 # runs this project's deployment dir (a newer run --local still booting, Studio Pro running THIS
-# project). With a live record and a holder that cannot be placed — unnamed, or Windows where Git
-# Bash shows no parent pids — it is presumed ours: blocking our own boot is the worse error, and a
-# real stranger is named on the next run once the record is gone.
+# project). With a live record and a holder that cannot be placed — unnamed (a root-owned process
+# is "?" to a non-root lsof), or Windows where Git Bash shows no parent pids — it is presumed ours
+# only while the record is younger than BOOT_TIMEOUT: a boot has that long to answer. Past it the
+# presumption ends and the holder blocks (exit 4) — otherwise a real stranger would read "booting"
+# forever, which is #262's failure again.
 own_holder() {
   local hp="${1%%|*}" lp=""
   pick_local_hs && lp="$(hs_field pid)" && pid_alive "$lp" || lp=""
-  [ "$hp" != "?" ] && mxtk_pid_runs_deployment "$hp" $DEPLOY_DIRS && return 0
+  [ "$hp" != "?" ] && mxtk_pid_runs_deployment "$hp" "${DEPLOY_DIRS[@]}" && return 0
   # A runtime whose command line names ANOTHER deployment dir is foreign, whatever else is true.
   [ "$hp" != "?" ] && case "$(mxtk_pid_args "$hp" 2>/dev/null)" in *runtimelauncher.jar*) return 1 ;; esac
   [ -n "$lp" ] || return 1
-  [ "$hp" = "?" ] && return 0
-  [ "$(mxtk_platform)" = windows ] && return 0
-  mxtk_pid_in_tree "$hp" "$lp"
+  mxtk_pid_in_tree "$hp" "$lp" && return 0
+  if [ "$hp" = "?" ] || [ "$(mxtk_platform)" = windows ]; then
+    [ -n "$(find "$LOCAL_HS" -mmin -$(( (BOOT_TIMEOUT + 59) / 60 )) 2>/dev/null)" ] && return 0
+  fi
+  return 1
 }
 # Exit 4 if a run --local of this project could not bind its ports. Never stops the holder.
 # Returns 3 (and sets OWN_HOLDING) when a port is held by this project's own process — it is
@@ -456,7 +462,8 @@ prove_app() {
 BG_PIDS="${BG_PIDS:-$ROOT/.claude/loop/bg-pids.tsv}"
 STALE_HOURS="${MXTK_STALE_HOURS:-4}"
 case "$STALE_HOURS" in ''|*[!0-9]*) echo "MXTK_STALE_HOURS takes whole hours" >&2; exit 2 ;; esac
-pid_lstart() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/  */ /g; s/^ //; s/ $//'; }
+# Fixed locale and zone, so a --track in one shell and a --reap in another spell the start time alike.
+pid_lstart() { LC_ALL=C TZ=UTC0 ps -o lstart= -p "$1" 2>/dev/null | sed 's/  */ /g; s/^ //; s/ $//'; }
 # bg_scan — prints "<state>|<pid>|<age h>|<label>" per record line: live | stale | gone (dead, or the
 # pid now belongs to a process that started at another time).
 bg_scan() {
@@ -488,6 +495,8 @@ bg_prune() {
 if [ "$MODE" = "track" ]; then
   T_PID="${2:-}"; T_LABEL="${3:-process}"
   case "$T_PID" in ''|*[!0-9]*) echo "usage: $0 --track <pid> [label]" >&2; exit 2 ;; esac
+  # Never pid 1, this script, or the shell that called it: --reap would later stop the caller itself.
+  case "$T_PID" in 0|1|"$$"|"$PPID") echo "test-stack-up: refusing to track pid $T_PID (init, this script, or the calling shell) — pass the background process's pid (\$! after starting it)" >&2; exit 2 ;; esac
   [ "$(mxtk_platform)" = windows ] && { echo "test-stack-up: --track is not supported on Git Bash (no process start time to check a reused pid against); nothing recorded"; exit 0; }
   T_LS="$(pid_lstart "$T_PID")"
   [ -n "$T_LS" ] || { echo "test-stack-up: pid $T_PID is not running — nothing recorded" >&2; exit 1; }
@@ -514,6 +523,9 @@ if [ "$MODE" = "reap" ]; then
   REAPED=0
   while IFS='|' read -r st pid age lab; do
     [ "$st" = stale ] || continue
+    # Re-checked at the moment of the kill: the scan above may be seconds old.
+    _ls="$(awk -F'\t' -v p="$pid" '$1 == p { print $3; exit }' "$BG_PIDS")"
+    [ -n "$_ls" ] && [ "$(pid_lstart "$pid")" = "$_ls" ] || { warn "pid $pid changed since the scan — not touched"; continue; }
     KIDS="$(pgrep -P "$pid" 2>/dev/null | tr '\n' ' ' || true)"   # portability-ok: pgrep -P (by parent pid of a recorded pid); Windows returned above
     kill -TERM "$pid" $KIDS 2>/dev/null || true
     for _ in 1 2 3 4 5; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done

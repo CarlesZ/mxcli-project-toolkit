@@ -17,12 +17,14 @@
 # runtimelauncher.jar on this project's deployment dir (both layouts); a foreign one stays unverified.
 # T11-T13 (#262 follow-up): this project's own booting runtime on its port is NOT READY (exit 1),
 # never INSTRUMENT BLOCKED. T14 (#278): --track / --reap act on the project's own pid record only.
+# T15-T16 (PR #319 review): spaced paths match whole, never as fragments (incl. the joined-line
+# branch, forced); an unnamed holder is presumed ours only while the record is < BOOT_TIMEOUT old.
 # T7 (#262): a port the run --local loop needs is held by a process that is not this project's
 # loop (here the fake app itself, behind a dead handshake — Studio Pro's runtime in the field) →
 # exit 4, "INSTRUMENT BLOCKED", the holder named with its pid, and it is still alive afterwards.
 #
 # usage: test-stack-up-local.sh /path/to/test-stack-up.sh
-# No pipefail: every assertion is `printf "$OUT" | grep -q …`, and grep -q exits on the first match —
+# No pipefail: every assertion is `printf '%s' "$OUT" | grep -q …`, and grep -q exits on the first match —
 # with pipefail the printf's SIGPIPE on a long $OUT then failed a passing assertion (seen on T2).
 set -u
 
@@ -269,6 +271,41 @@ OUT="$(cd "$P" && bash bin/test-stack-up.sh --no-docker 2>&1)"; RC=$?
 kill -0 "$B13PID" 2>/dev/null && ok "own runtime untouched" || bad "own runtime killed"
 fi
 
+if [ "$CAN_NAME" = 1 ]; then
+echo "== T15 (#319 review): a project path with a space — whole paths, never word-split fragments =="
+mkdir -p "$WORK/sp ace"
+P="$(mkproj "sp ace/t15" root)"; mkdir -p "$P/deployment" "$WORK/sp ace/other/deployment"
+srv R15 R15PID mx -jar "$JAR" "$P/deployment"
+srv F15 F15PID mx -jar "$JAR" "$WORK/sp ace/other/deployment"
+printf 'APP_PORTS="%s"\n' "$R15" >> "$P/.claude/loop/stack.conf"
+OUT="$(run "$P")"
+[ "$(envv "$P" APP_OWNERSHIP)" = verified ] && [ "$(envv "$P" APP_SOURCE)" = runtime ] \
+  && ok "own runtime under a spaced path verified" || bad "spaced own runtime not verified" "$OUT"
+printf 'APP_PORTS="%s"\n' "$F15" >> "$P/.claude/loop/stack.conf"
+OUT="$(run "$P")"
+[ "$(envv "$P" APP_OWNERSHIP)" = unverified ] && ok "a foreign runtime under the same spaced prefix stays unverified" \
+  || bad "foreign runtime under the spaced prefix verified" "$(cat "$P/.claude/loop/stack.env" 2>&1)"
+# The joined-line branch (macOS ps / Windows CIM) has no argv boundaries; CI is Linux, so force it.
+jl() { ( PROJECT_ROOT="$P"; . "$P/bin/_common.sh"; mxtk_platform() { echo macos; }; mxtk_pid_runs_deployment "$@" ); }
+jl "$R15PID" "$P/deployment" && ok "joined line: own spaced deployment dir matches" || bad "joined line: own spaced dir missed"
+jl "$F15PID" "$WORK/sp" && bad "joined line: fragment '$WORK/sp' matched a runtime under '$WORK/sp ace/'" || ok "joined line: a path fragment never matches"
+jl "$F15PID" "$P/deployment" && bad "joined line: foreign runtime matched our dir" || ok "joined line: foreign runtime does not match"
+
+echo "== T16 (#319 review): an unnamed holder is presumed ours only while the record is younger than BOOT_TIMEOUT =="
+mkdir -p "$WORK/blind"
+for t in lsof ss; do printf '#!/bin/sh\nexit 1\n' > "$WORK/blind/$t"; chmod +x "$WORK/blind/$t"; done
+P="$(mkproj t16 root)"
+srv B16 B16PID boot
+handshake "$P" "$WATCH_PID"
+sed -i.bak "s/^  \"appPort\": [0-9]*/  \"appPort\": $B16/; s/^  \"adminPort\": [0-9]*/  \"adminPort\": 1/" "$P/.mxcli/run-local.json"
+touch "$P/.mxcli/run-local.json"
+OUT="$(cd "$P" && PATH="$WORK/blind:$PATH" bash bin/test-stack-up.sh --check 2>&1)"; RC=$?
+[ "$RC" -eq 1 ] && ok "fresh record, unnamed holder: NOT READY (exit 1)" || bad "fresh record rc=$RC, want 1" "$OUT"
+touch -t "$BOOT" "$P/.mxcli/run-local.json"
+OUT="$(cd "$P" && PATH="$WORK/blind:$PATH" bash bin/test-stack-up.sh --check 2>&1)"; RC=$?
+[ "$RC" -eq 4 ] && printf '%s' "$OUT" | grep -q "INSTRUMENT BLOCKED" && ok "record older than BOOT_TIMEOUT: blocked (exit 4), not 'booting' forever" || bad "stale record rc=$RC, want 4" "$OUT"
+fi
+
 echo "== T14 (#278): tracked test processes — only this project's own record, only stale ones =="
 P="$(mkproj t14 root)"
 ( sleep 600 & wait ) & OLDRUN=$!; PIDS="$PIDS $OLDRUN"
@@ -277,7 +314,10 @@ sleep 600 & YOUNG=$!; PIDS="$PIDS $YOUNG"
 sleep 600 & REUSED=$!; PIDS="$PIDS $REUSED"
 bash -c "exec -a 'node journey-runner.js' sleep 600" & DECOY14=$!; PIDS="$PIDS $DECOY14"
 ( cd "$P" && bash bin/test-stack-up.sh --track "$OLDRUN" journey-runner ) >/dev/null 2>&1 && ok "--track records a live pid" || bad "--track failed"
-( cd "$P" && bash bin/test-stack-up.sh --track "$YOUNG" monitor ) >/dev/null 2>&1
+# Tracked under another time zone: --track and --reap must spell the start time alike (LC_ALL=C TZ=UTC0).
+( cd "$P" && TZ=XYZ-14 LC_ALL=C bash bin/test-stack-up.sh --track "$YOUNG" monitor ) >/dev/null 2>&1
+( cd "$P" && bash bin/test-stack-up.sh --track 1 init ) >/dev/null 2>&1; [ $? -eq 2 ] && ok "--track refuses pid 1" || bad "--track accepted pid 1"
+( cd "$P" && bash bin/test-stack-up.sh --track "$BASHPID" me ) >/dev/null 2>&1; [ $? -eq 2 ] && ok "--track refuses the calling shell" || bad "--track accepted the calling shell"
 ( cd "$P" && bash bin/test-stack-up.sh --track "$DEAD_PID" gone ) >/dev/null 2>&1 && bad "--track accepted a dead pid" || ok "--track refuses a dead pid"
 BG="$P/.claude/loop/bg-pids.tsv"
 # Age the first line; a REUSED pid: recorded start time differs from the running process's.

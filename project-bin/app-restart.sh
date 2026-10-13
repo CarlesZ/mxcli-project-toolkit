@@ -133,7 +133,8 @@ mask() {  # print argv joined, with the value after any password/secret/token/ke
 # _common.sh, shared with test-stack-up.sh. A project whose bin/_common.sh predates them stops here
 # with the remedy, instead of dying mid-restart on "command not found".
 command -v mxtk_port_holder >/dev/null 2>&1 || {
-  echo "app-restart: bin/_common.sh is older than this script (no mxtk_port_holder) — run the toolkit's bin/sync-project.sh" >&2; exit 2; }
+  echo "app-restart: bin/_common.sh is older than this script (no mxtk_port_holder)." >&2
+  echo "  → <toolkit>/bin/sync-project.sh $PROJECT_ROOT --upgrade-bin _common.sh   (backs up a hand-edited copy first)" >&2; exit 2; }
 # blocked <port> "<pid>|<name>" <when> — exit 4, the holder named, nothing of it touched.
 blocked() {
   echo "✗ app-restart: instrument blocked — port :$1 is held by $(mxtk_holder_text "$2"), not this project's run --local." >&2

@@ -898,7 +898,10 @@ EOF_ARGS
     done
     return 1
   fi
-  # One joined line: match "runtimelauncher.jar <dir>" followed by the end, a slash or a space.
+  # One joined line: arguments are not delimited, so a directory is matched WHOLE — followed by the
+  # end of the line, a lone slash, or a space and a flag (" -"). A space and anything else could be
+  # the rest of a longer, spaced path: "/work/a" must not match "…runtimelauncher.jar /work/a b/x"
+  # (a foreign checkout read as ours, PR #319 review). Each <dir> arrives as ONE argument.
   line="$(printf '%s' "$args" | head -1 | tr -d '"')"
   [ "$(mxtk_platform)" = windows ] && line="$(printf '%s' "$line" | tr '\\' '/' | tr '[:upper:]' '[:lower:]')"
   for d in "$@"; do
@@ -906,7 +909,7 @@ EOF_ARGS
       [ -n "$cand" ] || continue
       [ "$(mxtk_platform)" = windows ] && cand="$(native_path "$cand" | tr '\\' '/' | tr '[:upper:]' '[:lower:]')"
       case "$line" in
-        *"runtimelauncher.jar $cand"|*"runtimelauncher.jar $cand/"|*"runtimelauncher.jar $cand "*|*"runtimelauncher.jar $cand/ "*) return 0 ;;
+        *"runtimelauncher.jar $cand"|*"runtimelauncher.jar $cand/"|*"runtimelauncher.jar $cand -"*|*"runtimelauncher.jar $cand/ -"*) return 0 ;;
       esac
     done
   done

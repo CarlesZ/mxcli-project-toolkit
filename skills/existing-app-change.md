@@ -199,6 +199,63 @@ end — a regression found three modules later costs the same to fix and much mo
 
 ---
 
+## Delivering in rounds — the round is the unit of status
+
+A backlog of small stories (1–5 points each) is delivered in rounds of a few stories, and the stage
+machine does not see rounds: on a field run (2026-10-13, 11 stories in 4 rounds on a 127-module
+app) `bin/status.sh` still said **"Stage 1 — Analysis, in progress"** after the fourth delivered
+round, with "agent slots unfilled: 35" and "done- stalled" in its WATCH line. Stage 0a (the map) is
+still the one-time prerequisite; stages 1–4 run per round over that round's stories.
+
+Record each round as one row in `PROJECT.md`, under a section you add when the first round starts:
+
+```markdown
+## Rounds
+
+| Round | Title | Stories | State |
+|---|---|---|---|
+| 1 | Export fixes | S-101, S-102, S-104 | delivered |
+| 2 | Approval rework | S-110, S-111 | in test |
+```
+
+- **Append, never reorder.** The last row is the round in flight; `status.sh` prints it as
+  `ROUND   Round 2: Approval rework — in test · stories: S-110, S-111 · 1 of 2 round(s) delivered`.
+- **State** is one word or phrase: `planned` · `building` · `in test` · `delivered`. Only a state
+  starting with `delivered` counts as delivered. Update the cell when the round moves, not later.
+- **Stories** names the ids from wherever the stories live (a ticket system, a `stories.json`, change
+  log rows in `PROJECT.md`). The per-story record — scope, touched units, decisions, test verdict,
+  manual steps — stays there; this table does not copy it.
+
+In this entry mode `status.sh` drops the agent-slot and `done-` signals from WATCH and NEXT: a
+change stream delivered in rounds does not fill pipeline agent stubs or rename scripts to `done-`,
+so those lines measured nothing. The round line replaces them. Other modes print as before.
+
+---
+
+## Edits mxcli cannot make — a targeted manual-step list
+
+Some edits cannot go through `describe → exec` safely. Field case (2026-10-13): six microflow edits
+whose decision branches rejoin early, where re-executing the described microflow would change the
+flow (upstream mxcli #923) — three were done by hand in Studio Pro, three by a BSON patch. That is
+neither a whole-model handoff (`handoff-to-studio-pro.md`) nor an MDL script, and it needs its own
+deliverable.
+
+Copy `<toolkit>/templates/manual-steps.md` to `docs/manual-steps.md` and write one section per edit:
+the document by full path, why mxcli cannot do it, what it depends on, the exact clicks with an
+anchor (the existing activity or widget it goes next to, by caption or name), a **Check** a person can
+run in the app, and one `- [ ] Done` line. List the steps in dependency order: attributes an MDL
+script adds come before the hand edit that uses them.
+
+- **A step done by patch still goes through `./bin/exec.sh --patch <script>`.** The snapshot, the
+  mxbuild gate and the BUILD-LOG row are its evidence; a patch run any other way leaves none, and the
+  Done line cannot cite one.
+- **Tick the Done line only after its Check passed**, and name the evidence on it: the commit for a
+  hand edit, the BUILD-LOG row for a patch.
+- `status.sh` counts the file: `manual steps pending N of M` (unticked Done lines of all Done lines).
+  A round with pending manual steps is not `delivered`.
+
+---
+
 ## Coverage in this mode
 
 The ledger in this mode is `mxcli brain plan`, not a hand-kept `coverage-ledger.md`. Each BRD leaf
@@ -237,5 +294,7 @@ it is the only entry mode where that is true.
 - Knowledge base — Path D, scoped, with counts recorded: modules, and per in-scope module the entity, page and microflow totals `SHOW …` returned, so a reader can see the change against the app.
 - BRDs for the change, each with as-is and to-be — and one line saying how many capabilities were *not* BRD'd and why.
 - A build plan over the change.
+- When the work arrives as a backlog: a `## Rounds` table in `PROJECT.md`, one row per round, its state current.
+- When an edit cannot go through mxcli: `docs/manual-steps.md` from `templates/manual-steps.md`, every step with its Check and a ticked Done line naming its evidence.
 - **A regression baseline that was green before the change and is green after it** — stated as N journeys over M modules, re-run at every module gate. Without this the rest is unverified.
 - Anything reusable learned about the app → `skills/learned-*.md`; process learnings → `process/process-learnings.md`.

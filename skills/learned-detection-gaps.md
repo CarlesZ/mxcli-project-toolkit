@@ -3,10 +3,12 @@
 **Applies to:** any mxcli project
 **Purpose:** the cross-project register of MDL constructs that pass one or more verification
 rungs and still fail later — with, for each, the **first oracle that actually catches it**.
-Use it before trusting a green result, and when a runtime symptom appears over a green model.
+Use it two ways: before trusting a green result ("what is this rung known to miss?"), and
+when a runtime symptom appears over a fully green model ("which known gap looks like this?").
 
-Every row was found in the field, most in more than one project. The pattern matters more
-than the bugs: **the rungs form a ladder, and a green result certifies only what its rung sees.**
+Every row here was found in the field, most of them independently in more than one project.
+The point is not the individual bugs (each has its own entry) — it is the pattern: **the
+verification rungs form a ladder, and a green result only certifies what that rung can see.**
 
 ## The ladder
 

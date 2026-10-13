@@ -1,0 +1,7 @@
+-- SYNTHETIC: the parenthesised ALTER set form spread over several lines.
+alter page Shop.Order_Overview {
+  set (
+    Caption = 'Approve order',
+    ButtonStyle = Success
+  ) on btnApprove
+}

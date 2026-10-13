@@ -6878,3 +6878,75 @@ passes `mxcli check`, and `mx check` then fails with CE1613.
 
 **Workaround:** never treat `describe` output as a source to replay without an `mx check`; qualify
 the caption parameter (as BUG-23 / BUG-142 describe) before re-executing.
+
+## BUG-157: `mxcli test` / `run --test-endpoint` stopped by a signal leave AfterStartupMicroflow on `MxTest.RegisterEndpoint`; the next injection chains it to itself (StackOverflowError, the app never starts)
+
+**Severity:** High. An app goes down with no model change by the user, and the cause (a settings unit) is not where anyone looks.
+**mxcli version:** v0.25.0 (field). Same code in v0.26.0 source (`cmd/mxcli/testrunner`, `12ce281`). **Mendix version:** 11.15.0 and 11.14.0 Beta
+**Discovered:** 2026-10, three apps built side by side (#244): two hits in one day, one app down. A second field case on another project, 2026-10-13, reported by AlvinnYeo (open PR #309, inbox note)
+**Reproducible:** yes. Probe from the second report: start `mxcli run --local --test-endpoint` on a scratch copy, `kill -TERM` it, then `describe settings`. After-startup is still `MxTest.RegisterEndpoint` on v0.25.0.
+**Not filed upstream** (draft prepared, issue #244)
+
+**How it happens.** `mxcli test` and `run --test-endpoint` read the current after-startup
+microflow, generate `MxTest.RegisterEndpoint` (plain `mxcli test`: `MxTest.TestRunner`) that calls
+it after registering the endpoint, and point after-startup at the generated flow. Only a clean exit
+runs the restore (`ALTER SETTINGS RUNTIME (AfterStartupMicroflow: '<original>')`). A run stopped by
+a signal (an agent's background-task stop, a kill) skips it. The setting stays on the injected flow
+in the on-disk model, where every other mxcli process sees it. The next injection then reads
+`MxTest.RegisterEndpoint` as "the original" and generates a flow that calls itself:
+
+```
+ERROR - Core: An exception occurred while running the after-startup-action.
+com.mendix.modules.microflowengine.MicroflowException: java.lang.StackOverflowError
+    at MxTest.RegisterEndpoint (SubMicroflow : 'RegisterEndpoint')
+    at MxTest.RegisterEndpoint (SubMicroflow : 'RegisterEndpoint')
+ERROR - M2EE: Starting Mendix Runtime failed.
+```
+
+A partial clean-up makes it worse. If the `MxTest` module is removed but the setting is not, the
+after-startup names a flow that does not exist: CE1613 at build, which `exec.sh`'s delta gate then
+carries as a "pre-existing" error on every later script.
+
+**Toolkit guard (#244).** `project-bin/test-scratch.sh` and `project-bin/app-restart.sh` read the
+setting from the model bytes before starting. The setting is the BSON string `AfterStartupMicroflow`
+in the project-settings unit (`mprcontents/4e/70/4e70063d-….mxunit`, or inside a v1 `.mpr`). This
+needs no mxcli. When the value is `MxTest.RegisterEndpoint` or `MxTest.TestRunner`, both scripts
+refuse and print the repair. `app-restart.sh` lets a live `--test-endpoint` app through, because it
+holds the injection legitimately, and checks again after the stop. `MXTK_SKIP_MXTEST_GUARD=1` skips the check out loud, so a false refusal never blocks.
+
+**Repair** (any one of):
+- `git checkout -- mprcontents/4e/70/<settings unit>`, then `git status`: the run may also have left an `MxTest` module.
+- Through `./bin/exec.sh` (an `ALTER SETTINGS`, so say so in chat; it is the statement mxcli's own cleanup runs, and it was field-proven on v0.25.0):
+  `mdl 1;` `alter settings runtime (AfterStartupMicroflow: 'MyModule.ASU_Startup');` (`''` for none).
+- Studio Pro: App Settings → Runtime → After startup.
+
+**Avoid it:** stop `run --test-endpoint` with Ctrl+C in its own terminal. Never kill it or stop it
+as a background task. Afterwards `git status` on the model must show the Settings unit unchanged.
+
+## BUG-158: `mxcli lint` on a copy of the model outside the repository silently drops the project's Starlark rules (8 of 29 rules ran, no notice, exit 0)
+
+**Severity:** Medium. The result is wrong, not refused: a before/after diff over it is off by hundreds.
+**mxcli version:** v0.25.0 (field). Discovery code unchanged in v0.26.0 source (`mdl/linter/lintrules_discovery.go`, `12ce281`)
+**Discovered:** 2026-10, attributing a lint ratchet rise to one script by linting the pre-exec snapshot copied to `/tmp` (#240)
+**Reproducible:** yes. Copy the `.mpr` + `mprcontents/` to a folder outside the repository and lint it.
+**Not filed upstream** (draft prepared, issue #240)
+
+`mxcli lint -p /tmp/pre/App.mpr --format json` gave **51 findings across 8 rules**. The same model
+in the project folder gave **721 across 29**. The 21 missing rules are the Starlark rules in
+`.claude/lint-rules/`. Discovery walks up from the `.mpr`'s folder and stops at a `.git`, so a
+copy outside the repository finds none. Only the built-in rules ran (MPR\*, CONV013, SEC003,
+MDL-FLOW01), with no notice and exit 0. The "no `.claude/lint-rules/` directory was found" line
+exists in the source, but it prints only when `--rules` names an unknown id.
+
+Two related findings from reading the v0.26.0 source (not field-run):
+- `lint-config.yaml` is read only from beside the `.mpr` (`FindConfigFile`), never from above it.
+  A snapshot inside the repository finds the rules by walking up but loses the config's module
+  excludes and rule overrides.
+- With no `.git` above it, the walk continues to `/`. A stray `~/.claude/lint-rules` would then
+  supply rules to the copy.
+
+**Workaround (worked in the field):** `cp -R .claude/lint-rules <copy>/.claude/` (plus
+`.claude/lint-config.yaml`) before linting. The copy then gave 721 findings across 29 rules,
+matching the project. Recipe and the rule-set comparison to run before any diff:
+`skills/lint-that-actually-runs.md` → "Linting a copy of the model". `lint-gate.sh`'s collapse
+guard catches this inside the gate. Nothing catches it when lint is run directly.

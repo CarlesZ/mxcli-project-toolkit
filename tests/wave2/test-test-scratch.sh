@@ -53,8 +53,8 @@ printf '%s' "$R" | grep -qx '.mxcli' && bad "the live run --local record was cop
 printf '%s' "$R" | grep -qx 'deployment' && bad "deployment/ was copied" || ok "deployment/ not copied"
 [ "$(printf '%s' "$R" | tail -1)" = 1 ] && ok "port lock held during the run" || bad "no port lock during the run"
 [ "$(cat "$P/Fixture.mpr")" = model ] && ok "live .mpr untouched" || bad "live .mpr was written"
-ls "$WORK/tmp" | grep -q 'mxtk-test-ports' && bad "port lock left behind" || ok "port lock released"
-ls "$WORK/tmp" | grep -q 'Fixture-test' && bad "scratch copy left behind" || ok "scratch copy deleted"
+grep -q 'mxtk-test-ports' <<<"$(ls "$WORK/tmp")" && bad "port lock left behind" || ok "port lock released"
+grep -q 'Fixture-test' <<<"$(ls "$WORK/tmp")" && bad "scratch copy left behind" || ok "scratch copy deleted"
 [ -f "$P/.mpr-snapshots/.exec.lock" ] && bad "exec lock left behind" || ok "exec lock released"
 
 echo "-- exit code passes through"
@@ -72,7 +72,7 @@ has "names the holder" "$OUT" "held by PID $H"
 kill -KILL "$H" 2>/dev/null; wait "$H" 2>/dev/null
 
 echo "-- dead holder's port lock is taken over (the SIGKILL above left it)"
-ls "$WORK/tmp" | grep -q 'mxtk-test-ports' && ok "[setup] stale port lock present" || bad "[setup] no stale lock"
+grep -q 'mxtk-test-ports' <<<"$(ls "$WORK/tmp")" && ok "[setup] stale port lock present" || bad "[setup] no stale lock"
 rm -f "$P/.mpr-snapshots/.exec.lock"
 OUT="$(run e -- tests/a.test.mdl)"; RC=$?
 [ "$RC" -eq 0 ] && has "taken over out loud" "$OUT" "taking it over" || bad "stale port lock blocked (exit $RC)"
@@ -157,7 +157,7 @@ if command -v node >/dev/null 2>&1; then
   has "prints the git repair" "$OUT" "git checkout -- 'mprcontents/4e/70/4e70063d-53e1-477a-ab92-6b763330c293.mxunit'"
   has "prints the MDL repair with HEAD's value" "$OUT" "alter settings runtime (AfterStartupMicroflow: 'Orders.ASU_Startup');"
   [ -f "$WORK/rec.k" ] && bad "mxcli ran on the injected model" || ok "mxcli not run"
-  ls "$WORK/tmp" | grep -q 'Fixture-test' && bad "a copy was made" || ok "nothing copied"
+  grep -q 'Fixture-test' <<<"$(ls "$WORK/tmp")" && bad "a copy was made" || ok "nothing copied"
   node "$SETAS" "$GU" "$UNIT" "MxTest.TestRunner"
   OUT="$(run l -- tests/a.test.mdl)"; RC=$?
   [ "$RC" -eq 3 ] && ok "MxTest.TestRunner → refused (exit 3)" || bad "TestRunner exit $RC"

@@ -53,6 +53,9 @@ exec_lock_takeover() {  # $1 = the stale lock line; 0 iff it was removed (or alr
     fi
     return 1
   fi
+  # Still ours? A contender that judged our takeover file stale (we paused past 10 s) may have
+  # moved it and taken its own: compare-and-rm now would race theirs (review of integration 10-14).
+  [ "$(head -1 "$_tk" 2>/dev/null || true)" = "$_mine" ] || return 1
   _now="$(head -1 "$LOCK" 2>/dev/null || true)"
   [ "$_now" = "$1" ] && rm -f "$LOCK"
   [ "$(head -1 "$_tk" 2>/dev/null || true)" = "$_mine" ] && rm -f "$_tk"   # only our own takeover file

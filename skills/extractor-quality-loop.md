@@ -151,6 +151,8 @@ Noting these as "BRD-only" in the quality report is correct and expected.
 
 ## Output Format: extraction-quality.json
 
+<!-- tests/wave2/test-extraction-quality-report.sh parses the json block below as its golden input — keep it valid JSON. -->
+
 ```json
 {
   "project": "ProjectName",

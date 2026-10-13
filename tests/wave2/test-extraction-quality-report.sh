@@ -14,7 +14,8 @@
 #       passed → `manual`; figures on the page (score, found/expected, gaps, confirmed zero)
 #   Q3  analysis/<src>/extracted/extraction-quality-<name>.json with the stack's OWN dimension
 #       keys, selfGraded + passed → `fault` "self-graded pass"
-#   Q4  code-extracted KB, no score file → `fault` (the loop is mandatory for an extractor)
+#   Q4  code-extracted KB, no score file → `manual` "not produced yet" (no shipped pipeline
+#       writes a validator, so nothing mandatory produces it — never green, never a fault)
 #   Q5  the score file inside <kb>/extracted/ is not counted as an unparseable item file
 #   Q6  a 0/0 dimension not in confirmedZeros → fault; the example's confirmed one is not
 #   Q7  passed:true under its own threshold → fault; broken JSON → fault, page still rendered
@@ -110,8 +111,10 @@ has "Q3 html stack's own key" "$H" ">labelRecall<"
 # --- Q4 / Q5 --------------------------------------------------------------------------------
 P4="$WORK/p4"; code_kb "$P4"
 J="$(run "$P4" --json)"
-[ "$(printf '%s' "$J" | jget 'b["sections"].get("extractionQuality")')" = fault ] \
-  && ok "Q4 code-extracted, no file → fault" || bad "Q4 code-extracted, no file → fault" "$J"
+[ "$(printf '%s' "$J" | jget 'b["sections"].get("extractionQuality")')" = manual ] \
+  && ok "Q4 code-extracted, no file → manual" || bad "Q4 code-extracted, no file → manual" "$J"
+O="$(run "$P4")"
+has "Q4 says not produced yet" "$O" "not produced yet — no shipped pipeline writes a validator"
 cp "$EXAMPLE" "$P4/analysis/src/knowledge-base/extracted/extraction-quality.json"
 J="$(run "$P4" --json)"
 hasnt "Q5 score file not read as an item array" "$J" "would not parse"

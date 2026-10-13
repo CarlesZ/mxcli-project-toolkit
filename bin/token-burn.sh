@@ -25,8 +25,9 @@
 # (2026-09-18, a 17,000-line toolkit session) and each one a silent miscount if ignored:
 #   1. The harness writes ONE RECORD PER STREAMED CONTENT BLOCK, all carrying the same
 #      `message.id` — that session had 4,336 assistant records for 1,989 messages, so summing
-#      records overcounts ~2×. Usage is summed ONCE per `message.id`, from that id's LAST
-#      record: the usage is NOT the same on every record. In subagent transcripts the early
+#      records overcounts ~2×. Usage is summed ONCE per `message.id`, taking each counter's
+#      MAX over that id's records (in practice the last record; a later record with an empty or
+#      zero usage cannot erase real numbers): the usage is NOT the same on every record. In subagent transcripts the early
 #      records carry a partial `output_tokens` (the captured fixture: 60 on the first record,
 #      1,559 on the last; a 2026-10 multi-agent session: 37,791 vs 84,915 subagent output
 #      tokens, first vs last). Keeping the first record undercounted subagent output by up to
@@ -245,7 +246,7 @@ day_model = defaultdict(lambda: defaultdict(int)) # day -> model -> headline
 sidechain = [0, 0]                                 # headline tokens: main, subagent
 n_files = n_records = n_synthetic = 0
 msgs = []                                          # (epoch, model, vals, is_sidechain) per message
-last, order = {}, []                               # message.id -> [first ts, model, LAST usage, sidechain]
+last, msg_order = {}, []                             # message.id -> [first ts, model, max usage, sidechain]
 human_seen = set()
 humans = []                                        # epoch per human prompt
 timeline = defaultdict(list)                       # main-thread file -> [(epoch, is_human)]
@@ -298,14 +299,16 @@ for d in dirs:
                 u = msg.get("usage") or {}
                 vals = [int(u.get(k) or 0) for k in KEYS]
                 if mid in seen:
-                    last[mid][2] = vals          # later record of the same message: its usage wins
+                    # later record of the same message: per-field max, so a later record's
+                    # larger (final) count wins but an empty/zero usage never erases real numbers
+                    last[mid][2] = [max(x, y) for x, y in zip(last[mid][2], vals)]
                     continue
                 seen.add(mid)
-                order.append(mid)
+                msg_order.append(mid)
                 last[mid] = [rec.get("timestamp") or "", model, vals, bool(rec.get("isSidechain"))]
 
-# one entry per message.id: first record's time, LAST record's usage (see header, fact 1)
-for mid in order:
+# one entry per message.id: first record's time, per-field max over its records (header, fact 1)
+for mid in msg_order:
     ts, model, vals, side = last[mid]
     day = ts[:10] or "????-??-??"
     for i, v in enumerate(vals):
@@ -431,12 +434,12 @@ if want_effort:
 win = None
 if windows:
     names = [BEFORE] + [w for _t, w, _r in windows]
-    order = []
+    win_names = []
     for n in names:
-        if n not in order:
-            order.append(n)
+        if n not in win_names:
+            win_names.append(n)
     win = {n: {"messages": 0, "usage": [0, 0, 0, 0], "cost": 0.0 if rates_file else None,
-               "unpriced": 0, "agent_seconds": 0, "human_prompts": 0} for n in order}
+               "unpriced": 0, "agent_seconds": 0, "human_prompts": 0} for n in win_names}
     starts = {}
     for t, n, raw in windows:
         starts.setdefault(n, raw)
@@ -453,15 +456,15 @@ if windows:
                 w["cost"] += c
     for t in humans:
         win[window_for(t)]["human_prompts"] += 1
-    for n in order:
+    for n in win_names:
         win[n]["agent_seconds"] = round(agent_seconds(lambda t, n=n: window_for(t) == n))
         if win[n]["cost"] is not None:
             win[n]["cost"] = round(win[n]["cost"], 4)
         win[n]["start"] = starts.get(n)
     if not any(win[BEFORE][k] for k in ("messages", "human_prompts", "agent_seconds")):
         del win[BEFORE]
-        order.remove(BEFORE)
-    win = {"order": order, "windows": win}
+        win_names.remove(BEFORE)
+    win = {"order": win_names, "windows": win}
 
 # --- output -------------------------------------------------------------------------------
 if mode == "json":

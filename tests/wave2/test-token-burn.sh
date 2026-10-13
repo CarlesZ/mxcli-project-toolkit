@@ -18,7 +18,8 @@
 #   T10 --rates: per-Mtok cost from a rates file, main vs subagent, a `*` catch-all
 #   T11 --rates with no line for a model: INCOMPLETE, total marked `+`, complete:false — never 0
 #   T12 --effort: agent working time and human prompt count over the captured main thread plus
-#       effort/s-3.jsonl (every user-record class); --gap changes the cut-off
+#       effort/s-3.jsonl (every user-record class); --gap changes the cut-off; a later
+#       record with zero usage for the same message.id leaves the real numbers intact
 #   T13 --windows: per-window messages, headline, agent time, prompts
 #   T14 malformed --rates / --windows file → exit 1 with the line number
 #
@@ -170,6 +171,7 @@ sed "s#/srv/example/proj#$P#g" "$FIX/effort/s-3.jsonl" > "$CFG12/projects/$(slug
 J12="$(CLAUDE_CONFIG_DIR="$CFG12" bash "$SUT" "$P" --json --effort 2>&1 | fold)"
 has "T12 4 human prompts (dup uuid once; meta, notification, peer, compact, tool result, <wrapper>, sidechain, foreign cwd excluded)" "$J12" '"human_prompts": 4'
 has "T12 agent seconds 591 (220 captured + 371)" "$J12" '"agent_seconds": 591'
+has "T12 a later zero-usage record of msg_e1 does not erase its usage (per-field max)" "$J12" '"2026-09-20": { "stage": "2", "usage": [121, 1500, 30000, 286, 6] }'
 S12="$(CLAUDE_CONFIG_DIR="$CFG12" bash "$SUT" "$P" --effort 2>&1)"
 has "T12 screen line" "$S12" "agent working time: 0h 10m (main thread, gaps <= 5 min, gaps ending at a human prompt excluded) · human prompts: 4"
 J12g="$(CLAUDE_CONFIG_DIR="$CFG12" bash "$SUT" "$P" --json --gap 1 2>&1 | fold)"

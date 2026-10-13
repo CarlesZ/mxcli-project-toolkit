@@ -557,10 +557,13 @@ def analyse(kb):
             v = ('skipped', 'no extraction-quality*.json, and none is owed: a documents knowledge '
                             'base ran no extractor, so there is nothing for a validator to score.')
         elif prov in ('code-extracted', 'mixed'):
-            v = ('fault', f'an extractor produced this knowledge base ({prov}) but no '
-                          f'extraction-quality*.json was found ({QLOC}). extractor-quality-loop.md '
-                          f'makes that file the proof of the >=95% gate, and migration-pipeline.md '
-                          f'does not start BRDs before it — an unmeasured extraction, not a pass.')
+            # MANUAL, not fault: no shipped pipeline writes a validator, so nothing mandatory
+            # produces this file (CLAUDE.md "a producer for every consumer"). A present-but-wrong
+            # file stays a fault above.
+            v = ('manual', f'not produced yet — no shipped pipeline writes a validator; build one '
+                           f'per extractor-quality-loop.md, or waive the gate. An extractor produced '
+                           f'this knowledge base ({prov}) and no extraction-quality*.json was found '
+                           f'({QLOC}), so its quality is unmeasured, not passed.')
         else:
             v = ('manual', 'provenance undetermined — whether an extractor ran, and so whether a '
                            'score file is owed, needs a human.')

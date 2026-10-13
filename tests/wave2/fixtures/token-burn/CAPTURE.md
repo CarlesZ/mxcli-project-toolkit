@@ -91,7 +91,10 @@ The facts it encodes, each seen in that profile:
   wrappers whose text starts with `<`);
 - a human prompt record can be written twice with the same `uuid`.
 
-Plus one record whose `cwd` is outside the project and one `isSidechain: true` record.
+Plus one record whose `cwd` is outside the project, one `isSidechain: true` record, and a
+second `msg_e1` record at the same timestamp with all-zero usage (the instrument takes each
+counter's max per message id, so a late empty record cannot erase real numbers; day
+2026-09-20 totals stay 121 · 1500 · 30000 · 286 over 6 messages).
 Field proof is a run, not this file: on the real transcript profiled above the instrument
 counted the same number of human prompts (89) as an independent count of `origin.kind ==
 "human"`, non-meta, non-compact records.

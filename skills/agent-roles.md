@@ -14,7 +14,9 @@
 - You're asked to "set up agents for this project" or "create dev-process agents" on a fresh repo.
 - An existing project's agents feel ad hoc or over-permissioned (e.g. one agent can both write MDL and run `mxcli exec`).
 
-**This is a generation guide, not a copy-paste template.** The example bodies below are illustrative shapes — read the target project's own CLAUDE.md and skills first, then write agent files that match *that* project's actual commands, paths, and tooling. A gate-agent pointed at the wrong `.mpr` filename or a stale compile-gate command silently verifies nothing.
+**This is a generation guide, not a copy-paste template.** The example bodies (in `agents/README.md`) are illustrative shapes — read the target project's own CLAUDE.md and skills first, then write agent files that match *that* project's actual commands, paths, and tooling. A gate-agent pointed at the wrong `.mpr` filename or a stale compile-gate command silently verifies nothing.
+
+**Discharging the `dispatch` obligation:** the mdl-agent logs every dispatch per Workflow step 8a — the log line, path (`.claude/loop/dispatch/<Module>/scripts.tsv`) and format are in `agents/README.md` step 8a; one line per dispatch, no denominator owed.
 
 **Mechanical scaffolding exists:** `bin/init-agents.sh <session-root> [p|build|all]` copies stub versions of all **six** agents (from the toolkit's `agents/` folder) into the project's `.claude/agents/` — `p` for the Stage-P pair (ba/architect), `build` for the Stage-5 quartet (mdl/gate/test/**review**). The stubs are safe by construction: each refuses to run while `{{PLACEHOLDER}}`s remain, so "downloaded but never configured" fails loudly instead of verifying nothing. Your job after scaffolding is Steps 1–4 below: fill every placeholder from the *actual* project, including the **Domain context** block.
 

@@ -7,7 +7,7 @@ moved verbatim so the evidence survives while the baseline stays inside the
 `bin/render-routing.sh --check` word budget (CLAUDE.md skill-authoring rule 6, "write for the
 trigger, then stop").
 
-Each section id (`R1`, `AR2`, …) is what the pointer in the skill cites. The section text is
+Each section id (`R1`, `ST1`, …) is what the pointer in the skill cites. The section text is
 the original wording, unedited — when a rule's justification is challenged, cite from here.
 Nothing in this file is a rule on its own; the rule lives in the skill that points here.
 

@@ -11,7 +11,11 @@
 # rewrites only pid/appPort/adminPass. The "app" is a python http.server serving a login page with
 # a Mendix marker; the "mxcli" is `sleep` with its argv[0] set, so `ps` shows the command line the
 # script reads --watch from. docker/podman are stubbed out so no real container can answer.
-# Not fixtured: the Windows tasklist branch of pid_alive (CI is Linux).
+# Not fixtured: the Windows tasklist branch of pid_alive and the netstat branch of port_holder (CI
+# is Linux).
+# T7 (#262): a port the run --local loop needs is held by a process that is not this project's
+# loop (here the fake app itself, behind a dead handshake — Studio Pro's runtime in the field) →
+# exit 4, "INSTRUMENT BLOCKED", the holder named with its pid, and it is still alive afterwards.
 #
 # usage: test-stack-up-local.sh /path/to/test-stack-up.sh
 set -uo pipefail
@@ -49,7 +53,7 @@ s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
 open(sys.argv[2], "w").write(str(s.server_address[1]))
 s.serve_forever()
 EOF
-PIDS="$PIDS $!"
+PIDS="$PIDS $!"; APP_PID=$!
 for _ in $(seq 1 50); do [ -s "$WORK/port" ] && break; sleep 0.1; done
 APP="$(cat "$WORK/port" 2>/dev/null)"
 [ -n "$APP" ] && curl -s --max-time 4 "http://localhost:$APP/login.html" | grep -q mxui \
@@ -146,6 +150,23 @@ OUT="$(run "$P")"; RC=$?
 touch "$P/app/mprcontents/a.mxunit"
 OUT="$(run "$P")"; RC=$?
 [ "$RC" -eq 1 ] && printf '%s' "$OUT" | grep -q "APP UP BUT STALE" && ok "edit behind the symlink reads stale" || bad "edit behind symlink not seen (rc=$RC)" "$OUT"
+
+echo "== T7 (#262): the run --local port is held by someone else -> instrument blocked, exit 4 =="
+CAN_NAME=0; { command -v lsof >/dev/null 2>&1 || command -v ss >/dev/null 2>&1; } && CAN_NAME=1
+P="$(mkproj t7 root)"; handshake "$P" "$DEAD_PID"
+OUT="$(run "$P")"; RC=$?
+[ "$RC" -eq 4 ] && ok "--check exits 4 (dead loop, its app port taken)" || bad "--check rc=$RC, want 4" "$OUT"
+printf '%s' "$OUT" | grep -q "INSTRUMENT BLOCKED — :$APP (the run --local app port)" && ok "says instrument blocked, names :$APP" || bad "no blocked verdict" "$OUT"
+if [ "$CAN_NAME" = 1 ]; then
+  printf '%s' "$OUT" | grep -q "pid $APP_PID" && ok "names the holder's pid $APP_PID" || bad "holder pid not named" "$OUT"
+else echo "  [skip] neither lsof nor ss: the holder is reported unnamed"; fi
+kill -0 "$APP_PID" 2>/dev/null && ok "holder untouched" || bad "holder was killed"
+P="$(mkproj t7b root)"; printf 'RUN_LOCAL_APP_PORT=%s\n' "$APP" >> "$P/.claude/loop/stack.conf"
+OUT="$(cd "$P" && bash bin/test-stack-up.sh --no-docker 2>&1)"; RC=$?
+[ "$RC" -eq 4 ] && printf '%s' "$OUT" | grep -q "INSTRUMENT BLOCKED" && ok "--no-docker, no record, RUN_LOCAL_APP_PORT taken: exit 4" || bad "--no-docker rc=$RC, want 4" "$OUT"
+P="$(mkproj t7c root)"; handshake "$P" "$DEAD_PID"; sed -i.bak "s/^  \"appPort\": [0-9]*/  \"appPort\": 1/; s/^  \"adminPort\": [0-9]*/  \"adminPort\": 1/" "$P/.mxcli/run-local.json"
+OUT="$(run "$P")"; RC=$?
+[ "$RC" -eq 1 ] && ! printf '%s' "$OUT" | grep -q "INSTRUMENT BLOCKED" && ok "free run --local ports: plain NOT READY, exit 1" || bad "free ports rc=$RC, want 1" "$OUT"
 
 echo
 echo "stack-up-local: $PASS passed, $FAIL failed"

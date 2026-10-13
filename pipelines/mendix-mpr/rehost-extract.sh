@@ -201,7 +201,9 @@ for pass in 1 2 3 4 5 6; do
     [ "$(grep -c '^create\|^grant\|^revoke\|^alter' "$d")" -gt 0 ] || continue
     mv "$d" "$OUT/mdl/$M.retry.mdl"; : > "$d"
     before=$(grep -c '^create\|^grant\|^revoke\|^alter' "$OUT/mdl/$M.retry.mdl")
-    check_exec "$M.retry$pass" "$OUT/mdl/$M.retry.mdl" "$d" && progress=1
+    # progress = fewer statements deferred, not "check_exec returned 0": on the GenAI nightly run passes
+    # 3-6 re-tried the same 758 statements for ~60 min because a clean exec of nothing counted as progress
+    check_exec "$M.retry$pass" "$OUT/mdl/$M.retry.mdl" "$d" || true
     after=$(grep -c '^create\|^grant\|^revoke\|^alter' "$d" || true)
     [ "$after" -lt "$before" ] && progress=1
     log "deferred $M: $before tried, $after still deferred (pass $pass)"

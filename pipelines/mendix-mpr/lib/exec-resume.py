@@ -36,9 +36,26 @@ for i, s in enumerate(stmts):
         if g and not m and not err.startswith('Error: failed to grant') and 'grant' not in err: continue
         hit = i; break
 if hit is None: print(0); sys.exit(0)
+# The statement that NAMES the document is not always the one that failed. `Error: microflow not found:
+# X` + `hint: X is defined later in this script` comes from an EARLIER statement that references X
+# (GenAI 2026-10-13: entity ExampleMicroflows.Ticket with `on before commit call …BCo_Ticket`); deferring
+# X's definition and resuming after it silently dropped every statement between the two (E5: 5
+# documents). So: on a forward-reference error, defer the first statement that mentions X without
+# defining it; and resume from the earliest statement that mentions any name in the error, not after
+# the deferred one — `create or modify` re-runs of statements that already landed are idempotent.
+fwd = re.search(r'\b([A-Za-z0-9_]+\.[A-Za-z0-9_]+) is defined later in this script|references [a-z ]+? ([A-Za-z0-9_]+\.[A-Za-z0-9_]+) before it is created', report)
+names = qns | {q for q in re.findall(r'\b([A-Za-z0-9_]+\.[A-Za-z0-9_]+)\b', report) if fwd and q == (fwd.group(1) or fwd.group(2))}
+def mentions(s, q): return re.search(r'\b' + re.escape(q) + r'\b', s)
+lo = min([i for i, s in enumerate(stmts) if any(mentions(s, q) for q in names) or
+          any(re.search(r'/' + re.escape(b) + r'\b', s) for b in bare)] + [hit])
+if fwd:
+    x = fwd.group(1) or fwd.group(2)
+    for i in range(lo, len(stmts)):
+        m = head_re.search(stmts[i])
+        if mentions(stmts[i], x) and not (m and m.group(2) == x): hit = i; break
 with open(deferred, 'a', encoding='utf-8', newline='') as f:
     if os.path.getsize(deferred) == 0: f.write('mdl 1;\n')
     f.write('-- deferred: exec refused this statement: %s\n%s\n' % (err[:400].replace('\n', ' '), strip_deferred(stmts[hit])))
-rest = [s for s in stmts[hit + 1:]]
+rest = [s for i, s in enumerate(stmts) if i >= lo and i != hit]
 open(src, 'w', encoding='utf-8', newline='').write('mdl 1;\n' + '\n'.join(s for s in rest if s.strip() != 'mdl 1;') + '\n')
 print(1)

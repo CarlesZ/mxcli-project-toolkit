@@ -153,6 +153,52 @@ Both were found by testing the gate, not by reading it:
    rules improved."* If the catalog is empty or the rules fail to load, every count drops to zero
    and the gate celebrates. Guard: a broad drop is a malfunction until proven otherwise.
 
+## Linting a copy of the model: copy the rules in first
+
+`mxcli lint` looks for the Starlark rules in `.claude/lint-rules/` from the `.mpr`'s folder
+upward, and stops at the repository root. A copy of the model **outside the repository** (a
+pre-exec snapshot copied to `/tmp` to attribute a ratchet rise, a scratch copy for a
+before/after diff) therefore lints with the built-in rules only. Nothing says so and the exit
+code is 0.
+
+Field run, v0.25.0, 2026-10 (BUG-158, #240). The same model gave:
+
+| Where the `.mpr` sat | Findings | Rules that ran |
+|---|---|---|
+| project folder | 721 | 29 |
+| copy in `/tmp`, no rules beside it | 51 | 8 (MPR\*, CONV013, SEC003, MDL-FLOW01) |
+
+A before/after diff over those two outputs reports 670 "new" findings that are not new.
+
+**Recipe.** Copy the rules and the lint config beside the copy, then lint it:
+
+```sh
+COPY=/tmp/pre                        # the folder that holds the copied App.mpr
+mkdir -p "$COPY/.claude" && cp -R .claude/lint-rules "$COPY/.claude/"
+[ -f .claude/lint-config.yaml ] && cp .claude/lint-config.yaml "$COPY/.claude/"
+./mxcli lint -p "$COPY/App.mpr" --format json > pre.json
+```
+
+**Before you diff two lint outputs, compare their rule sets.** Both runs must report the same
+number of distinct `ruleId`s (or the copy's set must be a subset you can explain), counted over
+the two files. If the copy shows only the built-in rules above, it did not load the project rules
+and the diff is meaningless. "51 findings" from a copy is not a result until its rule count
+matches.
+
+- A copy **inside** the repository (`.mpr-snapshots/<stamp>/`, left where `exec.sh` puts it)
+  finds the rules by walking up. It does **not** find `lint-config.yaml`: in mxcli's source
+  (v0.26.0) that file is read only from beside the `.mpr`, never above it. Its module excludes
+  and rule overrides then do not apply, so copy both files every time.
+- A copy outside any repository is searched all the way up to `/`. In the v0.26.0 source the
+  walk stops only at a `.git`, so a stray `~/.claude/lint-rules` or `/tmp/.claude/lint-rules`
+  would supply its rules to the copy. Copying the project's rules in puts the nearest match
+  beside the `.mpr`, which wins.
+- There is no `--rules-dir` option on v0.25.0. Check `mxcli lint --help` on your binary before
+  you rely on one.
+- `project-bin/lint-gate.sh` guards against the collapse inside the gate (see "A collapse looks
+  like a triumph" above). Running lint directly has no such guard, and this recipe stands in for
+  it.
+
 ## What does NOT generalise — do not build this
 
 **A vendor-module exclusion list.** `mxcli lint` **already skips Marketplace-sourced modules and

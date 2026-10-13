@@ -91,6 +91,74 @@ OUT="$(run g -- tests/a.test.mdl --attach)"; RC=$?
 OUT="$(run h -- tests/a.test.mdl -p Other.mpr)"; RC=$?
 [ "$RC" -eq 2 ] && ok "-p refused" || bad "-p exit $RC"
 
+
+echo "-- #304 review: a stale-lock takeover never removes a lock another run took meanwhile"
+# Deterministic replay of the race: the functions are lifted from the subject, and holder_live
+# is wrapped so that, while this run judges the dead holder, a second run completes its own
+# takeover and writes a live lock. The old code then `mv -f`'d that live lock away and took
+# the lock too — two holders. Taking over must re-read and leave a changed lock alone.
+H="$WORK/harness.sh"; L="$WORK/race.lock"
+awk '/^holder_live\(\) \{/ {p=1} /^release\(\) \{/ {p=0} p' "$SUBJECT" > "$H"
+grep -q '^take_lock() {' "$H" && ok "[setup] lifted holder_live..take_lock from the subject" || bad "[setup] could not lift take_lock"
+sleep 300 & LIVE=$!; BG="$BG $LIVE"
+OUT="$( L="$L" LIVE="$LIVE" bash -c '
+  . "$1"
+  eval "orig_$(declare -f holder_live)"
+  holder_live() {   # the dead holder is being judged: another run finishes ITS takeover now
+    [ "$1" = 999999 ] && printf "%s %s %s\n" "$LIVE" "$(date +%s)" "test-scratch.sh" > "$L"
+    [ "$1" = "$LIVE" ]
+  }
+  printf "999999 1 test-scratch.sh\n" > "$L"
+  take_lock "$L" "race lock"; echo "rc=$?"
+' _ "$H" 2>&1 )"
+has "the second taker is refused (the live lock survives)" "$OUT" "rc=1"
+[ "$(cut -d' ' -f1 "$L" 2>/dev/null)" = "$LIVE" ] && ok "the lock still names the live holder" || bad "the live holder's lock was replaced: $(cat "$L" 2>/dev/null)"
+[ -e "$L.takeover" ] && bad "takeover marker left behind" || ok "takeover marker cleared"
+echo "-- a takeover marker older than 30s (a takeover that died midway) is cleared"
+printf '999999 1 test-scratch.sh\n' > "$L"; printf '999998 1\n' > "$L.takeover"
+OUT="$( L="$L" bash -c '. "$1"; holder_live() { return 1; }; take_lock "$L" "race lock"; echo "rc=$?"' _ "$H" 2>&1 )"
+has "taken after clearing the dead marker" "$OUT" "rc=0"
+[ "$(cut -d' ' -f1 "$L" 2>/dev/null)" != 999999 ] && ok "the stale line is gone" || bad "stale line still there"
+kill -KILL "$LIVE" 2>/dev/null; wait "$LIVE" 2>/dev/null
+
+echo "-- #244: an after-startup left on an mxcli test injection is refused before anything is copied"
+if command -v node >/dev/null 2>&1; then
+  GU="$TOOLKIT/tests/wave2/fixtures/mxtest-guard/settings-unit.mxunit"
+  SETAS="$TOOLKIT/tests/wave2/fixtures/mxtest-guard/set-after-startup.js"
+  UNIT="$P/mprcontents/4e/70/4e70063d-53e1-477a-ab92-6b763330c293.mxunit"; mkdir -p "$(dirname "$UNIT")"
+  node "$SETAS" "$GU" "$WORK/rt.mxunit" "" && cmp -s "$GU" "$WORK/rt.mxunit" \
+    && ok "[setup] re-encoding the captured unit reproduces it byte for byte" || bad "[setup] the BSON re-encoder is not faithful"
+  cp "$GU" "$UNIT"
+  OUT="$(run i -- tests/a.test.mdl)"; RC=$?
+  [ "$RC" -eq 0 ] && ok "captured settings unit (no after-startup) → runs" || bad "clean captured unit refused (exit $RC): $(printf '%s' "$OUT" | tail -3)"
+  ( cd "$P" && git init -q && git add mprcontents && git -c user.email=t@t -c user.name=t commit -qm base ) >/dev/null 2>&1
+  node "$SETAS" "$GU" "$UNIT" "Orders.ASU_Startup"
+  ( cd "$P" && git -c user.email=t@t -c user.name=t commit -qam own ) >/dev/null 2>&1
+  OUT="$(run j -- tests/a.test.mdl)"; RC=$?
+  [ "$RC" -eq 0 ] && ok "a project's own after-startup → runs" || bad "own after-startup refused (exit $RC)"
+  node "$SETAS" "$GU" "$UNIT" "MxTest.RegisterEndpoint"
+  rm -rf "$WORK/tmp"/Fixture-test.*
+  OUT="$(run k -- tests/a.test.mdl)"; RC=$?
+  [ "$RC" -eq 3 ] && ok "MxTest.RegisterEndpoint → refused (exit 3)" || bad "exit $RC: $(printf '%s' "$OUT" | tail -3)"
+  has "names the leftover" "$OUT" "after-startup microflow is MxTest.RegisterEndpoint"
+  has "names what HEAD has" "$OUT" "HEAD: Orders.ASU_Startup"
+  has "prints the git repair" "$OUT" "git checkout -- 'mprcontents/4e/70/4e70063d-53e1-477a-ab92-6b763330c293.mxunit'"
+  has "prints the MDL repair with HEAD's value" "$OUT" "alter settings runtime (AfterStartupMicroflow: 'Orders.ASU_Startup');"
+  [ -f "$WORK/rec.k" ] && bad "mxcli ran on the injected model" || ok "mxcli not run"
+  ls "$WORK/tmp" | grep -q 'Fixture-test' && bad "a copy was made" || ok "nothing copied"
+  node "$SETAS" "$GU" "$UNIT" "MxTest.TestRunner"
+  OUT="$(run l -- tests/a.test.mdl)"; RC=$?
+  [ "$RC" -eq 3 ] && ok "MxTest.TestRunner → refused (exit 3)" || bad "TestRunner exit $RC"
+  cp "$GU" "$UNIT"
+  echo "-- #244 on a v1 model (settings inside the .mpr itself)"
+  V="$WORK/v1"; mkdir -p "$V/bin"; cp "$P/bin/"*.sh "$V/bin/"; cp "$P/mxcli" "$V/"
+  { printf 'SQLite format 3\0'; node "$SETAS" "$GU" /dev/stdout "MxTest.RegisterEndpoint"; printf '\0\0trailing'; } > "$V/Fixture.mpr"
+  OUT="$( cd "$V" && REC="$WORK/rec.m" ./bin/test-scratch.sh -- x.test.mdl 2>&1 )"; RC=$?
+  [ "$RC" -eq 3 ] && has "v1 .mpr → refused, git repair degrades to a placeholder" "$OUT" "HEAD: not readable" || bad "v1 exit $RC: $(printf '%s' "$OUT" | tail -3)"
+else
+  echo "  [skip] node missing — the injected settings units are built from the capture with node"
+fi
+
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

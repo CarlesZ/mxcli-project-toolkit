@@ -22,6 +22,12 @@
 # #262: a stranger on the admin port while our app runs → exit 4 before anything is stopped, the
 # stranger named by pid and alive; our app dead and a stranger on the app port → exit 4, nothing
 # started. (The stranger is a bare TCP listener, as a runtime's admin port is to curl.)
+# #304 review: a stale record whose pid was reused by an unrelated process, restarted with --cmd →
+# that process survives (the pid is checked to be an mxcli run itself). #244: the settings unit is
+# the CAPTURED one (fixtures/mxtest-guard, from mxcli's own test model), re-encoded with the
+# after-startup under test: a plain app + leftover injection → exit 3, app untouched; a live
+# --test-endpoint app whose stop does not restore → exit 5, nothing started; one whose stop restores
+# → restarted.
 # Needs node and curl; skips (exit 0, says so) without them.
 set -uo pipefail
 
@@ -84,13 +90,15 @@ http.createServer((req, res) => {
   fs.mkdirSync(path.dirname(hs), { recursive: true });
   setTimeout(() => fs.writeFileSync(hs, g), 300);   // written when "ready", as mxcli does
 });
-const stop = () => { try { fs.unlinkSync(hs); } catch (e) {} try { child.kill('SIGTERM'); } catch (e) {} process.exit(0); };
+// .restore_on_stop (two lines: source, target) stands in for run --test-endpoint's clean-exit restore.
+const stop = () => { try { const r = fs.readFileSync(path.join(dir, '.restore_on_stop'), 'utf8').trim().split('\n'); fs.copyFileSync(r[0], r[1]); } catch (e) {}
+  try { fs.unlinkSync(hs); } catch (e) {} try { child.kill('SIGTERM'); } catch (e) {} process.exit(0); };
 process.on('SIGTERM', stop); process.on('SIGINT', stop);
 JS
   chmod +x "$P/mxcli" "$P/bin/app-restart.sh"
 }
-start_app() {  # $1 = project dir; waits for the record
-  ( cd "$1" && FAKE_GOLDEN="$GOLDEN" setsid nohup ./mxcli run --local --watch -p Fixture.mpr >"$1/first.log" 2>&1 </dev/null & )
+start_app() {  # $1 = project dir, $2 = extra run flags (optional); waits for the record
+  ( cd "$1" && FAKE_GOLDEN="$GOLDEN" setsid nohup ./mxcli run --local --watch ${2:-} -p Fixture.mpr >"$1/first.log" 2>&1 </dev/null & )
   local i; for i in $(seq 1 50); do [ -f "$1/.mxcli/run-local.json" ] && return 0; sleep 0.2; done; return 1
 }
 hs_pid() { sed -n 's/^  "pid": *\([0-9]*\).*/\1/p' "$1/.mxcli/run-local.json" 2>/dev/null; }
@@ -155,6 +163,56 @@ OUT="$(restart "$P" --timeout 30)"; RC=$?
 [ "$RC" -eq 0 ] && ok "exit 0" || bad "exit $RC: $(printf '%s' "$OUT" | tail -4)"
 has "says there was nothing to stop" "$OUT" "nothing — recorded pid $D is not running"
 has "uses the remembered command" "$OUT" "remembered from the last restart"
+KILL_LIST="$KILL_LIST $(hs_pid "$P") $(cat "$P/.fakechild" 2>/dev/null)"
+
+echo "-- #304 review: a stale record whose pid now belongs to another process → that process is never stopped"
+# A SIGKILLed mxcli leaves its record; the OS reuses the pid. With --cmd the start command no longer
+# comes from the pid, so only a check on the pid itself can tell. The old code sent it TERM.
+R="$WORK/reused"; RPORT=$(( PORT + 200 )); mkapp "$R" "$RPORT"
+sleep 300 & REUSED=$!; KILL_LIST="$KILL_LIST $REUSED"
+mkdir -p "$R/.mxcli"
+sed -e "s|^  \"project\": \"[^\"]*\"|  \"project\": $(printf '%s' "$R/Fixture.mpr" | sed 's/[&|]/\\&/g; s/.*/"&"/')|" \
+    -e "s/^  \"pid\": [0-9]*/  \"pid\": $REUSED/" -e "s/^  \"appPort\": [0-9]*/  \"appPort\": $RPORT/" \
+    -e "s/^  \"adminPort\": [0-9]*/  \"adminPort\": $(( RPORT + 10 ))/" "$GOLDEN" > "$R/.mxcli/run-local.json"
+OUT="$(restart "$R" --timeout 30 --cmd './mxcli run --local --watch -p Fixture.mpr')"; RC=$?
+alive "$REUSED" && ok "the process holding the reused pid is untouched" || bad "the reused pid $REUSED was killed"
+has "says the pid is not an mxcli run" "$OUT" "is not an mxcli run"
+[ "$RC" -eq 0 ] && ok "the app is started (exit 0)" || bad "exit $RC: $(printf '%s' "$OUT" | tail -3)"
+KILL_LIST="$KILL_LIST $(hs_pid "$R") $(cat "$R/.fakechild" 2>/dev/null)"
+
+echo "-- #244: an after-startup left on an mxcli test injection"
+GU="$TOOLKIT/tests/wave2/fixtures/mxtest-guard/settings-unit.mxunit"
+SETAS="$TOOLKIT/tests/wave2/fixtures/mxtest-guard/set-after-startup.js"
+UNIT="$P/mprcontents/4e/70/4e70063d-53e1-477a-ab92-6b763330c293.mxunit"; mkdir -p "$(dirname "$UNIT")"
+cp "$GU" "$UNIT"; cp "$GU" "$P/.clean.mxunit"
+CUR="$(hs_pid "$P")"
+node "$SETAS" "$GU" "$UNIT" "MxTest.RegisterEndpoint"
+OUT="$(restart "$P" --timeout 10)"; RC=$?
+[ "$RC" -eq 3 ] && ok "plain run --local app + leftover injection → refused (exit 3)" || bad "exit $RC: $(printf '%s' "$OUT" | tail -3)"
+has "names the leftover" "$OUT" "after-startup microflow is MxTest.RegisterEndpoint"
+has "prints the MDL repair" "$OUT" "alter settings runtime (AfterStartupMicroflow:"
+has "says nothing was stopped" "$OUT" "Nothing was stopped"
+alive "$CUR" && ok "the app was left running" || bad "the app was stopped"
+cp "$GU" "$UNIT"
+
+echo "-- #244: a live --test-endpoint app holds the injection legitimately; a stop that does not restore it → exit 5"
+OUT="$(restart "$P" --timeout 30 --cmd './mxcli run --local --watch --test-endpoint -p Fixture.mpr')"; RC=$?
+[ "$RC" -eq 0 ] && ok "[setup] app restarted with --test-endpoint" || bad "[setup] exit $RC: $(printf '%s' "$OUT" | tail -3)"
+CUR="$(hs_pid "$P")"; KILL_LIST="$KILL_LIST $CUR $(cat "$P/.fakechild" 2>/dev/null)"
+node "$SETAS" "$GU" "$UNIT" "MxTest.RegisterEndpoint"     # what run --test-endpoint writes while it runs
+OUT="$(restart "$P" --timeout 10)"; RC=$?
+[ "$RC" -eq 5 ] && ok "exit 5" || bad "exit $RC: $(printf '%s' "$OUT" | tail -3)"
+has "says it stopped and started nothing" "$OUT" "The recorded app was stopped; nothing was started"
+hasnt "starts nothing" "$OUT" "started (log:"
+alive "$CUR" && bad "the app was not stopped" || ok "the --test-endpoint app was stopped"
+echo "-- #244: repaired and started by hand (the stop removed the record); a stop that restores restarts normally"
+cp "$GU" "$UNIT"
+start_app "$P" --test-endpoint && ok "[setup] --test-endpoint app started again" || bad "[setup] app never became ready"
+KILL_LIST="$KILL_LIST $(hs_pid "$P") $(cat "$P/.fakechild" 2>/dev/null)"
+node "$SETAS" "$GU" "$UNIT" "MxTest.RegisterEndpoint"; printf '%s\n%s\n' "$P/.clean.mxunit" "$UNIT" > "$P/.restore_on_stop"
+OUT="$(restart "$P" --timeout 30)"; RC=$?
+[ "$RC" -eq 0 ] && ok "a stop that restores → restarted (exit 0)" || bad "exit $RC: $(printf '%s' "$OUT" | tail -3)"
+rm -f "$P/.restore_on_stop"; cp "$GU" "$UNIT"
 KILL_LIST="$KILL_LIST $(hs_pid "$P") $(cat "$P/.fakechild" 2>/dev/null)"
 
 # A process this script did not start, listening on $1 — the Studio Pro runtime of #262.

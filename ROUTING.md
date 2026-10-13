@@ -48,7 +48,8 @@ picks the row up. That is the whole procedure — there is no second list to rem
 | CAC-4, after rearchitect sign-off and before any design artifact — branding and UI direction. Opens with a brainstorm | `skills/checkpoints/checkpoint-design.md` | architect | 3 | ondemand |
 | CAC-5, after design sign-off and before the build plan — build order and slice boundaries. Opens with a brainstorm | `skills/checkpoints/checkpoint-build.md` | architect,mdl | 4 | ondemand |
 | CAC-6, after Stage 6 passes and before any cutover step — migration mode only, and a hard gate: every answer lands CONFIRMED, no ASSUMED defaults | `skills/checkpoints/checkpoint-cutover.md` | gate,test | 6,7 | ondemand |
-| Starting a subagent, sending it a fix round, or reading an agent-stop notice; or setting up the project's subagents — read its Dispatching section per dispatch, the rest once at setup | `skills/agent-roles.md` | lead | P,1,2,3,4,5,6 | baseline |
+| Setting up or completing a project's dev-process subagents — once, at project start, not "on demand" | `skills/agent-roles.md` | lead | P,4,5 | baseline |
+| Starting a subagent, sending it a fix round, or reading an agent-stop notice — name the model, fresh not fork, fresh fixer not resume, coalesce notices | `skills/dispatching.md` | lead | P,1,2,3,4,5,6 | baseline |
 | Stage 0 sign-off when the inventory is at or under 1 module / 8 screens / 25 use cases, or the user says the app is small — declare the tier, then apply its per-stage caps and the three artifact waivers | `skills/small-project-tier.md` | ba,architect | 0,1,2,3,4 | ondemand |
 | Deciding who answers a question — before putting any batch to the user. gap/conflict/choice/user-only is what keeps a gate batch at four questions instead of 127 | `bin/question-kinds.sh` | ba | 1,2,3 | baseline |
 | Generating a new project's CLAUDE.md — baseline routing plus project-specific facts | `skills/bootstrap-project.md` | ba | P | ondemand |

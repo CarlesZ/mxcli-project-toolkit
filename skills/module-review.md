@@ -320,6 +320,10 @@ of KB — a blank render or a placeholder is not); every file newer than the `VA
 exactly like no report.** A CSS export, a `getComputedStyle` dump, or a DOM snapshot can never
 satisfy it — which is the point: the 2026-08-22 escape (verdicts written from declared CSS while
 the render was broken) becomes mechanically impossible to repeat, not just prohibited in prose.
+A report may carry addenda: each re-look adds its own `VALID AT:` and its own `PROOF-OF-LOOK:`
+lines below it. Each citation is checked against the nearest stamp above it, and the report is
+stale only when the model has been built past its newest stamp (by commit time). Keep earlier
+sections; do not delete their proof lines.
 Reports dated before 2026-08-23 predate the rule and are left alone.
 
 **A LOOK report expires when the module changes.** Any BUILD/GATE commit that touches the module
@@ -395,7 +399,9 @@ last model commit. It is owed as the `final-look` row in `bin/lib/obligations.ts
 - **Report:** `design/ui-reviews/final-look-<YYYY-MM-DD>.html`, same format as stage 5: the
   headline's denominator ("38 of 38 pages, 4 of 4 roles"), `VALID AT:`, PROOF-OF-LOOK lines.
   Any model commit after `VALID AT` makes it stale, and the obligation is owed again. That is how
-  "final" is checked mechanically.
+  "final" is checked mechanically. It needs `VALID AT:` (an unstamped final LOOK is FAULT) and one
+  `PROOF-OF-LOOK:` line per page, same rules as stage 5. It is not owed until gate-check's derived
+  `## Current stage` readout reaches 6; a hand-written stage line keeps it owed.
 - **Reads, beyond stage 4:** every `Displayed fact:` row in `PROJECT.md`, against every page that
   shows the fact (`process-coherence-pass.md` pass 5). Every microflow a later script redefined,
   diffed before and after, to make sure no earlier fix was dropped.
@@ -409,12 +415,13 @@ Researched 2026-08-13 against DORA, Google's diff-scoped mutation testing, 2026 
 gate practice (Tricorder's 90% precision floor; CodeRabbit/Tenki staged trust) and SRE error-budget
 policy. Two structural points: most published gates are **rate-over-a-window** judgements, so
 clearing the table once is not "this loop is reliable"; and **nothing grandfathers** — agent output
-is non-deterministic run to run, so a prior pass is not evidence for a re-run of changed work.
+is non-deterministic run to run, so a prior pass is not evidence for changed work — the change's
+subject set is re-run, once, by the implementer (`testing-shape.md` §3).
 
 | Gate | Acceptable | Not acceptable |
 |---|---|---|
 | Build (2) | 0 mxbuild errors, 0 unaddressed lint findings above the project's bar. A **newly authored** lint rule runs advisory-only for its first pass | any error; "warnings are fine" on a rule the project enabled; a day-one rule blocking with no false-positive check |
-| Prove (3) | every declared scenario passes with a landing-guard-verified pass; every write has a Data assertion or a documented reason it does not apply; re-run after any change | green UI with no landing guard; trusting a stale pass on since-changed code |
+| Prove (3) | every declared scenario passes with a landing-guard-verified pass; every write has a Data assertion or a documented reason it does not apply; after any change the implementer re-runs its subject set once and the reviewer verifies that artifact (`testing-shape.md` §3) | green UI with no landing guard; trusting a stale pass on since-changed code; a reviewer re-running what the implementer already ran and recorded |
 | Monkey (3) | zero unhandled crashes — a legitimate flat bar, crash-on-input being unambiguous. Track findings-per-module as a trend | skipped because happy-path was green; a crash dismissed as "edge case"; a rising trend read as N unrelated one-offs |
 | **Look (4)** | **every page in 4a's set reviewed, each with a written answer to 4c's questions and a 4d visual verdict naming its yardstick (wireframe / design system / unaided rubric); every degradation named, substituted and still carrying a verdict; every verdict's evidence a screenshot, not a CSS declaration; the report stamped `VALID AT` a commit and carrying a `PROOF-OF-LOOK:` citation per page, each pointing at a real capture file on disk** | **sampling the pages a journey happened to visit; "looked fine"; a clean `design-audit.js` reported as "the UI is reviewed"; a missing wireframe or uninstalled instrument treated as a reason to skip a page rather than to change yardstick; a layout claim proven by `getComputedStyle` instead of pixels; citing a report the module has been built past** |
 | Confirm (5) | an independent human looked at the running app; the denominator is in the headline | the agent self-certifying; citing an earlier control run as if it still applies |

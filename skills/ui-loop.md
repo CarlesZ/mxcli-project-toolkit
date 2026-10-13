@@ -237,7 +237,7 @@ is no record, when the record belongs to another project (a copied project carri
 original's), or when it cannot recover the start command. On Windows, pass `--cmd '<how you
 started it>'` once; it is remembered after that. `--dry-run` says what it would do. A Docker-hosted
 app uses `bin/test-stack-up.sh --restart` instead. This is the one restart an implementer may run
-without the lead (`agent-roles.md` → Dispatching).
+without the lead (`dispatching.md`).
 
 ## When it finds something — which side is actually wrong
 

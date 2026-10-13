@@ -95,7 +95,7 @@ artifact" as "nothing to check against." A project that *does* have BRDs/module-
 coverage against those directly: does the report's page/action list actually match what the BRD's
 acceptance criteria describe, not just what the harness happened to walk.
 
-### 2. Four checks against the report's own numbers — this is the judgement, not a script
+### 2. Five checks against the report's own numbers — this is the judgement, not a script
 
 None of these are mechanically checkable the way `report-disposition-check.sh`'s grep is — that is
 exactly why this is a skill and not a new script, per `skills-over-scripts.md`. A script can compute
@@ -144,11 +144,21 @@ journeys run, N of M personas exercised," per `module-review.md`'s own denominat
 report that never states its denominator is itself a finding under this check, independent of what
 it did or didn't find.
 
+**e. Was the run itself strong enough?** Three questions, each answered with its own count from
+the report (`testing-shape.md` §4 has the rows and §7 the report lines):
+- **Refusals proven on the server?** `N of N restricted (role, page/microflow) pairs probed
+  server-side`. A refusal shown only as a hidden menu item or a missing button is not probed.
+- **Every unexpected 4xx a failure?** `undeclared 4xx/5xx: 0 of M requests`. A 400 or 422 the
+  report lists as "info" next to a passing step is a finding against that step.
+- **One clean-database final run?** `final run <id>: N of N scenarios, timers included`. A total
+  assembled from several runs is reported as stitched, with the run ids, never as the verdict.
+A report that does not give one of these numbers fails that question; say which.
+
 ### 3. Produce a written critique — not a rubber stamp
 
 The deliverable is prose, not a checklist of ✅s. State plainly:
 - What was actually covered, with the denominator from 2d.
-- Every gap found under 2a–2c, each with what page/persona/module it names and why it counts as a
+- Every gap found under 2a–2c and 2e, each with what page/persona/module it names and why it counts as a
   gap (missing journey file vs. role-gated-and-undocumented vs. genuinely out of scope).
 - Every suspicious-but-passing result found under 2b, with the evidence line from the report that
   triggered the suspicion and what would need to be checked live to confirm or dismiss it (do not

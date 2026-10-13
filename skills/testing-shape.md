@@ -233,6 +233,9 @@ so the next person argues with the incident rather than with the rule.
 | **Trace** | `[].every()` is `true` — assertions pass on **zero spans** | Assert the span set is **non-empty first**, then assert over it. Also check the action wasn't a no-op: navigating to the page you are already on fires nothing. |
 | **Trace** | A caught error leaves the microflow span `OK` while its activities are `ERROR` | Assert at **activity** granularity, not microflow granularity |
 | **all** | `mxcli run --local` starts with **scheduled events off**, so a job-driven feature never runs under test and its journey passes vacuously or fails for the wrong reason (2026-09-26, Mendix 11.13.0) | Prove it in a separate start with scheduled events on — §5, "`run --local` starts with scheduled events off" |
+| **Security** | **A permission refusal checked only in the client** — "the menu item is hidden", "the button is not there" — proves the UI hides it, not that the server refuses it. A role that reaches the page by URL, or calls the microflow over `/xas/`, is not stopped by a hidden menu item. Field comparison 2026-09-29 (same frozen spec, two builds): the toolkit build checked every refusal client-side only; the other build probed the server and was the stronger test on exactly this row | For every restricted (role, page or microflow) pair the spec names, a **server-side probe** as that role that expects the refusal (the field run saw HTTP 560 / access denied), not merely an absent widget. Report `N of N restricted pairs probed server-side`; a pair checked only in the client counts as not probed |
+| **all** | **An unexpected 4xx is logged as information and the step still passes.** A 400 or 422 from `/xas/` or a REST call means the request the UI sent was wrong or refused, and a journey that carries on past it measures a page that never saved. Same field comparison: the toolkit build treated unexpected 400/422 responses as informational | Every 4xx/5xx response a step did not **declare** as expected fails that step. Report `undeclared 4xx/5xx: 0 of M requests`; a step that expects a refusal (the probe above) declares it |
+| **all** | **A full pass stitched together from several runs.** "20/20" built from three partial runs never shows the scenarios working together on one database: a later scenario may depend on data an earlier run left, and a timer scenario may only have passed in the run where its data happened to exist. Same field comparison: 20/20 came from 3 runs | One **final run on a clean database**, including the timer scenarios, carries the verdict. Report `final run <id>: N of N scenarios on a fresh database, timers included`; anything less is reported as stitched, with the run ids |
 | **all** | `$?` after a pipeline measures the pipe, not the script — biased toward false *success* | Never read `$?` through a pipe. See `tool-output-is-not-ground-truth.md`. |
 
 **Verdict discipline — the canonical statement, referenced from `journey-proof.md` rather than
@@ -506,6 +509,9 @@ Data:   <ran | n/a>  — delta-not-existence: <y/n>                             
 Unit:   <ran | n/a>  — --list count matches file: <y/n>    every @expect visible: <y/n>
 Trace:  <ran | n/a>  — non-empty span check: <y/n>         activity granularity: <y/n>
 Stack:  docker | sp-local, APP_URL=<url>, docker status verified: <y/n>
+Permissions: <N of N> restricted (role, page/microflow) pairs probed server-side
+HTTP:   undeclared 4xx/5xx: <0 of M requests>
+Final:  run <id> on a clean database: <N of N> scenarios, timers included   (or "stitched from runs <ids>")
 Invalid tests: <any §4 shape found — reported separately from feature failures, or "none">
 ```
 

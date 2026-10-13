@@ -31,13 +31,22 @@
 # Nothing here blocks that did not block before, and no exit code got more severe: a missing
 # ledger now exits 3 (NOT MEASURED) or 4 (NOT APPLICABLE) instead of 2 (FAULT).
 #
-# Ledger path shapes, all read, first is canonical:
-#   architecture/modules/<Module>/coverage-ledger.md   canonical (per-module)
-#   architecture/modules/<Module>-coverage-ledger.md   flat module layout
-#   architecture/coverage-ledger.md                    single-BRD project
+# Ledger path shapes, all read:
+#   architecture/modules/<Module>/coverage-ledger/*.md  one ledger per BRD (coverage-check-all.sh's
+#                                                       form); EVERY file is measured, one report
+#                                                       per BRD, and the coverage-ledger.md beside
+#                                                       the directory is treated as its index
+#   architecture/modules/<Module>/coverage-ledger.md    canonical (per-module)
+#   architecture/modules/<Module>-coverage-ledger.md    flat module layout
+#   architecture/coverage-ledger.md                     single-BRD project
 #
 # Usage:
 #   bin/conformance-check.sh [--module <Name>] [--update-baseline] [--quiet]
+#   LEDGER_FILE=<file-or-dir> bin/conformance-check.sh [--module <Name>] ...
+#
+#   LEDGER_FILE   overrides discovery: one ledger file, or a directory whose *.md files are all
+#                 measured (one per BRD). Relative to the project root. A path that is neither is
+#                 a FAULT, never a silent fall-back to another ledger.
 #
 # Exit: 0 clean or baseline written · 1 regression · 2 instrument fault (refuses to guess)
 #       3 NOT MEASURED (no ledger, but a spec exists) · 4 NOT APPLICABLE (no spec at all)
@@ -60,7 +69,7 @@ while [ $# -gt 0 ]; do
     --module)          MODULE="${2:-}"; shift 2 ;;
     --update-baseline) UPDATE_BASELINE=1; shift ;;
     --quiet)           QUIET=1; shift ;;
-    -h|--help)         sed -n '2,45p' "$0"; exit 0 ;;
+    -h|--help)         sed -n '2,52p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -80,20 +89,47 @@ mkdir -p "$OUTDIR"
 # LEDGER_COUNT is tracked separately rather than read back as ${#LEDGERS[@]}: under `set -u`,
 # bash 3.2 (stock macOS) treats an EMPTY array as unset and aborts on that expansion — which is
 # precisely the case this block exists to handle gracefully.
+#
+# PER-BRD DIRECTORIES (fixed 2026-10-13, field report 2026-10-11): a
+# module that splits its ledger one-per-BRD keeps the rows in <Module>/coverage-ledger/<BRD>.md
+# and turns <Module>/coverage-ledger.md into an index. This script only ever read the index, so
+# every such module ended in "FAULT: 0 measurable rows extracted from 1 ledger(s)." — while the
+# operator's LEDGER_FILE workaround on ONE per-BRD file measured 128 rows (66 measured, 66 OK).
+# coverage-preflight.sh already read the directory first (2026-09-26); this is the same rule:
+# the directory wins over the index beside it, and every file in it is measured.
 LEDGERS=()
 LEDGER_COUNT=0
-if [ -n "$MODULE" ]; then
-  for c in "${LEDGER_FILE:-}" \
-           "architecture/modules/$MODULE/coverage-ledger.md" \
-           "architecture/modules/$MODULE-coverage-ledger.md" \
-           "architecture/coverage-ledger.md"; do
-    [ -n "$c" ] && [ -f "$c" ] && { LEDGERS=("$c"); LEDGER_COUNT=1; break; }
-  done
+add_ledger() { LEDGERS[$LEDGER_COUNT]="$1"; LEDGER_COUNT=$((LEDGER_COUNT+1)); }
+has_md()     { [ -d "$1" ] && ls "$1"/*.md >/dev/null 2>&1; }
+add_dir()    { local f; for f in "$1"/*.md; do [ -f "$f" ] && add_ledger "$f"; done; }
+if [ -n "${LEDGER_FILE:-}" ]; then
+  if has_md "$LEDGER_FILE"; then add_dir "$LEDGER_FILE"
+  elif [ -f "$LEDGER_FILE" ]; then add_ledger "$LEDGER_FILE"
+  else
+    echo "FAULT: LEDGER_FILE=$LEDGER_FILE is neither a ledger file nor a directory of *.md ledgers" >&2
+    echo "       (resolved against $PROJECT_ROOT). Refusing to fall back to another ledger." >&2
+    exit 2
+  fi
+elif [ -n "$MODULE" ]; then
+  if has_md "architecture/modules/$MODULE/coverage-ledger"; then
+    add_dir "architecture/modules/$MODULE/coverage-ledger"
+  else
+    for c in "architecture/modules/$MODULE/coverage-ledger.md" \
+             "architecture/modules/$MODULE-coverage-ledger.md" \
+             "architecture/coverage-ledger.md"; do
+      [ -f "$c" ] && { add_ledger "$c"; break; }
+    done
+  fi
 else
+  for d in architecture/modules/*/coverage-ledger; do
+    has_md "$d" && add_dir "$d"
+  done
   for c in architecture/modules/*/coverage-ledger.md \
            architecture/modules/*-coverage-ledger.md \
            architecture/coverage-ledger.md; do
-    if [ -f "$c" ]; then LEDGERS[$LEDGER_COUNT]="$c"; LEDGER_COUNT=$((LEDGER_COUNT+1)); fi
+    [ -f "$c" ] || continue
+    has_md "${c%.md}" && continue          # the index of a per-BRD directory measured above
+    add_ledger "$c"
   done
 fi
 
@@ -149,6 +185,8 @@ fi
 # SHOW/DESCRIBE in the acceptance cell are measurable; the rest are counted, not run.
 # The module label comes from the path, and the path has three shapes (above), so read it per
 # shape instead of assuming the parent directory is always the module.
+# A per-BRD file <Module>/coverage-ledger/<BRD>.md belongs to <Module> and carries a BRD label;
+# every other shape has no BRD label ("-": read splits on tabs, so an empty field would shift).
 ledger_module() {
   local ledger="$1" base parent
   base="$(basename "$ledger")"
@@ -157,26 +195,38 @@ ledger_module() {
     *-coverage-ledger.md) printf '%s\n' "${base%-coverage-ledger.md}"; return ;;
   esac
   case "$parent" in
-    architecture) printf '%s\n' "${MODULE:-project}"; return ;;
-    *)            printf '%s\n' "$parent"; return ;;
+    architecture)    printf '%s\n' "${MODULE:-project}"; return ;;
+    coverage-ledger) printf '%s\n' "$(basename "$(dirname "$(dirname "$ledger")")")"; return ;;
+    *)               printf '%s\n' "$parent"; return ;;
+  esac
+}
+ledger_brd() {
+  case "$(basename "$(dirname "$1")")" in
+    coverage-ledger) printf '%s\n' "$(basename "$1" .md)" ;;
+    *)               printf '%s\n' "-" ;;
   esac
 }
 
+# Rows are keyed (module, pointer) in the baseline. A JSON pointer is relative to ITS BRD, so two
+# per-BRD ledgers of one module both have `/microflows/0`; their pointer key carries the BRD id.
 extract() {
-  local ledger="$1" mod
+  local ledger="$1" mod brd
   mod="$(ledger_module "$ledger")"
-  awk -F'|' -v mod="$mod" '
+  brd="$(ledger_brd "$ledger")"
+  awk -F'|' -v mod="$mod" -v brd="$brd" -v file="$ledger" '
     NF==9 && $2 ~ /^ *`\// {
       total++
       ptr=$2; acc=$7; st=$8
       gsub(/^ +| +$/, "", ptr); gsub(/^ +| +$/, "", st)
+      if (brd != "-") ptr = brd ":" ptr
       if (match(acc, /`(SHOW|DESCRIBE)[^`]*`/)) {
         cmd = substr(acc, RSTART+1, RLENGTH-2)
-        print "ROW\t" mod "\t" ptr "\t" st "\t" cmd
+        print "ROW\t" mod "\t" brd "\t" ptr "\t" st "\t" cmd
       } else {
-        print "PROSE\t" mod "\t" ptr "\t" st "\t"
+        print "PROSE\t" mod "\t" brd "\t" ptr "\t" st "\t"
       }
     }
+    END { if (!total) print "NOTABLE\t" file }
   ' "$ledger"
 }
 
@@ -184,10 +234,39 @@ ROWS="$(for l in "${LEDGERS[@]}"; do [ -f "$l" ] && extract "$l"; done)"
 
 MEASURABLE=$(printf '%s\n' "$ROWS" | grep -c '^ROW' || true)
 PROSE=$(printf '%s\n' "$ROWS" | grep -c '^PROSE' || true)
+NOTABLE="$(printf '%s\n' "$ROWS" | awk -F'\t' '$1=="NOTABLE"{print $2}')"
+
+# A ledger file with no ledger table is, in practice, an index: the coverage-ledger.md a module
+# keeps beside its per-BRD directory, or one that points at another module's per-BRD file.
+# Say where its rows are rather than "0 measurable rows", which reads as a broken instrument.
+explain_index() {
+  local f="$1" dir links
+  dir="${f%.md}"
+  echo "       $f has no ledger table rows — it is an index, not a ledger." >&2
+  if has_md "$dir"; then
+    echo "       Its rows are in $dir/:" >&2
+    for l in "$dir"/*.md; do echo "         $l" >&2; done
+    echo "       Unset LEDGER_FILE (the directory is found by itself) or set LEDGER_FILE=$dir" >&2
+    return
+  fi
+  links="$(grep -oE '\]\([^)#]+\.md\)' "$f" 2>/dev/null | sed -E 's/^\]\(//; s/\)$//' | sort -u)"
+  if [ -n "$links" ]; then
+    echo "       It links to these ledgers (relative to $(dirname "$f")/) — rows are in them:" >&2
+    printf '%s\n' "$links" | sed 's/^/         /' >&2
+    echo "       Measure them with LEDGER_FILE=<that file or its directory>." >&2
+  fi
+}
 
 # Non-vacuous guard: an instrument that measured nothing must not report "all clean".
 if [ "$MEASURABLE" -eq 0 ]; then
-  echo "FAULT: 0 measurable rows extracted from ${#LEDGERS[@]} ledger(s)." >&2
+  NNOTABLE=$(printf '%s' "$NOTABLE" | grep -c . || true)
+  if [ "$NNOTABLE" -gt 0 ] && [ "$NNOTABLE" -eq "$LEDGER_COUNT" ]; then
+    echo "FAULT: nothing to measure — the ledger read is an index, not a ledger table." >&2
+    while IFS= read -r f; do [ -n "$f" ] && explain_index "$f"; done <<< "$NOTABLE"
+    echo "       Refusing to report a clean run over zero measurements." >&2
+    exit 2
+  fi
+  echo "FAULT: 0 measurable rows extracted from $LEDGER_COUNT ledger(s)." >&2
   echo "       Either the ledger table shape changed or the glob matched nothing." >&2
   echo "       Refusing to report a clean run over zero measurements." >&2
   exit 2
@@ -281,7 +360,7 @@ probe() {
 
 RESULTS=""
 n=0
-while IFS=$'\t' read -r kind mod ptr status cmd; do
+while IFS=$'\t' read -r kind mod brd ptr status cmd; do
   [ "$kind" = "ROW" ] || continue
   n=$((n+1))
   [ "$QUIET" -eq 1 ] || printf '\r  measuring %d/%d ' "$n" "$MEASURABLE" >&2
@@ -297,7 +376,7 @@ while IFS=$'\t' read -r kind mod ptr status cmd; do
         *)                                                               verdict="UNKNOWN-STATUS" ;;
       esac ;;
   esac
-  RESULTS+="$mod	$ptr	$status	$observed	$verdict	$cmd"$'\n'
+  RESULTS+="$mod	$ptr	$status	$observed	$verdict	$cmd	$brd"$'\n'
 done 3<<< "$ROWS" <&3
 [ "$QUIET" -eq 1 ] || printf '\r%*s\r' 30 '' >&2
 
@@ -346,8 +425,18 @@ NSEED=$(printf '%s' "$SEEDED" | grep -c . || true)
 
 # --- report ------------------------------------------------------------------------------
 STAMP="$(date +%Y-%m-%d)"
-REPORT="$OUTDIR/report-$STAMP.tsv"
-{ printf 'module\tpointer\tstored\tobserved\tverdict\tcommand\n'; printf '%s\n' "$RESULTS"; } > "$REPORT"
+# One report per BRD for per-BRD ledgers (report-<date>-<BRD>.tsv), so measuring several BRDs
+# does not leave only the last one on disk; rows from every other shape keep report-<date>.tsv.
+REPORTS=""
+# while-read, not `for b in $(…)`: a BRD file name with a space must stay one BRD.
+while IFS= read -r b; do
+  [ -n "$b" ] || continue
+  if [ "$b" = "-" ]; then REPORT="$OUTDIR/report-$STAMP.tsv"; else REPORT="$OUTDIR/report-$STAMP-$b.tsv"; fi
+  { printf 'module\tpointer\tstored\tobserved\tverdict\tcommand\n'
+    printf '%s\n' "$RESULTS" | awk -F'\t' -v b="$b" 'BEGIN{OFS="\t"} $7==b {print $1,$2,$3,$4,$5,$6}'
+  } > "$REPORT"
+  REPORTS+="$REPORT"$'\n'
+done <<< "$(printf '%s\n' "$RESULTS" | awk -F'\t' 'NF{print $7}' | sort -u)"
 
 count() { printf '%s\n' "$RESULTS" | awk -F'\t' -v v="$1" '$5==v' | grep -c . || true; }
 OK=$(count OK); STALE=$(count STALE); UNDER=$(count UNDERSTATED); UNK=$(count UNKNOWN-STATUS)
@@ -363,7 +452,10 @@ echo "  UNDERSTATED            $UNDER"
 [ "$UNRUN" -gt 0 ] && echo "  UNRUNNABLE             $UNRUN   (backticked prose, or a probe mxcli rejects — fix the probe; see the report)"
 [ "$TMO" -gt 0 ]   && echo "  TIMEOUT                $TMO   (>${TIMEOUT_S}s — never counted as a pass)"
 [ "$UNK" -gt 0 ]   && echo "  UNKNOWN-STATUS         $UNK"
-echo "  report                 $REPORT"
+while IFS= read -r r; do [ -n "$r" ] && echo "  report                 $r"; done <<< "$REPORTS"
+if [ -n "$NOTABLE" ]; then
+  while IFS= read -r f; do [ -n "$f" ] && echo "  no table (index?)      $f"; done <<< "$NOTABLE"
+fi
 [ "$NSEED" -gt 0 ] && echo "  newly baselined        $NSEED   (no baseline row yet — regressions measured from the next run)"
 
 if [ "$STALE" -gt 0 ] || [ "$UNDER" -gt 0 ]; then

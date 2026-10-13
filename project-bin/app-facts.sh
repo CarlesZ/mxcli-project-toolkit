@@ -246,10 +246,13 @@ fi
 
 q() { sqlite3 -noheader "$DB" "$1"; }
 BUILD_MODE="$(q "SELECT Value FROM catalog_meta WHERE Key='build_mode';")"
-if [ "$BUILD_MODE" != "full" ]; then
-  echo "FAULT: catalog build_mode is '$BUILD_MODE' after graph-report; refs/activities are not trustworthy." >&2
-  exit 2
-fi
+# The build_mode LABEL is not checked (fixed 2026-10-13, field report 2026-10-11): mxcli v0.24.0
+# labels a complete catalog 'source', and the old `!= full` test refused it on every run. What
+# this script needs is checked instead, below: the tables by name, non-empty refs/activities,
+# and at least one refs row that carries a RefKind (the dependency facts group by it). The label
+# is recorded in manifest.json as found, so a reader can still see it. Zero 'call' edges is NOT a
+# fault: an early module reached only from pages and buttons has none, and its call graph is
+# legitimately empty — requiring them (the first cut of this fix) refused such apps.
 MISSING=""
 for t in modules_data entities_data microflows_data activities_data pages_data scheduled_events_data refs catalog_meta projects; do
   [ "$(q "SELECT count(*) FROM sqlite_master WHERE name='$t';")" = "1" ] || MISSING="$MISSING $t"
@@ -264,10 +267,17 @@ N_MODULES=$(q "SELECT count(*) FROM modules_data;")
 N_REFS=$(q "SELECT count(*) FROM refs;")
 N_ACTS=$(q "SELECT count(*) FROM activities_data;")
 if [ "${N_MODULES:-0}" -eq 0 ] || [ "${N_REFS:-0}" -eq 0 ] || [ "${N_ACTS:-0}" -eq 0 ]; then
-  echo "FAULT: catalog is vacuous (modules=$N_MODULES refs=$N_REFS activities=$N_ACTS). An empty graph is not a clean app." >&2
+  echo "FAULT: catalog is vacuous (modules=$N_MODULES refs=$N_REFS activities=$N_ACTS, build_mode '${BUILD_MODE:-unset}'). An empty graph is not a clean app." >&2
   exit 2
 fi
-log "catalog ok: modules=$N_MODULES refs=$N_REFS activities=$N_ACTS (${T1}s)"
+KINDS="$(q "SELECT k || '=' || n FROM (SELECT COALESCE(NULLIF(RefKind,''),'(none)') k, count(*) n FROM refs GROUP BY k ORDER BY n DESC LIMIT 8);" | paste -sd' ' -)"
+N_KINDED=$(q "SELECT count(*) FROM refs WHERE COALESCE(RefKind,'') <> '';")
+if [ "${N_KINDED:-0}" -eq 0 ]; then
+  echo "FAULT: catalog refs carry no RefKind (build_mode '${BUILD_MODE:-unset}', $N_REFS refs by kind: ${KINDS:-none})." >&2
+  echo "       The dependency and call-graph facts are read by kind. Refusing to write facts without one." >&2
+  exit 2
+fi
+log "catalog ok: build_mode=${BUILD_MODE:-unset} modules=$N_MODULES refs=$N_REFS (${KINDS:-none}) activities=$N_ACTS (${T1}s)"
 
 # ---------------------------------------------------------------------------------------------
 # Step 2 — inventory + dependencies, straight from the catalog through the REAL module column.
@@ -546,7 +556,7 @@ fi
 FACTS_DIR="$FACTS_DIR" MX_VERSION="$MX_VERSION" MPR_BASE="$MPR_BASE" DB="$DB" \
 T1="$T1" T2="$T2" T3="$T3" TALL="$(( $(date +%s) - START_ALL ))" \
 LOOP_STATUS="$LOOP_STATUS" LOOP_REASON="$LOOP_REASON" N_CAND="$N_CAND" N_DESC="$N_DESC" N_FAILED="$N_FAILED" N_RULES="$N_RULES" \
-N_MODULES="$N_MODULES" N_REFS="$N_REFS" N_ACTS="$N_ACTS" WORKERS="$WORKERS" MAX_LOOPS="$MAX_LOOPS" "$PY" - <<'PY'
+BUILD_MODE="$BUILD_MODE" N_MODULES="$N_MODULES" N_REFS="$N_REFS" N_ACTS="$N_ACTS" WORKERS="$WORKERS" MAX_LOOPS="$MAX_LOOPS" "$PY" - <<'PY'
 import json, os, datetime, hashlib
 F = os.environ["FACTS_DIR"]
 def sha(p):
@@ -563,7 +573,7 @@ man = {
   "generated": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
   "mpr": os.environ["MPR_BASE"], "mpr_sha256_16": sha(mp) if os.path.exists(mp) else "",
   "mxcli": os.environ["MX_VERSION"],
-  "catalog": {"modules": int(os.environ["N_MODULES"]), "refs": int(os.environ["N_REFS"]), "activities": int(os.environ["N_ACTS"]), "build_mode": "full"},
+  "catalog": {"modules": int(os.environ["N_MODULES"]), "refs": int(os.environ["N_REFS"]), "activities": int(os.environ["N_ACTS"]), "build_mode": os.environ.get("BUILD_MODE", "")},
   "timings_s": {"catalog_and_graph_report": int(os.environ["T1"]), "inventory_and_dependencies": int(os.environ["T2"]), "loops": int(os.environ["T3"]), "total": int(os.environ["TALL"])},
   "options": {"workers": int(os.environ["WORKERS"]), "max_loops": int(os.environ["MAX_LOOPS"])},
   "sections": {

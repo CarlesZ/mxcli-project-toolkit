@@ -215,8 +215,15 @@ _report_result() {
   # into coherence-cadence.sh and build-plan-status.sh. Observed on a real field run:
   # `mode=static-only pages=0 fault=2` reported as PASS. Fault is checked FIRST because "did not
   # run" must never be readable as "ran and was clean".
+  #
+  # `stack:4` is test-stack-up.sh's "instrument blocked": the port `mxcli run --local` needs is
+  # held by another process. Its own header says to record that as blocked, not as a test
+  # failure — the app was never measured, so it is a FAULT, not a FINDING. Scoped to the stack
+  # rung's kind on purpose: exit 4 means something else elsewhere (conformance-check.sh: NOT
+  # APPLICABLE), so it is not a global remap.
   case "$kind:$rc" in
     *:2)      verdict=FAULT ;;
+    stack:4)  verdict=FAULT ;;
     info:*)   verdict=INFO ;;
     *:0)      verdict=PASS ;;
     *)        verdict=FINDING ;;
@@ -235,6 +242,7 @@ _report_result() {
 # run <name> <logfile> <kind> <timeout_s> -- <cmd...>
 #   kind=gate   exit 1 => finding, exit 2 => instrument fault
 #   kind=info   never fails the pass; recorded for the trend line
+#   kind=stack  as gate, plus exit 4 (test-stack-up: port held by another process) => fault
 # Blocks until the instrument finishes.
 run() {
   local name="$1" log="$2" kind="$3" tmo="$4"; shift 5   # the literal --
@@ -376,7 +384,7 @@ echo "══ verify-module: $MODULE ══  $STAMP"
 # so the runtime instruments below cannot be pointed at a guessed one.
 STACK_OK=0
 if [ -x "$(_tool test-stack-up.sh)" ]; then
-  run "stack (test-stack-up --check)" "$OUTDIR/00-stack.log" gate 60 -- \
+  run "stack (test-stack-up --check)" "$OUTDIR/00-stack.log" stack 60 -- \
     "$(_tool test-stack-up.sh)" --check
   grep -q "^stack (test-stack-up --check)	PASS" "$SUMMARY" && STACK_OK=1
   # "app up with a caveat" is not "app down", and reporting it as one sends the reader
@@ -444,8 +452,16 @@ fi
 # requirements to check against" is precisely the hole that let several projects ship with no
 # coverage ledger at all, so coverage-check.sh and the review agent had nothing to run and their
 # absence read as silence.
-LEDGER="${LEDGER_FILE:-$ROOT/architecture/modules/$MODULE/coverage-ledger.md}"
-[ -f "$LEDGER" ] || LEDGER="$ROOT/architecture/coverage-ledger.md"
+# A ledger is a file OR a per-BRD directory (<Module>/coverage-ledger/<BRD>.md) — LEDGER_FILE
+# documents both (conformance-check.sh, coverage-preflight.sh). Testing only `-f` sent a directory
+# LEDGER_FILE silently to architecture/coverage-ledger.md (review of #307, 2026-10-13).
+resolve_ledger_hint() {
+  local l="${LEDGER_FILE:-$ROOT/architecture/modules/$MODULE/coverage-ledger.md}"
+  if [ -z "${LEDGER_FILE:-}" ] && [ ! -f "$l" ] && [ -d "${l%.md}" ]; then l="${l%.md}"; fi
+  [ -f "$l" ] || [ -d "$l" ] || l="$ROOT/architecture/coverage-ledger.md"
+  printf '%s\n' "$l"
+}
+LEDGER="$(resolve_ledger_hint)"
 BRD="${BRD_FILE:-}"
 if [ -z "$BRD" ]; then
   for pat in "$ROOT"/analysis/*/brd/*.brd.json "$ROOT"/analysis/*/knowledge-base/brd/*.brd.json; do
@@ -510,6 +526,9 @@ run_join_all
 # a second time in the same pass buys nothing. The path is passed unconditionally: if rung 1 faulted
 # the file is absent, review says so and FAULTS, which is the truth — nothing was measured — and it
 # costs seconds instead of minutes.
+# The path names the run's BASE report; a per-BRD ledger writes report-<date>-<BRD>.tsv instead
+# (and no base file), and review-module.sh reads every report-<date>*.tsv sibling with it — so
+# the reuse finds a per-BRD module's rows rather than FAULTing on "does not exist" (2026-10-13).
 if [ -x "$(_tool review-module.sh)" ]; then
   run "review (model vs decided — report.json)" "$OUTDIR/13-review.log" info 600 -- \
     "$(_tool review-module.sh)" "$MODULE" --json-only \

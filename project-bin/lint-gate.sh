@@ -28,16 +28,18 @@
 # in the other the re-seed sat uncommitted for five days and the baseline absorbed the noisier
 # counts. bin/lib/install-lint-rules.sh already writes .claude/.mxtk-lint-receipt (md5 of each
 # rule AS INSTALLED; it survives `mxcli init`), so before linting this script reads it: a rule
-# whose md5 no longer matches its receipt line AND whose `# mxtk-lint-rule:` header is gone (or
-# whose file is gone) was re-seeded, not edited by a person. The run then prints "BLIND — lint
+# whose md5 no longer matches its receipt line AND whose `# mxtk-lint-rule:` header is gone was
+# re-seeded, not edited by a person — checked only for rules the receipt marks `stock` (the file
+# names init seeds; toolkit-only and configurable rules are never seeded, so a headerless copy
+# of one is an edit). A receipt-listed rule whose file is gone is reported for every kind. The run then prints "BLIND — lint
 # rules reverted to stock", names the files, points at sync-project.sh (which restores them and
 # rewrites the receipt, so the next run is clean) and exits 1 without linting; --update-baseline
 # is refused, since baselining stock counts is how the five-day case went in. A rule that still
 # carries the header but differs is a hand edit — install-lint-rules.sh reports those, this does
-# not. No receipt = nothing to compare (pre-receipt installs) = no check. A rule removed on
-# purpose is listed in .claude/lint-rules-disabled.txt (the installer honours the same file and
-# prunes its receipt row). A deliberate headerless local rule: LINT_RULES_REVERTED_OK=1 runs
-# anyway, with the warning.
+# not. No receipt, or a row without a kind = no check (the next sync writes kinds). A non-stock
+# rule removed by the user's decision is listed, with a reason, in .claude/lint-rules-disabled.txt
+# (see lint-rules/README.md "Opting out of a rule"). LINT_RULES_REVERTED_OK=1 runs anyway, with
+# the warning.
 #
 # ACCEPTING DEBT IS RECORDED, NOT SILENT (2026-10-12). Three toolkit-built apps re-baselined
 # 61 times in four days — every acceptance made by the agent whose script caused the rise,
@@ -130,7 +132,7 @@ while [ $# -gt 0 ]; do
               REASON="$2"; shift ;;
     --reason=*) REASON="${1#--reason=}" ;;
     --approved-in-chat) APPROVED=1 ;;
-    -h|--help) sed -n '2,62p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,64p' "$0"; exit 0 ;;
     *) echo "lint-gate: unknown argument '$1'" >&2; exit 2 ;;
   esac
   shift
@@ -159,31 +161,49 @@ RECEIPT="$ROOT/.claude/.mxtk-lint-receipt"
 if [ -f "$RECEIPT" ]; then
   # Read into a variable first: a heredoc inside $(...) does not parse on bash 3.2.
   IFS= read -r -d '' _RCHK <<'PY' || true
-import hashlib, os
+import hashlib, os, re, sys
 rec, d, dis = os.environ["RECEIPT"], os.environ["RULES_DIR"], os.environ["DISABLED"]
+# Receipt rows: <rule-file> <md5> <kind>. kind (stock | toolkit | configurable) is written by
+# bin/lib/install-lint-rules.sh from install-manifest.sh, which a project does not have. A row
+# with no kind predates kinds and is not checked; the next sync writes it.
+rows = []
+for line in open(rec, encoding="utf-8", errors="replace"):
+    parts = line.split()
+    if len(parts) < 3 or parts[0].startswith("#"):
+        continue
+    rows.append((parts[0], parts[1], parts[2]))
+kind = {n: k for n, _, k in rows}
+# Opt-out: `<rule>  # reason: <text>` — the same rule the installer applies. No reason, or a
+# stock-seeded rule (init writes a stock copy back that passes clean while inspecting nothing):
+# the line is ignored, with a warning.
 disabled = set()
 if os.path.isfile(dis):
     for line in open(dis, encoding="utf-8", errors="replace"):
-        w = line.split()
-        if w and not w[0].startswith("#"):
+        w = line.split(None, 1)
+        if not w or w[0].startswith("#"):
+            continue
+        rest = w[1] if len(w) > 1 else ""
+        m = re.search(r"#\s*reason:\s*(\S.*)", rest)
+        if kind.get(w[0]) == "stock":
+            print("lint-gate: lint-rules-disabled.txt: %s is stock-seeded and cannot be disabled — ignored" % w[0], file=sys.stderr)
+        elif not m:
+            print("lint-gate: lint-rules-disabled.txt: %s has no '# reason: ...' — ignored" % w[0], file=sys.stderr)
+        else:
             disabled.add(w[0])
-for line in open(rec, encoding="utf-8", errors="replace"):
-    parts = line.split()
-    if len(parts) < 2 or parts[0].startswith("#"):
-        continue
-    name, want = parts[0], parts[1]
+HEADER = re.compile(rb"^# mxtk-lint-rule:", re.M)   # the installer's test: grep '^# mxtk-lint-rule:'
+for name, want, k in rows:
     if name in disabled:
-        continue  # deliberate opt-out, .claude/lint-rules-disabled.txt
+        continue
     path = os.path.join(d, name)
     if not os.path.isfile(path):
         print("%s\tgone (installed per the receipt, missing now)" % name)
         continue
+    if k != "stock":
+        continue  # init never seeds toolkit-only or configurable rules: an edit, the installer reports it
     data = open(path, "rb").read()
     got = hashlib.md5(data).hexdigest()
-    if got == want:
-        continue
-    if b"# mxtk-lint-rule:" in data:
-        continue  # header kept: a hand edit, which install-lint-rules.sh reports
+    if got == want or HEADER.search(data):
+        continue  # unchanged, or header kept: a hand edit, which install-lint-rules.sh reports
     print("%s\theader gone, md5 %s != receipt %s" % (name, got[:8], want[:8]))
 PY
   REVERTED="$(RECEIPT="$RECEIPT" RULES_DIR="$ROOT/.claude/lint-rules" DISABLED="$ROOT/.claude/lint-rules-disabled.txt" "$PY" -c "$_RCHK")"
@@ -198,7 +218,6 @@ PY
     echo "     ${TKR:-<toolkit-root>}/bin/sync-project.sh $ROOT"
     echo "   If sync reports a rule LOCALLY MODIFIED instead of restoring it:"
     echo "     ${TKR:-<toolkit-root>}/bin/sync-project.sh $ROOT --upgrade-lint-rules all"
-    echo "   Removed one on purpose? List it in .claude/lint-rules-disabled.txt and this stops."
     if [ "${LINT_RULES_REVERTED_OK:-}" = "1" ]; then
       echo "   LINT_RULES_REVERTED_OK=1 — linting anyway; counts below are from the files on disk."
       echo ""

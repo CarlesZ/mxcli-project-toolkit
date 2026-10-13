@@ -50,7 +50,9 @@ R="$P/.claude/.mxtk-lint-receipt"
 [ -f "$R" ] && ok "receipt written by install-lint-rules.sh" || bad "installer wrote no receipt" "$out"
 n=$(grep -cv '^#' "$R" 2>/dev/null || echo 0)
 [ "$n" -ge 3 ] && ok "receipt lists $n rules" || bad "receipt lists $n rules"
-grep -q '^conv010_act_microflow_content.star  [0-9a-f]\{32\}$' "$R" && ok "conv010 row: name + md5" || bad "conv010 row missing" "$(cat "$R")"
+grep -q '^conv010_act_microflow_content.star  [0-9a-f]\{32\}  stock$' "$R" && ok "conv010 row: name + md5 + kind stock" || bad "conv010 row missing" "$(cat "$R")"
+grep -q '^ux001_confirm_before_destructive.star  [0-9a-f]\{32\}  toolkit$' "$R" && ok "ux001 row: kind toolkit" || bad "ux001 row kind wrong" "$(cat "$R")"
+grep -q '^conv020_action_user_feedback.star  [0-9a-f]\{32\}  configurable$' "$R" && ok "conv020 row: kind configurable" || bad "conv020 row kind wrong" "$(cat "$R")"
 
 echo "T1 rules as installed: no receipt complaint, normal ratchet"
 mk "$(v CONV010 warning 26)"
@@ -147,25 +149,62 @@ ls "$P9/.claude/lint-rules/$EBK".reseeded-* >/dev/null 2>&1 && ok "found copy ke
 out=$(gate2 "$P9" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && ok "after sync: rc 0 (remedy clears it)" || bad "still blind after sync (rc $rc)" "$out"
 
-echo "T10 a rule removed on purpose (listed in .claude/lint-rules-disabled.txt) is not a re-seed"
+echo "T10 opt-out: a non-stock rule removed by the user's decision, with a reason"
 P10=$(newproj p10); inst2 "$P10" >/dev/null
-printf '# display standard is dd/MM/yyyy\ntxt002_non_iso_date_in_user_text.star\n' > "$P10/.claude/lint-rules-disabled.txt"
-rm -f "$P10/.claude/lint-rules/txt002_non_iso_date_in_user_text.star"
+T2F=txt002_non_iso_date_in_user_text.star
+printf '%s\n' "$T2F" > "$P10/.claude/lint-rules-disabled.txt"     # no reason
+rm -f "$P10/.claude/lint-rules/$T2F"
 out=$(gate2 "$P10" 2>&1); rc=$?
-[ "$rc" -eq 0 ] && ok "lint-gate: rc 0, no alarm before any sync" || bad "deliberate removal read as a re-seed (rc $rc)" "$out"
+case "$out" in *"$T2F has no '# reason: ...' — ignored"*"BLIND — lint rules reverted"*) ok "no reason: line ignored with a warning, removal still BLIND" ;; *) bad "reasonless opt-out honoured (rc $rc)" "$out" ;; esac
 out=$(inst2 "$P10")
-[ ! -f "$P10/.claude/lint-rules/txt002_non_iso_date_in_user_text.star" ] && ok "sync does not restore a disabled rule" || bad "sync restored a disabled rule" "$out"
-grep -q '^txt002_non_iso_date_in_user_text.star ' "$P10/.claude/.mxtk-lint-receipt" && bad "disabled rule's receipt row kept" || ok "disabled rule's receipt row pruned"
+case "$out" in *"$T2F has no '# reason: …' — IGNORED"*) ok "installer warns about the reasonless line" ;; *) bad "no installer warning" "$out" ;; esac
+[ -f "$P10/.claude/lint-rules/$T2F" ] && ok "reasonless opt-out: sync restores the rule" || bad "reasonless opt-out honoured by sync"
+printf '# decided with the user 2026-10-13\n%s  # reason: display standard is dd/MM/yyyy (PROJECT.md decision D-14)\n' "$T2F" > "$P10/.claude/lint-rules-disabled.txt"
+rm -f "$P10/.claude/lint-rules/$T2F"
+out=$(gate2 "$P10" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "with a reason: lint-gate rc 0, no alarm before any sync" || bad "reasoned opt-out read as a re-seed (rc $rc)" "$out"
+out=$(inst2 "$P10")
+[ ! -f "$P10/.claude/lint-rules/$T2F" ] && ok "sync does not restore it" || bad "sync restored a disabled rule" "$out"
+if grep -q "^$T2F " "$P10/.claude/.mxtk-lint-receipt"; then bad "disabled rule's receipt row kept"; else ok "disabled rule's receipt row pruned"; fi
 rm -f "$P10/.claude/lint-rules/txt001_build_words_in_user_text.star"
 out=$(gate2 "$P10" 2>&1); rc=$?
 case "$out" in *txt001_build_words_in_user_text.star*) ok "an unlisted removal is still caught" ;; *) bad "unlisted removal missed" "$out" ;; esac
+inst2 "$P10" >/dev/null
+
+echo "T12 opt-out is refused for a stock-seeded rule"
+C10=conv010_act_microflow_content.star
+printf '%s  # reason: we do not use ACT_ prefixes\n' "$C10" >> "$P10/.claude/lint-rules-disabled.txt"
+rm -f "$P10/.claude/lint-rules/$C10"
+out=$(gate2 "$P10" 2>&1); rc=$?
+case "$out" in *"$C10 is stock-seeded and cannot be disabled — ignored"*"$C10: gone"*"BLIND — lint rules reverted"*) ok "lint-gate: refused, still BLIND" ;; *) bad "stock opt-out honoured by lint-gate (rc $rc)" "$out" ;; esac
+out=$(inst2 "$P10")
+case "$out" in *"$C10 cannot be disabled — IGNORED"*) ok "installer refuses it with a warning" ;; *) bad "no refusal from the installer" "$out" ;; esac
+[ -f "$P10/.claude/lint-rules/$C10" ] && ok "sync restores the stock-seeded rule" || bad "stock-seeded rule left missing"
+
+echo "T13 a headerless toolkit-only rule (ux001) is a local edit: never overwritten, not BLIND"
+P13=$(newproj p13); inst2 "$P13" >/dev/null
+U1="$P13/.claude/lint-rules/ux001_confirm_before_destructive.star"
+strip_header "$U1"; printf '# local tweak\n' >> "$U1"; um=$(portable_md5 "$U1")
+out=$(gate2 "$P13" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "lint-gate: rc 0, no BLIND for a toolkit-only rule" || bad "headerless ux001 called a re-seed (rc $rc)" "$out"
+out=$(inst2 "$P13")
+case "$out" in *"ux001_confirm_before_destructive.star is LOCALLY MODIFIED"*) ok "installer reports LOCALLY MODIFIED" ;; *) bad "not reported as a local edit" "$out" ;; esac
+[ "$(portable_md5 "$U1")" = "$um" ] && ok "ux001 not overwritten" || bad "ux001 overwritten"
+
+echo "T14 a configured, headerless conv020 is not overwritten and not BLIND"
+C2="$P13/.claude/lint-rules/conv020_action_user_feedback.star"
+strip_header "$C2"; printf 'PROJECT_MODULES = "Orders"\n' >> "$C2"; cm=$(portable_md5 "$C2")
+out=$(gate2 "$P13" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "lint-gate: rc 0 for a configured conv020" || bad "configured conv020 called a re-seed (rc $rc)" "$out"
+out=$(inst2 "$P13")
+[ "$(portable_md5 "$C2")" = "$cm" ] && ok "conv020 not overwritten" || bad "conv020 overwritten" "$out"
 
 echo "T11 a rule the toolkit stops shipping: its receipt row is pruned, no permanent 'gone'"
 P11=$(newproj p11); inst2 "$P11" >/dev/null
 rm -f "$P11/.claude/lint-rules/ui001_widget_layout_traps.star"   # project tidies the retired rule away
 FEWER=$(printf '%s\n' $(. "$TK2/bin/lib/install-manifest.sh" >/dev/null 2>&1; echo "$MXTK_LINT_RULES") | grep -v '^ui001_widget_layout_traps.star$' | paste -sd' ' -)
 out=$(inst2 "$P11" "$FEWER")
-grep -q '^ui001_widget_layout_traps.star ' "$P11/.claude/.mxtk-lint-receipt" && bad "row for a dropped rule kept" "$out" || ok "row for the dropped rule pruned"
+if grep -q '^ui001_widget_layout_traps.star ' "$P11/.claude/.mxtk-lint-receipt"; then bad "row for a dropped rule kept" "$out"; else ok "row for the dropped rule pruned"; fi
 case "$out" in *"dropped row"*ui001*) ok "installer says so" ;; *) bad "prune not reported" "$out" ;; esac
 [ ! -f "$P11/.claude/lint-rules/ui001_widget_layout_traps.star" ] && ok "dropped rule not reinstalled" || bad "dropped rule reinstalled"
 out=$(gate2 "$P11" 2>&1); rc=$?

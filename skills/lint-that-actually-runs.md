@@ -191,7 +191,7 @@ telling a human to do it.
   reverted ARCH002/ARCH003 reports a clean pass while inspecting nothing. This is why the install
   receipt lives outside `lint-rules/` and why installing rules **after** `mxcli init` is not a
   style preference.
-  Between syncs, `bin/lint-gate.sh` reads the same receipt before every lint: a rule whose md5
+  Between syncs, `bin/lint-gate.sh` reads the same receipt before every lint: a stock-seeded rule whose md5
   no longer matches and whose header is gone stops the run as `BLIND — lint rules reverted to
   stock` (exit 1, exec.sh logs `LINT BLIND`), not as a rise on the next script (#264).
 - **Registering a file is not enough — register the pointer.** An earlier workstream's scripts sat

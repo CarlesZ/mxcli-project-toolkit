@@ -112,6 +112,22 @@ p = R.preflight([data, ui], { env: {}, probe: probe(R.classifyAdminProbe(E.OKOUT
 out('CRED', { abort: p.abort, calls, lines: p.lines, rows: p.rows.length });
 p = R.preflight([ui], { env: { ALLOW_CONFIG_CREDENTIALS: '1' }, probe: probe(R.classifyAdminProbe(E.OKOUT, 0)), admin: { ...admin, passFromEnv: false } });
 out('CREDOVR', { abort: p.abort, rows: p.rows.length });
+// #302 follow-up: only the TEMPLATE PLACEHOLDER is refused; a project-set password runs
+calls = 0;
+p = R.preflight([data], { env: {}, probe: probe(R.classifyAdminProbe(E.OKOUT, 0)), admin: { ...admin, passFromEnv: false, passSource: 'project.config.js' } });
+out('CRED_PROJ', { abort: p.abort, calls, cred: p.lines.some(l => l.includes('credentials')) });
+p = R.preflight([data], { env: {}, probe: probe(R.classifyAdminProbe(E.OKOUT, 0)), admin: { ...admin, passFromEnv: false, passSource: 'template placeholder' } });
+out('CRED_TPL', { abort: p.abort, line: p.lines[0] || '' });
+// passwordSource: env wins, a project-set password is the project's, the template value is the placeholder
+const ps = typeof C.passwordSource === 'function' ? C.passwordSource : () => 'NOFN';
+out('PS', [
+  ps({ env: { TEST_PASS: 'x' }, creds: { pass: 'Demo2025!' } }),
+  ps({ env: { APP_PASS: 'x' }, creds: { pass: 'Real-Proj-Pass' } }),
+  ps({ env: {}, creds: { pass: 'Real-Proj-Pass' } }),
+  ps({ env: {}, creds: { pass: 'Demo2025!' } }),
+]);
+// the shipped template's DEFAULT_PASS is the placeholder this list names
+out('TPL_LISTED', (C.TEMPLATE_PASSWORDS || []).includes(E.TPL_PASS));
 
 // #279: resetsData tag printed; --protect-state refuses tagged journeys only
 const rs = { id: 'J-reset', resetsData: true, steps: [] };
@@ -214,8 +230,9 @@ sed -e "s/^M2EE_ADMIN_PASS=.*/M2EE_ADMIN_PASS=$MARK/" "$DENV" > "$CRED/.docker/.
 cp "$(dirname "$SUT")/example.journey.json" "$WORK/tests/e2e/" 2>/dev/null \
   || cp "$HERE/../../project-tests/e2e/example.journey.json" "$WORK/tests/e2e/"
 
+TPL_PASS="$(sed -n "s/^const DEFAULT_PASS = '\(.*\)';.*/\1/p" "$CFG" | head -1)"
 OUT="$(cd "$WORK/tests/e2e" && printf '%s' "$JS" | env -u M2EE_ADMIN_PASS -u M2EE_ADMIN_PORT \
-       APP_PORT=1 MARK="$MARK" CRED_ROOT="$CRED" BARE_ROOT="$BARE" node - 2>&1)"
+       APP_PORT=1 MARK="$MARK" TPL_PASS="$TPL_PASS" CRED_ROOT="$CRED" BARE_ROOT="$BARE" node - 2>&1)"
 line() { printf '%s\n' "$OUT" | sed -n "s/^$1 //p"; }
 if printf '%s\n' "$OUT" | grep -qx NOFN; then
   bad "journey-runner.js exports no preflight/orderJourneys — #286 not addressed"
@@ -244,6 +261,12 @@ case "$(line ATOOL)" in *'<redacted>'*) ok "probe text quoting the token is reda
 echo "== T2b: unset TEST_PASS refuses before any login (#278) =="
 case "$(line CRED)" in *'"abort":2,"calls":0'*'SETUP  credentials: TEST_PASS is unset'*demo_user*ALLOW_CONFIG_CREDENTIALS*'"rows":1'*) ok "aborts, names the user and the override, probe never called" ;; *) bad "unset TEST_PASS not refused" "$(line CRED)" ;; esac
 [ "$(line CREDOVR)" = '{"abort":null,"rows":0}' ] && ok "ALLOW_CONFIG_CREDENTIALS=1 proceeds" || bad "override ignored" "$(line CREDOVR)"
+
+echo "== T2b': only the template placeholder is refused (#302 follow-up) =="
+[ "$(line CRED_PROJ)" = '{"abort":null,"calls":1,"cred":false}' ] && ok "password set in project.config.js → no refusal, probe runs" || bad "project-set password refused (breaks every project after sync)" "$(line CRED_PROJ)"
+case "$(line CRED_TPL)" in *'"abort":2'*'placeholder password'*DEFAULT_PASS*) ok "template placeholder → refused, names DEFAULT_PASS as the fix" ;; *) bad "placeholder not refused" "$(line CRED_TPL)" ;; esac
+[ "$(line PS)" = '["env","env","project.config.js","template placeholder"]' ] && ok "passwordSource: env wins; project value is the project's; the template value is the placeholder" || bad "passwordSource wrong" "$(line PS)"
+[ -n "$TPL_PASS" ] && [ "$(line TPL_LISTED)" = true ] && ok "the shipped template's DEFAULT_PASS is the listed placeholder" || bad "template DEFAULT_PASS not in TEMPLATE_PASSWORDS (got '$TPL_PASS')" "$(line TPL_LISTED)"
 
 echo "== T2c: resetsData / --protect-state (#279) =="
 case "$(line RS)" in *'"abort":null'*'SETUP  resetsData: J-reset reset or reload demo data'*'"rows":0,"skip":0'*) ok "tag printed at start, journey still runs without the flag" ;; *) bad "tag not printed / journey refused" "$(line RS)" ;; esac
@@ -333,6 +356,18 @@ FJ="$WORK/tests/e2e/artifacts/journey-findings.json"
 node -e 'const f=require(process.argv[1]); process.exit(f.aborted==="preflight" && f.results.length===1 && f.results[0].verdict==="INVALID" ? 0 : 1)' "$FJ" 2>/dev/null \
   && ok "findings slot overwritten with the aborted run (no stale file reads as this run)" || bad "findings file not written as aborted"
 grep -qF "$MARK" "$FJ" 2>/dev/null && bad "credential written to the findings file" || ok "credential not in the findings file"
+# The aborted findings file through the real normalizer: a report, marked aborted, no results.
+if [ -f "$E2E/report-normalize.js" ]; then
+  cp "$E2E/report-normalize.js" "$WORK/tests/e2e/"
+  ( cd "$WORK/tests/e2e" && APP_PORT=1 node report-normalize.js --out docs/report.json ) > "$WORK/rn.out" 2>&1
+  node -e 'const r=require(process.argv[1]); const j=r.checks.filter(c=>c.instrument==="journey-runner");
+    const i=r.instruments.find(x=>x.name==="journey-runner");
+    process.exit(r.aborted==="preflight" && j.length>0 && j.every(c=>c.notAResult===true) && i.verdict==="fault" ? 0 : 1)' "$WORK/docs/report.json" 2>/dev/null \
+    && ok "report-normalize marks the aborted run: report.aborted, rows flagged notAResult, instrument fault" \
+    || bad "aborted run normalised as results" "$(tail -3 "$WORK/rn.out"; node -e 'const r=require(process.argv[1]);console.log(r.aborted)' "$WORK/docs/report.json" 2>&1)"
+else
+  echo "  skip — report-normalize.js not beside $SUT"
+fi
 
 echo "== T10: real runner — missing env var, every journey affected → one SETUP line, no probe =="
 rm -f "$WORK/argv"
@@ -354,6 +389,36 @@ E2EOUT="$(cd "$WORK/tests/e2e" && env -u TEST_PASS -u APP_PASS -u ALLOW_CONFIG_C
 [ "$(printf '%s\n' "$E2EOUT" | grep -c 'SETUP  credentials: TEST_PASS is unset')" -eq 1 ] && ok "one SETUP credentials line" || bad "no SETUP credentials line" "$E2EOUT"
 printf '%s\n' "$E2EOUT" | grep -qiE 'login as|FAULTED|launch' && bad "a login was attempted" "$E2EOUT" || ok "no login attempted (browser never opened)"
 [ -f "$WORK/argv" ] && bad "admin probe ran" || ok "no admin probe either"
+
+echo "== T11b: real runner — TEST_PASS unset but DEFAULT_PASS set by the project → not refused =="
+rm -f "$WORK/argv"
+PROJ_CFG="$WORK/tests/e2e/project.config.js"; cp "$PROJ_CFG" "$WORK/cfg.bak"
+sed -e "s/^const DEFAULT_PASS = '.*';/const DEFAULT_PASS = 'fixture-project-pass';/" "$WORK/cfg.bak" > "$PROJ_CFG"
+E2EOUT="$(cd "$WORK/tests/e2e" && env -u TEST_PASS -u APP_PASS -u ALLOW_CONFIG_CREDENTIALS -u M2EE_ADMIN_PORT APP_PORT=1 M2EE_ADMIN_PASS="$MARK" \
+          MXCLI="$WORK/stub/mxcli" STUB_ARGV="$WORK/argv" node journey-runner.js "$J/J-one.journey.json" 2>&1)"; RC=$?
+grep -q 'SETUP  credentials' <<< "$E2EOUT" && bad "project-set password refused" "$E2EOUT" || ok "no credentials refusal"
+[ -f "$WORK/argv" ] && ok "went on to the admin probe (the stub answers 403 → exit $RC)" || bad "probe never ran" "$E2EOUT"
+cp "$WORK/cfg.bak" "$PROJ_CFG"
+
+echo "== T11c: real runner — SIGINT after preflight writes the findings slot as aborted =="
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$OKOUT"\n' > "$WORK/stub/mxcli-ok"
+chmod +x "$WORK/stub/mxcli-ok"
+# Hold the run where a real one waits on the browser: launchBrowser never resolves, and a timer
+# keeps the event loop alive the way a live browser process does.
+printf "const H = require('./helpers.js'); H.launchBrowser = () => new Promise(() => { setInterval(() => {}, 1 << 30); });\n" > "$WORK/tests/e2e/hold-browser.js"
+FJ2="$WORK/tests/e2e/artifacts/journey-findings.json"
+mkdir -p "$WORK/tests/e2e/artifacts"
+printf '{"capturedAt":"STALE-PREVIOUS-RUN","results":[]}' > "$FJ2"
+LOG="$WORK/sigint.log"
+( cd "$WORK/tests/e2e" && exec env -u M2EE_ADMIN_PORT APP_PORT=1 TEST_PASS=fixture-pass M2EE_ADMIN_PASS="$MARK" MXCLI="$WORK/stub/mxcli-ok" \
+    node -r ./hold-browser.js journey-runner.js "$J/J-one.journey.json" > "$LOG" 2>&1 ) &
+PID=$!
+for _ in $(seq 1 100); do grep -q 'SETUP  admin: OK' "$LOG" 2>/dev/null && break; sleep 0.1; done
+sleep 0.5; kill -INT "$PID" 2>/dev/null; wait "$PID"; RC=$?
+[ "$RC" -eq 2 ] && ok "SIGINT → exit 2" || bad "rc=$RC" "$(tail -5 "$LOG")"
+node -e 'const f=require(process.argv[1]); process.exit(f.aborted==="signal SIGINT" && f.capturedAt!=="STALE-PREVIOUS-RUN" ? 0 : 1)' "$FJ2" 2>/dev/null \
+  && ok "findings slot overwritten as aborted by SIGINT (no stale previous run left)" || bad "previous run's findings left in the slot" "$(head -c 200 "$FJ2")"
+grep -q 'ABORTED by SIGINT' "$LOG" && ok "says ABORTED by SIGINT" || bad "no abort line" "$(tail -5 "$LOG")"
 
 echo "== T12: real runner — --protect-state with every journey tagged → refused, no login =="
 rm -f "$WORK/argv"

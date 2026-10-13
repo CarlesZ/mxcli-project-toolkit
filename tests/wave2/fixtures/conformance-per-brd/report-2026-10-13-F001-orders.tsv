@@ -1,0 +1,3 @@
+module	pointer	stored	observed	verdict	command
+Orders	F001-orders:`/domainEntities/0`	built	PRESENT	OK	DESCRIBE ENTITY Orders.Order
+Orders	F001-orders:`/microflows/0`	built	PRESENT	OK	DESCRIBE MICROFLOW Orders.ACT_Order_Save

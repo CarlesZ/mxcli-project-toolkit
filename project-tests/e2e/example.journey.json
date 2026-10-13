@@ -20,63 +20,89 @@
     "so a single good historical row carries the assertion. A data block that carries",
     "assocMustBeSet with no scope must be reported [WEAK EVIDENCE], never silently accepted.",
     "",
-    "Names below are placeholders. Replace <Module>/<Entity>/<Page> with your own."
+    "Names below are placeholders. Replace <Module>/<Entity>/<Widget>/<Microflow> with your own.",
+    "Every key here is one journey-runner.js reads (examples/validate-journeys.js reports 0",
+    "problems on this file). The field-by-field tour is skills/journey-examples.md.",
+    "Add \"persona\": \"<TEST_USER>\" when the journey proves one role's access path — a run signed in as anyone else records the journey INVALID and does not walk it."
   ],
-
-  "name": "Example",
-  "role": "<the persona who performs this journey>",
-  "goal": "One sentence in the user's language. Not 'the microflow succeeds'.",
-
+  "id": "J-EXAMPLE-01",
+  "title": "Example — open the overview, submit the form, see the row on its parent",
+  "requirement": [],
   "seeds": [
     {
       "name": "parentKey",
-      "$comment": "Referenced later as {{parentKey}}. Seeds are the only values a step may assume exist.",
-      "value": "EXAMPLE-0001"
+      "$comment": "Referenced later as {{parentKey}}. Seeds are the only values a step may assume exist; they are read from the live DB, never hardcoded. Every OQL column is aliased.",
+      "sql": "SELECT p.<KeyAttribute> AS k FROM <Module>.<Parent> AS p LIMIT 1"
     }
   ],
-
   "steps": [
     {
       "name": "Open the overview and see the seeded row",
-      "page": "<Module>.<Page_Overview>",
       "$comment": "rung 1 landing guard + rung 2 what the screen says. Without the guard an assertion grades the PREVIOUS page.",
-      "expectPage": "<Module>.<Page_Overview>",
-      "expectText": ["{{parentKey}}"]
+      "actions": [
+        {
+          "do": "nav",
+          "item": "<menu item title>"
+        }
+      ],
+      "ui": {
+        "ready": ".mx-name-<overviewGrid>",
+        "textPresent": [
+          "{{parentKey}}"
+        ]
+      }
     },
     {
       "name": "Submit the form",
-      "click": "<button label or selector>",
-      "$comment": "rung 3 ordered spans, rung 4 data effects. An empty span list is a fault, never a pass — [].every() is true.",
-      "spans": [
-        { "mf": "<Module>.<Microflow>", "status": "OK" }
+      "$comment": "rung 3 ordered spans, rung 4 data effects. A capture with zero spans is a fault, never a pass — [].every() is true. A step whose only proof is that something did NOT run declares mustNotFire alone (plus spans.liveness); see journey-examples.md.",
+      "actions": [
+        {
+          "do": "click",
+          "widget": "<btnSubmit>"
+        }
       ],
+      "ui": {
+        "ready": ".mx-name-<detailView>"
+      },
+      "spans": {
+        "ordered": [
+          "<Module>.<Microflow>"
+        ],
+        "mustNotFire": [
+          "<Microflow that must not run, e.g. a delete>"
+        ]
+      },
       "data": {
         "creates": "<Module>.<Entity>",
         "delta": 1,
-        "scope": { "newRowsBy": "id" },
+        "scope": {
+          "newRowsBy": "id"
+        },
         "assocMustBeSet": [
           {
             "entity": "<Module>.<Entity>",
             "assoc": "<Module>.<Entity>_<Parent>",
             "target": "<Module>.<Parent>",
-            "mustPointAt": { "attr": "<KeyAttribute>", "value": "{{parentKey}}" }
+            "mustPointAt": {
+              "attr": "<KeyAttribute>",
+              "value": "{{parentKey}}"
+            }
           }
         ],
         "oql": [
           {
             "label": "the new row exists and is not a draft",
-            "sql": "SELECT COUNT(*) AS n FROM <module>$<entity> WHERE status <> 'Draft'",
+            "sql": "SELECT COUNT(e.ID) AS n FROM <Module>.<Entity> AS e WHERE e.<Status> != 'Draft'",
             "atLeast": 1
           }
         ]
       }
     }
   ],
-
   "outcome": {
     "$comment": "rung 5. The thing the user actually came for, asserted once, in their terms.",
     "label": "the parent shows the submitted row",
-    "sql": "SELECT COUNT(*) AS n FROM <module>$<entity> e JOIN <module>$<parent> p ON e.parent_id = p.id WHERE p.<keyattribute> = '{{parentKey}}'",
+    "sql": "SELECT COUNT(e.ID) AS n FROM <Module>.<Entity> AS e WHERE e/<Module>.<Entity>_<Parent>/<Module>.<Parent>/<KeyAttribute> = '{{parentKey}}'",
     "atLeast": 1
   }
 }

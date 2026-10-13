@@ -113,6 +113,36 @@ async function capture(t0, { min = 1, retries = 8, waitMs = 1500, until = null }
   return out;
 }
 
+/**
+ * Is tracing alive right now? The reference a NEGATIVE-ONLY span claim needs (#150).
+ *
+ * A step whose whole proof is "X did not run" (Cancel on a reset confirmation) can rightly
+ * capture zero spans — and zero spans is also what Jaeger down or OTel off looks like. So
+ * an empty step capture proves nothing until something shows the pipeline was delivering:
+ *   - `name` given (the step's `spans.liveness`): that microflow or operation is in `spans`
+ *     — a span the step is known to produce, e.g. the page's data-source retrieve;
+ *   - otherwise: Jaeger answers, and the service emitted at least one span since `since`
+ *     (the journey's start, so the navigation into the step counts).
+ * Returns { ok, detail }. Never throws: an unreachable Jaeger is `ok: false`.
+ */
+async function liveness(since, { name = null, spans = [] } = {}) {
+  if (name) {
+    const hit = spans.some(s => s.tags['mx.microflow.name'] === name || s.op === name);
+    return { ok: hit, detail: hit
+      ? `liveness span ${name} captured in the step window`
+      : `declared liveness span ${name} not captured in the step window (${spans.length} spans)` };
+  }
+  let data;
+  try { ({ data } = await fetchSince(since)); }
+  catch (e) { return { ok: false, detail: `Jaeger unreachable at ${JAEGER} (${e.code || e.message})` }; }
+  let n = 0;
+  const sinceUs = since * 1000;
+  for (const t of data) for (const s of t.spans) if (s.startTime >= sinceUs) n++;
+  return { ok: n > 0, detail: n > 0
+    ? `tracing live: ${n} span(s) from ${SVC} since the journey started`
+    : `Jaeger answered, but ${SVC} emitted no span since the journey started — OTel off or exporter down` };
+}
+
 // --- shape helpers ---------------------------------------------------------
 
 const microflowSpans = spans => spans.filter(s => s.tags['mx.microflow.name']);
@@ -235,7 +265,7 @@ function assertSequence(spans, names, reporter, label = null) {
 }
 
 module.exports = {
-  capture, guard,
+  capture, guard, liveness,
   microflowSpans, activitySpans, microflowNames, errorSpans, describeError,
   assertFired, assertNoErrors, assertNotFired, assertLoopCount, assertSequence,
   JAEGER, SVC,

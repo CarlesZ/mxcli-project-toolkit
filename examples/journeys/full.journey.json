@@ -39,8 +39,8 @@
       "name": "supplierCode",
       "sql": "SELECT SupplierCode AS c FROM Procurement.Supplier WHERE Active = true LIMIT 1",
       "_note": [
-        "Every OQL column must be aliased — helpers.oqlScalar reads the first cell of the first",
-        "row, and mxcli rejects an unaliased SELECT. A seed that returns null or an empty",
+        "Every OQL column must be aliased — helpers.oqlScalar reads the first SELECT alias of the",
+        "first row, and mxcli rejects an unaliased SELECT. A seed that returns null or an empty",
         "string aborts the journey as INVALID (instrument absent), never FAIL (feature broken)."
       ]
     },

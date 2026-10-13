@@ -52,6 +52,8 @@ Tag **[fixed after 0.26.0]**: fixed on mxcli main after 0.26.0 (`nightly-80-gbd4
 | Custom widgets | installed from the source's `.mpk` files | before Step 2 |
 | Environment configuration: certificates, DB credentials, per-environment constants, scheduled events on/off, deployment settings | outside the `.mpr` entirely | its own per-environment checklist, owned by whoever runs the environment |
 
+**CRLF inside string literals is load-bearing — never normalise a `describe` file.** Studio Pro stores annotation text with `\r\n` and `describe` emits it verbatim inside the `'…'` literal. A helper that reads the file in text mode (Python universal newlines, `dos2unix`, an editor on save) silently writes `\n`; `check` then refuses the flow with `this change cannot be spliced into the stored flow: the free annotations change … [MDL-V1-REBUILD]` (mxcli v0.26.0, 2026-10-12). Read and write byte-for-byte (`newline=''`, `sed -b`) and treat a `.mdl` as binary in any step that touches it.
+
 ## Step 2 — Run the extractor
 
 Bound: `fidelity-ledger.tsv` exists and its header states the denominator (every describable

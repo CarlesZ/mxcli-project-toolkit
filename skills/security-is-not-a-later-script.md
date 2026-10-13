@@ -101,17 +101,6 @@ done**, whatever the brief says.
 5. Does the built model match the module brief's security table — and if not deliberately,
    is the deviation written down?
 
-## Service access — a published service between Mendix apps
-
-- Grant a **machine** user role only on a published OData/REST service. Measure it: 200 with the
-  machine account, 401 with no or bad credentials, 404 for an authenticated human role (the role
-  has no access to the service). A 200 for a human role means the API is open to every login.
-- External entities need read grants to a module role of the consumer module that holds them.
-- A module role granted on **another** module's entity →
-  `CE0007 "Please re-select module roles."` — grant that module's own role.
-
-Patterns and evidence: `mendix-service-seam.md` (P2, external-entity limits).
-
 ## On `create`/`delete` and lint rule CONV006
 
 CONV006 discourages granting create/delete in access rules. It targets **persistent**

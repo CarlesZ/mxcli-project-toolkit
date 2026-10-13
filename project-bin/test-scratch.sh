@@ -172,31 +172,36 @@ holder_live() {
 # that is not its own. WHY (independent review of #304): the old takeover here moved the lock
 # aside with `mv -f` — check-then-act — so two runs that judged the same dead holder could both
 # end up holding it. A takeover file left by a holder killed mid-takeover is stale once its pid is
-# dead or it is older than 10 s (an EMPTY one once it is a minute old); it is moved aside, and put
+# dead or it is older than 10 s (an EMPTY one once it is over a minute old: find -mmin +1); it is moved aside, and put
 # back with `ln` (fails if a new one exists — never clobbers) if what was moved is not the one
 # judged stale. The machine-wide port lock uses the same protocol.
 take_over() {  # $1 = lock file, $2 = the stale lock line. 0 iff it was removed (or already gone)
-  local _tk="$1.takeover" _t _tpid _tsince _tstale _now
-  if ! ( set -o noclobber; printf '%s %s\n' "$$" "$(date +%s)" > "$_tk" ) 2>/dev/null; then
+  local _tk="$1.takeover" _t _tpid _tsince _tstale _now _mine
+  _mine="$$ $(date +%s)"
+  if ! ( set -o noclobber; printf '%s\n' "$_mine" > "$_tk" ) 2>/dev/null; then
     _t="$(head -1 "$_tk" 2>/dev/null || true)"; _tpid="${_t%% *}"; _tsince="${_t#* }"
     case "$_tsince" in ''|*[!0-9]*) _tsince=0 ;; esac
     _tstale=0
     if [ -n "$_t" ]; then
       { ! kill -0 "$_tpid" 2>/dev/null || [ $(( $(date +%s) - _tsince )) -gt 10 ]; } && _tstale=1
-    elif [ -n "$(find "$_tk" -mmin +0 2>/dev/null)" ]; then
-      _tstale=1   # empty for a minute: its creator died between the create and the write
+    elif [ -n "$(find "$_tk" -mmin +1 2>/dev/null)" ]; then
+      # -mmin +1, not +0: GNU find counts a 0-2 s old file as "+0" (and BSD rounds up), so +0 made a
+      # FRESH empty takeover file — its creator between the create and the write — stale at once.
+      _tstale=1   # empty for over a minute: its creator died between the create and the write
     fi
     if [ "$_tstale" = 1 ]; then
       if mv "$_tk" "$_tk.stale.$$" 2>/dev/null; then
-        [ "$(head -1 "$_tk.stale.$$" 2>/dev/null || true)" = "$_t" ] || ln "$_tk.stale.$$" "$_tk" 2>/dev/null || true
-        rm -f "$_tk.stale.$$"
+        # Remove what was moved ONLY if it is what was judged stale; anything else is someone's
+        # live takeover file: put it back (ln never clobbers), and if that fails leave it be.
+        if [ "$(head -1 "$_tk.stale.$$" 2>/dev/null || true)" = "$_t" ]; then rm -f "$_tk.stale.$$"
+        else ln "$_tk.stale.$$" "$_tk" 2>/dev/null && rm -f "$_tk.stale.$$"; fi
       fi
     fi
     return 1
   fi
   _now="$(head -1 "$1" 2>/dev/null || true)"
   [ "$_now" = "$2" ] && rm -f "$1"
-  rm -f "$_tk"
+  [ "$(head -1 "$_tk" 2>/dev/null || true)" = "$_mine" ] && rm -f "$_tk"   # only our own takeover file
   return 0
 }
 take_lock() {  # $1 = lock file, $2 = what it guards (for messages). 0 = taken, 1 = live holder

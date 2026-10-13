@@ -119,6 +119,18 @@ printf '999999 1 test-scratch.sh\n' > "$L"; printf '999998 1\n' > "$L.takeover"
 OUT="$( L="$L" bash -c '. "$1"; holder_live() { return 1; }; take_lock "$L" "race lock"; echo "rc=$?"' _ "$H" 2>&1 )"
 has "taken after clearing the dead marker" "$OUT" "rc=0"
 [ "$(cut -d' ' -f1 "$L" 2>/dev/null)" != 999999 ] && ok "the stale line is gone" || bad "stale line still there"
+echo "-- #324 review: a FRESH empty takeover file (its creator between create and write) is not stale"
+# find -mmin +0 counted a 0-2 s old file as old (GNU; BSD rounds up), so a takeover in progress was
+# treated as dead and two contenders could both take over. +1 = empty for over a minute.
+printf '999999 1 test-scratch.sh\n' > "$L"; : > "$L.takeover"
+OUT="$( L="$L" bash -c '. "$1"; holder_live() { return 1; }; take_lock "$L" "race lock"; echo "rc=$?"' _ "$H" 2>&1 )"
+has "not taken while a fresh empty takeover file exists" "$OUT" "rc=1"
+[ -e "$L.takeover" ] && [ ! -s "$L.takeover" ] && ok "the fresh takeover file was left alone" || bad "the fresh takeover file was removed or replaced"
+[ "$(cut -d' ' -f1 "$L" 2>/dev/null)" = 999999 ] && ok "the lock was not touched" || bad "the lock was taken over under a live takeover"
+touch -t 200001010000 "$L.takeover"
+OUT="$( L="$L" bash -c '. "$1"; holder_live() { return 1; }; take_lock "$L" "race lock"; echo "rc=$?"' _ "$H" 2>&1 )"
+has "an empty takeover file over a minute old is stale → taken" "$OUT" "rc=0"
+[ -e "$L.takeover" ] && bad "takeover file left behind" || ok "and no takeover file is left behind"
 kill -KILL "$LIVE" 2>/dev/null; wait "$LIVE" 2>/dev/null
 
 echo "-- #244: an after-startup left on an mxcli test injection is refused before anything is copied"

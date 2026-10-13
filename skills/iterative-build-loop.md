@@ -322,9 +322,9 @@ Every MDL script, and every one-off model patch (`--patch`), is applied with `./
 A raw `./mxcli exec` writes no BUILD-LOG row, takes no snapshot and runs no gate, so the change
 shows as "not recorded" to everything that reads the build log (status, done-drift, proof views).
 
-When a guard refuses, the script's change is not in the model. Most refusals also write a
+When a guard refuses, the script's change is not in the model, unless exec.sh says the write is kept (LINT ROSE/BLIND, ⚠️ PARTIAL) — then do not re-apply it. Most refusals also write a
 BUILD-LOG row (uncommitted model, `--commit-first`, a failed pre-exec check, a gate that could
-not run, PRE-EXISTING errors, a NEW gate error); the Studio Pro and lock refusals only print.
+not run, PRE-EXISTING errors, a NEW gate error); the plain Studio Pro refusal, the lock refusal and argument errors only print.
 Your move is one of three — **commit, wait, or stop and report** — never an override:
 
 | Refusal | Do this |
@@ -349,12 +349,12 @@ is the commit you make before the next exec (the pre-exec sequence below, step 2
 message that starts `MCP:` and names what changed.
 
 **Check before closing a phase:** every model-changing commit since the phase began is covered
-by one of three things — an `✅`/`⚠️ applied` BUILD-LOG row for the script it commits, a
+by one of three things — an `✅`/`⚠️ applied`/`⚠️ PARTIAL` BUILD-LOG row for the script it commits, a
 `--commit-first` commit (message `model: commit pending model changes before exec.sh …`), or an
 `MCP:` commit. Blocked and failed rows have no commit, so this is a coverage check, not an
 equality between counts. Done when all N model commits are covered, N of N. A commit covered by
 none of the three is a raw `mxcli exec` — re-run that script through exec.sh, or record why it
-cannot be.
+cannot be. After a `⚠️ PARTIAL` row, finish the script's remaining statements; never re-run the whole script.
 
 ### The gate checks the saved file — save, then check
 

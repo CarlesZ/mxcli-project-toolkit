@@ -255,7 +255,11 @@ def analyse(kb):
     # and the reverse is not: a merge cannot invent an item it never loaded.
     xcounts, xstate, xfiles = {}, ABSENT, []
     if os.path.isdir(extracted):
-        xfiles = ls(extracted, r'.*\.json$')
+        # The validator's score file may sit here (#151: a field extractor wrote
+        # extracted/extraction-quality-<name>.json). It is a report about the extraction, not
+        # an item array of it — counted as one, it read as "would not parse" and weakened the
+        # second opinion on every zero. It is read by the quality section below instead.
+        xfiles = [f for f in ls(extracted, r'.*\.json$') if not f.startswith('extraction-quality')]
         broke = []
         for f in xfiles:
             st, items, det = read_json_list(os.path.join(extracted, f))
@@ -438,6 +442,133 @@ def analyse(kb):
     a['manifest'] = manifest if man_state in (OK, EMPTY) else []
     a['manifestState'] = man_state
 
+    # -- extraction quality: the validator's own score file (#151) --------------------------------
+    #
+    # `extractor-quality-loop.md` makes `extraction-quality.json` the proof that an extraction
+    # reached its >=95% gate. This page still scores nothing: every figure below is the
+    # validator's, read and printed — dimension keys come FROM THE FILE (a non-code source
+    # declares its own), never from a fixed list. What this page adds is only what the skill
+    # states as a rule and the file itself can show broken:
+    #   - `selfGraded` with `passed: true` is a FAULT — "a self-graded report cannot pass";
+    #   - `passed: true` with `overallScore` under `threshold` is a contradiction, a FAULT;
+    #   - a dimension at 0 found / 0 expected that `confirmedZeros` does not name is a FAULT
+    #     (the Suspicious-Zero Gate: 0/0 scores 100 by arithmetic);
+    #   - a file that will not parse is a FAULT, never an absent score.
+    # Locations: the skill's `analysis/<Project>/extraction-quality.json` (the KB's parent),
+    # its `extracted/` (where a field extractor wrote `extraction-quality-<name>.json`), and the
+    # same two inside the KB. Every `extraction-quality*.json` found is one section.
+    qdirs, qfiles = [], []
+    for d in (os.path.dirname(kb), os.path.join(os.path.dirname(kb), 'extracted'),
+              kb, extracted):
+        rd = os.path.realpath(d)
+        if rd in qdirs or not os.path.isdir(d):
+            continue
+        qdirs.append(rd)
+        qfiles += [os.path.join(d, f) for f in ls(d, r'extraction-quality.*\.json$')]
+    a['quality'] = []
+    QLOC = ('analysis/<src>/extraction-quality*.json, analysis/<src>/extracted/, and the same '
+            'two inside the knowledge base')
+
+    def num(v):
+        return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+    for qf in qfiles:
+        rel = os.path.relpath(qf, project)
+        q = {'file': rel, 'rows': [], 'faults': [], 'notes': []}
+        try:
+            with open(qf) as fh:
+                data = json.load(fh)
+        except Exception as e:
+            data, q['verdict'] = None, ('fault', f'{rel} is present but unreadable — '
+                                                 f'{type(e).__name__}: {e}. Not a missing score: '
+                                                 f'a broken one.')
+        if data is not None and not isinstance(data, dict):
+            data, q['verdict'] = None, ('fault', f'{rel} is valid JSON but a '
+                                                 f'{type(data).__name__}, not the report object '
+                                                 f'extractor-quality-loop.md defines.')
+        if data is not None:
+            thr = num(data.get('threshold'))
+            if thr is None:
+                thr = 95
+                q['notes'].append('no `threshold` in the file — compared against the skill\'s 95.')
+            overall, passed, sg = num(data.get('overallScore')), data.get('passed'), data.get('selfGraded')
+            cz = data.get('confirmedZeros') if isinstance(data.get('confirmedZeros'), list) else []
+            cz_names = {z.get('dimension') for z in cz if isinstance(z, dict)}
+            dims = data.get('dimensions')
+            if not isinstance(dims, dict) or not dims:
+                q['faults'].append('no `dimensions` object — there is nothing the overall score '
+                                   'is an average of.')
+                dims = {}
+            for dk, dv in dims.items():
+                if not isinstance(dv, dict):
+                    q['rows'].append({'dimension': dk, 'score': None, 'found': None,
+                                      'expected': None, 'gaps': [],
+                                      'flag': 'not an object — unreadable'})
+                    q['faults'].append(f'dimension {dk} is not an object.')
+                    continue
+                sc, fo, ex = num(dv.get('score')), num(dv.get('found')), num(dv.get('expected'))
+                gaps = dv.get('gaps') if isinstance(dv.get('gaps'), list) else []
+                flag = ''
+                if fo == 0 and ex == 0 and dk not in cz_names:
+                    flag = 'unconfirmed zero'
+                    q['faults'].append(f'dimension {dk} is 0 found / 0 expected and is not in '
+                                       f'confirmedZeros — the Suspicious-Zero Gate needs two '
+                                       f'methods agreeing before a zero may score.')
+                elif sc is None:
+                    flag = 'no score'
+                elif sc < thr:
+                    flag = f'below {thr:g}'
+                q['rows'].append({'dimension': dk, 'score': sc, 'found': fo, 'expected': ex,
+                                  'gaps': [str(g) for g in gaps], 'flag': flag})
+            if sg and passed is True:
+                q['faults'].append('self-graded pass: `selfGraded` is set and `passed` is true. '
+                                   'extractor-quality-loop.md: a self-graded report cannot pass '
+                                   'the 95% gate until a second mechanism has scored it.')
+            if passed is True and overall is not None and overall < thr:
+                q['faults'].append(f'`passed` is true but overallScore {overall:g} is under the '
+                                   f'file\'s own threshold {thr:g}.')
+            q.update({'overallScore': overall, 'threshold': thr, 'passed': passed,
+                      'selfGraded': sg if sg else False, 'confirmedZeros': cz,
+                      'scoredAt': data.get('scoredAt'), 'project': data.get('project')})
+            if q['faults']:
+                q['verdict'] = ('fault', ' '.join(q['faults']))
+            elif sg:
+                q['verdict'] = ('manual', 'self-graded and not passed — an inventory awaiting a '
+                                          'second mechanism (a different parser, a runtime probe, '
+                                          'an SME pass) before the gate can be judged.')
+            elif passed is not True:
+                q['verdict'] = ('manual', f'the file records the extraction as not passed '
+                                          f'(overall {"?" if overall is None else format(overall, "g")} '
+                                          f'against {thr:g}) — the quality loop is still running; '
+                                          f'continuing it or waiving the gate is a human call.')
+            else:
+                q['verdict'] = ('pass', f'passed: overall {"?" if overall is None else format(overall, "g")} '
+                                        f'against threshold {thr:g}, {len(q["rows"])} dimension(s), '
+                                        f'{len(cz)} confirmed zero(s) — the validator\'s figures, '
+                                        f'read, not re-scored.')
+        a['quality'].append(q)
+        a['sections']['quality:' + rel] = {
+            'key': 'quality:' + rel, 'label': 'Extraction quality — ' + os.path.basename(qf),
+            'family': 'quality', 'file': rel, 'state': OK if data is not None else BROKEN,
+            'count': len(q['rows']), 'items': [], 'second': None, 'third': None,
+            'expect': E, 'verdict': q['verdict']}
+    if not qfiles:
+        if prov == 'documents':
+            v = ('skipped', 'no extraction-quality*.json, and none is owed: a documents knowledge '
+                            'base ran no extractor, so there is nothing for a validator to score.')
+        elif prov in ('code-extracted', 'mixed'):
+            v = ('fault', f'an extractor produced this knowledge base ({prov}) but no '
+                          f'extraction-quality*.json was found ({QLOC}). extractor-quality-loop.md '
+                          f'makes that file the proof of the >=95% gate, and migration-pipeline.md '
+                          f'does not start BRDs before it — an unmeasured extraction, not a pass.')
+        else:
+            v = ('manual', 'provenance undetermined — whether an extractor ran, and so whether a '
+                           'score file is owed, needs a human.')
+        a['sections']['extractionQuality'] = {
+            'key': 'extractionQuality', 'label': 'Extraction quality', 'family': 'quality',
+            'file': '', 'state': ABSENT, 'count': 0, 'items': [], 'second': None, 'third': None,
+            'expect': E, 'verdict': v}
+
     # -- BRDs: Stage 2's artifact, shown here only as a forward link -----------------------------
     a['brdCount'] = len(ls(os.path.join(kb, 'brd'), r'.*\.brd\.json$'))
 
@@ -516,6 +647,9 @@ result = {
         'path': a['path'], 'provenance': a['provenance'], 'brdCount': a['brdCount'],
         'verdicts': a['tally'], 'discrepancies': a['faults'], 'dimensions': a['dims'],
         'sections': {k: s['verdict'][0] for k, s in a['sections'].items()},
+        'extractionQuality': [dict({k: q.get(k) for k in (
+            'file', 'overallScore', 'threshold', 'passed', 'selfGraded', 'confirmedZeros',
+            'rows', 'faults', 'notes')}, verdict=q['verdict'][0]) for q in a['quality']],
     } for a in analysed],
 }
 
@@ -632,10 +766,10 @@ for a in analysed:
                if d['documentsExpected'] is not None else
                'No discovery-manifest.json, so there is no expected count to divide by — the '
                'number on the left is a count, not a coverage.', doc_na)
-        + card('Overall score', '<span class="qv r-unranked">not computed</span>',
-               'Deliberately. The six scored dimensions and the &ge;95% threshold are '
-               '<code>skills/extractor-quality-loop.md</code>&rsquo;s judgement; a composite '
-               'invented here would be a number with no skill behind it.')
+        + card('Overall score', '<span class="qv r-unranked">not computed here</span>',
+               'Deliberately. The scored dimensions and the &ge;95% threshold are '
+               '<code>skills/extractor-quality-loop.md</code>&rsquo;s; the validator&rsquo;s own '
+               'score, when it wrote one, is printed under <em>Extraction quality</em> below.')
         + '</div>')
 
     mod_table = ('<div class="scroll"><table><thead><tr><th>Module</th><th>Items</th></tr></thead>'
@@ -656,6 +790,52 @@ for a in analysed:
     t = a['tally']
 
     code_blocks = ''.join(section_block(a['sections'][k]) for k, _f, _x, _l, _e in CODE_SECTIONS)
+
+    def fmt_num(v):
+        return '<span class="unknown">not stated</span>' if v is None else esc(format(v, 'g'))
+
+    for q in a['quality']:
+        s = a['sections']['quality:' + q['file']]
+        if 'overallScore' not in q:
+            continue                      # broken file: the verdict text is the content
+        rows = ''.join(
+            '<tr>'
+            f'<td class="mono">{esc(r["dimension"])}</td>'
+            f'<td class="num">{fmt_num(r["score"])}</td>'
+            f'<td class="num">{fmt_num(r["found"])} / {fmt_num(r["expected"])}</td>'
+            f'<td>{"; ".join(esc(g) for g in r["gaps"][:12]) or "—"}'
+            + (f' <span class="note">(+{len(r["gaps"]) - 12} more)</span>' if len(r["gaps"]) > 12 else '')
+            + '</td>'
+            + (f'<td class="why-fault">{esc(r["flag"])}</td>' if r['flag'] == 'unconfirmed zero' or 'unreadable' in r['flag']
+               else f'<td>{esc(r["flag"])}</td>')
+            + '</tr>' for r in q['rows'])
+        sg = q['selfGraded']
+        facts = (
+            f'<p class="why">Overall <strong>{fmt_num(q["overallScore"])}</strong> against threshold '
+            f'<strong>{esc(format(q["threshold"], "g"))}</strong> &middot; passed: '
+            f'<strong>{esc(q["passed"])}</strong> &middot; self-graded: '
+            + ('<strong class="unknown">' + esc(sg if sg is not True else 'yes') + '</strong>' if sg else 'no')
+            + (f' &middot; scored {esc(q["scoredAt"])}' if q.get('scoredAt') else '') + '</p>')
+        cz = ''.join(f'<li><span class="mono">{esc(z.get("dimension"))}</span> — '
+                     f'{esc(", ".join(map(str, z.get("methods") or [])) or "no methods named")}'
+                     f'{(" — " + esc(z.get("note"))) if z.get("note") else ""}</li>'
+                     for z in q['confirmedZeros'] if isinstance(z, dict))
+        s['body'] = (facts
+                     + ''.join(f'<p class="note">{esc(n)}</p>' for n in q['notes'])
+                     + '<div class="scroll"><table><thead><tr><th>Dimension</th><th>Score</th>'
+                       '<th>Found / expected</th><th>Gaps</th><th>Flag</th></tr></thead><tbody>'
+                     + (rows or '<tr><td colspan="5" class="unknown">no dimensions in the file</td></tr>')
+                     + '</tbody></table></div>'
+                     + ('<p class="note">Confirmed zeros (two methods agreed):</p><ul class="oq">'
+                        + cz + '</ul>' if cz else
+                        '<p class="note">No confirmed zeros recorded.</p>'))
+        if s['verdict'][0] != 'pass':
+            # section_block prints only the reason for a non-pass verdict; for a quality file
+            # the figures ARE the evidence for the fault, so they go under it.
+            s['tail'] = s['body']
+    quality_blocks = ''.join(
+        section_block(s) + (s.get('tail') or '')
+        for k, s in a['sections'].items() if s['family'] == 'quality')
     doc_blocks  = ''.join(section_block(a['sections'][k]) for k, _l, _e in DOC_SECTIONS)
 
     body = f"""<!DOCTYPE html>
@@ -780,6 +960,13 @@ for a in analysed:
      figure reads <em>not measured</em> — it is never rounded up to a full bar.</p>
   {dims}
 
+  <h2>Extraction quality</h2>
+  <p class="lede">The validator&rsquo;s own score file(s) per <code>skills/extractor-quality-loop.md</code>,
+     printed as written — one row per dimension the file declares. Faulted here only where the
+     skill&rsquo;s own rules show in the file: a self-graded pass, a pass under its own threshold,
+     a 0/0 dimension no second method confirmed.</p>
+  {quality_blocks}
+
   <h2>Extracted constructs</h2>
   {code_blocks}
 
@@ -841,6 +1028,12 @@ elif not quiet:
                 print(f"      MANUAL {s['key']}: {s['verdict'][1]}")
         for x in a['faults']:
             print(f"      FAULT  {x}")
+        for q in a['quality']:
+            if 'overallScore' in q:
+                print(f"      quality {q['file']}: overall "
+                      f"{'?' if q['overallScore'] is None else format(q['overallScore'], 'g')}"
+                      f" / threshold {q['threshold']:g}, passed={q['passed']}, "
+                      f"selfGraded={'yes' if q['selfGraded'] else 'no'}, {len(q['rows'])} dimension(s)")
         d = a['dims']
         print(f"      zeros corroborated: {d['zerosCorroborated']}/{d['zerosTotal']}; "
               f"module attribution: "

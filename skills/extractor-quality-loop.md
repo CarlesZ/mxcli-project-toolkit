@@ -177,6 +177,12 @@ Noting these as "BRD-only" in the quality report is correct and expected.
 }
 ```
 
+**Where it is read:** `bin/extraction-report.sh` (the Stage 1 surface) renders every
+`extraction-quality*.json` at `analysis/<Project>/` or `analysis/<Project>/extracted/` (also
+inside the knowledge base), one row per key of `dimensions`. A code-extracted knowledge base
+with no such file, a `selfGraded` pass, a pass under `threshold`, or a 0/0 dimension missing
+from `confirmedZeros` shows there as a fault.
+
 ### A score without a second mechanism is self-graded — label it, never let it pass alone
 
 When the "ground truth" side of the comparison is a manual read with no independent second

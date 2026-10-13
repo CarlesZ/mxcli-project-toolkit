@@ -1,5 +1,5 @@
 # exec-lock-block.sh — VERBATIM copy of project-bin/exec.sh's lock block (exec_lock_live .. the
-# LOCK_TAKEN check) from PR #324, branch fix/exec-followups @ ed4efbb. Used by
+# LOCK_TAKEN check) from PR #324, branch fix/exec-followups @ 79de404. Used by
 # test-shared-lock-takeover.sh until #324 is merged; that fixture prefers the real exec.sh's block
 # once it carries exec_lock_takeover. Do not edit by hand — re-copy.
 exec_lock_live() {  # $1 = pid from the lock; 0 iff that process is alive and plausibly exec.sh
@@ -26,30 +26,36 @@ exec_lock_release() {  # the trap: remove the lock only while it is still ours
 # moved A's fresh lock aside, C's noclobber write landed in the gap, B saw a lock and deleted
 # A's: 12 contenders gave up to 3 holders at once (tests/wave2/test-exec-lock-watch.sh).
 # A takeover file left by a holder killed inside those few microseconds is stale once its pid is
-# dead or it is older than 10 s (an EMPTY one once it is a minute old); it is moved aside, and put back with `ln` (fails if a new one
-# exists — never clobbers) if what was moved is not the one judged stale.
+# dead or it is older than 10 s (an EMPTY one once it is over a minute old — `find -mmin +1`;
+# `+0` matched a file created a second ago, so a live contender's fresh takeover file was judged
+# stale and a third contender got in: review of #324). It is moved aside, and put back with `ln`
+# (never clobbers; left on disk if that fails) if what was moved is not the one judged stale.
+# The holder removes the takeover file only while it still holds the line it wrote.
 exec_lock_takeover() {  # $1 = the stale lock line; 0 iff it was removed (or already gone)
-  _tk="$LOCK.takeover"
-  if ! ( set -o noclobber; printf '%s %s\n' "$$" "$(date +%s)" > "$_tk" ) 2>/dev/null; then
+  _tk="$LOCK.takeover"; _mine="$$ $(date +%s)"
+  if ! ( set -o noclobber; printf '%s\n' "$_mine" > "$_tk" ) 2>/dev/null; then
     _t="$(head -1 "$_tk" 2>/dev/null || true)"; _tpid="${_t%% *}"; _tsince="${_t#* }"
     case "$_tsince" in ''|*[!0-9]*) _tsince=0 ;; esac
     _tstale=0
     if [ -n "$_t" ]; then
       { ! kill -0 "$_tpid" 2>/dev/null || [ $(( $(date +%s) - _tsince )) -gt 10 ]; } && _tstale=1
-    elif [ -n "$(find "$_tk" -mmin +0 2>/dev/null)" ]; then
-      _tstale=1   # empty for a minute: its creator died between the create and the write
+    elif [ -n "$(find "$_tk" -mmin +1 2>/dev/null)" ]; then
+      _tstale=1   # empty for over a minute: its creator died between the create and the write
     fi
     if [ "$_tstale" = 1 ]; then
       if mv "$_tk" "$_tk.stale.$$" 2>/dev/null; then
-        [ "$(head -1 "$_tk.stale.$$" 2>/dev/null || true)" = "$_t" ] || ln "$_tk.stale.$$" "$_tk" 2>/dev/null || true
-        rm -f "$_tk.stale.$$"
+        # Remove what was moved ONLY if it is what was judged stale; anything else is someone's
+        # live takeover file: put it back (ln never clobbers), and if that fails leave it be.
+        # Same body as test-scratch.sh's take_over() — keep the two in step (PR #322).
+        if [ "$(head -1 "$_tk.stale.$$" 2>/dev/null || true)" = "$_t" ]; then rm -f "$_tk.stale.$$"
+        else ln "$_tk.stale.$$" "$_tk" 2>/dev/null && rm -f "$_tk.stale.$$"; fi
       fi
     fi
     return 1
   fi
   _now="$(head -1 "$LOCK" 2>/dev/null || true)"
   [ "$_now" = "$1" ] && rm -f "$LOCK"
-  rm -f "$_tk"
+  [ "$(head -1 "$_tk" 2>/dev/null || true)" = "$_mine" ] && rm -f "$_tk"   # only our own takeover file
   return 0
 }
 LOCK_TAKEN=0

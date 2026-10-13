@@ -86,7 +86,7 @@ echo
 DRIFT_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/done-drift-check.sh"
 if [ -x "$DRIFT_SCRIPT" ]; then
   drift_out=$("$DRIFT_SCRIPT" "$ROOT" 2>/dev/null)
-  if printf '%s\n' "$drift_out" | grep -qE '^- `|may be stale'; then
+  if grep -qE -- '^- `|may be stale' <<<"$drift_out"; then
     printf '%s\n' "$drift_out" | tail -n +3
     echo
     owed=1

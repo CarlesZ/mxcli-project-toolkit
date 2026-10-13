@@ -24,16 +24,12 @@ Screen Inventory (`design-artifacts.md` Step 2).
 
 ## Why this exists
 
-Every check downstream of Stage 3 compares the build with the wireframe. When the wireframe is
-drawn as one role looking at one record, a page that shows "the first open record" instead of
-the one the user clicked passes everything. Field evidence, three apps built with this toolkit
-(2026-10): one app rooted **8 pages** on a parameterless "current record" retrieve, gave **all 6
-roles one home page**, and put **3 process stages among 6 menu items**. Gate-check Stage 3 and 4
-passed, page fidelity scored 81–89% on the affected pages, lint reported 0 errors and the e2e
-suite went **69/69** — every journey seeded one open record, so "the first one" was always the
-right one. A navigation review of a second app then found 16 defects of the same kinds. The
-fix landed after a week of scripts had come to depend on the parameterless pages. A page
-parameter added later breaks every `show page` that calls the page without one.
+Every check after Stage 3 compares the build with the wireframe. A wireframe drawn as one role
+looking at one record hides a page that shows "the first open record" instead of the clicked one.
+In one app built with this toolkit (2026-10), 8 pages did exactly that, all 6 roles shared one
+home, and 3 of 6 menu items were process stages — while Stage 3/4 gates, page fidelity, lint and
+a 69/69 e2e run (one seeded record) all passed. Adding the parameter later breaks every
+`show page` already calling the page without one, so it is decided here.
 
 ---
 
@@ -62,10 +58,13 @@ One row per screen in the Screen Inventory, no exceptions:
 
 | Page | How reached | Page parameter / context object | Data view source | Nav entry | Role(s) |
 |---|---|---|---|---|---|
-| `Order_Overview` | menu; home for Manager | none (list page) | grid: database `Sales.Order` | Orders | Manager |
-| `Order_Detail` | row of `Order_Overview`; row of `Review_Inbox` | `Order` | page parameter | — | Manager, Reviewer |
-| `Order_Review` | stage tile on `Order_Detail` | `Order` | page parameter | — | Reviewer |
+| `Order_Overview` | menu; home for Manager | none — list page | grid: database `Sales.Order` | Orders | Manager |
+| `Order_Detail` | row of `Order_Overview`; row of `Review_Inbox` | `Sales.Order` | page parameter | — | Manager, Reviewer |
+| `Order_Review` | stage tile on `Order_Detail` | `Sales.Order` | page parameter | — | Reviewer |
 | `AppSettings_Edit` | menu | none — singleton | microflow `DS_AppSettings_Get` (one row by design) | Settings | Admin |
+
+Write the parameter column as `Module.Entity` or `none — <reason>` (list page, home, singleton),
+exactly as the wireframe's `Page parameter:` line carries it.
 
 Rules the table must satisfy:
 
@@ -73,7 +72,7 @@ Rules the table must satisfy:
    source is that parameter. A named singleton (settings, "my profile") is the one exception;
    say so in the row.
 2. **"How reached" names every caller**, and every caller passes the object. A menu item cannot
-   pass a page parameter, so a page whose Nav entry is filled in has `none` in the parameter
+   pass a page parameter, so a page whose Nav entry is filled in has `none — …` in the parameter
    column.
 3. **Menu items are object lists, inboxes or tools — never a process stage.** One navigation per
    concept: a stepper on the hub *or* the menu, not both.
@@ -95,7 +94,7 @@ Each was measured in a built app; each passed every gate. Generic names below.
 | `show page` without its argument | stepper tile action `show page Sales.Order_Review;` on a snippet that has `$Order` in hand | The stepper on order B opens the step for order A |
 | Home pages not matching the design | `home page Sales.Order_Overview for` all six roles, while the design said reviewers land on their inbox | The reviewer has no place to start; their work is reached through a stage in the top bar |
 | Process stages in the menu | top bar: Orders, **Reviews**, **Approvals**, Reports | Each stage page is forced to be parameterless (rule 2), which brings back failure 1 |
-| Grid min-width | `.order-grid table { min-width: 1100px; }` added to fix squashed columns | Horizontal scrollbar at 1440 px on a grid that would have fitted; nothing else flags it |
+| Grid min-width | `.order-grid table { min-width: 1280px; }` added to fix squashed columns | Horizontal scrollbar at 1440 px on a grid that would have fitted; nothing else flags it |
 | Read-only drawn but not specified | wireframe row `Read-only: yes` with no rendering | Built as grey disabled inputs; say "renders as text" (data view `ReadOnlyStyle: Text`) |
 | Save reopens its own page | inline cell `OnChange` → `close page; show page Plan_Edit(Plan = $Plan);` | Every edit jumps the user back to the top; a save must not close and reopen its own page |
 
@@ -104,7 +103,7 @@ Each was measured in a built app; each passed every gate. Generic names below.
 ## Step 4: Walk it with two objects and two roles
 
 Before the Stage-3 ✋, walk the prototype (`design/prototype.html`) with **2+ open objects and 2+
-roles**: as each role, start at its home, find the work for the **second** object, and complete
+roles** — a paper walk over the per-page table unless the wireframes actually draw two records: as each role, start at its home, find the work for the **second** object, and complete
 one step. Write the route taken under each role in `design/interaction-model.md`. A route that
 goes through "the first one" or through a menu stage is a defect in the table, fixed here.
 

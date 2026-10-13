@@ -81,6 +81,14 @@ grep -q 'change class: \$CHANGE_CLASS — test lane' "$SUBJECT" && ok "success s
                                                            || bad "summary does not print the change class"
 grep -q 'testing-shape.md' "$SUBJECT" && ok "the lane text points at testing-shape.md" \
                                       || bad "no pointer to testing-shape.md"
+# A changed snippet or layout is shown on every page that embeds it, so its ui-only lane is those
+# pages' journeys — not "no other module's journeys" (independent review of #290).
+_lane="$(grep -E '^ +ui-only\) echo' "$SUBJECT")"
+case "$_lane" in
+  *"no other module's journeys"*) bad "ui-only lane still says 'no other module's journeys' (wrong for a snippet/layout)" ;;
+  *"embedders of a changed snippet/layout"*) ok "ui-only lane names the embedders of a changed snippet/layout" ;;
+  *) bad "ui-only lane text not found or does not name embedders: $_lane" ;;
+esac
 # The metrics ledger is 19 fixed columns (test-metrics-ledger.sh asserts it); the tag must not
 # be smuggled into it as a 20th.
 grep -qiE 'change[_ -]class' "$(dirname "$SUBJECT")/metrics-ledger.sh" 2>/dev/null \

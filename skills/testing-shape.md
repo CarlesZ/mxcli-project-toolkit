@@ -95,7 +95,7 @@ written by `bin/init-project.sh`, appended to older projects by `bin/sync-projec
 - **Unit flips to yes per module** only when the module has calculation, mapping, or date/money
   logic; calls a Java action or a REST service; or a bug was fixed in that flow (the unit test pins
   the fix). Otherwise Unit stays **no**. With no default set, agents read "optional" as "yes"
-  (what that cost: §3).
+  (what that cost: §3, "Why scoped").
 - **Trace may be added** by a module that **calls out** to something external, even when the
   project default is off. That is where swallowed failures live, and it is the only place Trace
   reliably earns its setup cost.
@@ -156,7 +156,7 @@ screenshots, the journey report — and **never re-run** what the implementer al
 recorded. A reviewer who doubts an artifact says which claim it fails to prove; that is a finding,
 not a second run.
 
-**The full suite runs on the last three rows below only** — **never at batch close**, never after
+**The full suite (and the module's whole journey set) runs on the last three rows below only** — **never at batch close**, never after
 an individual fix, never because the change "felt wide". The e2e instruments are unchanged; only
 their trigger is.
 
@@ -170,7 +170,9 @@ their trigger is.
 | The user asks for a full run | Run it, that message is the trigger. |
 
 > **Why scoped (#274):** the old unscoped "re-run the suite as regression" re-proved each UI-only
-> change 5–10× and spent **143 minutes** of microflow tests finding stale strings, not one logic bug.
+> change 5–10× (other modules' journeys, the reviewer re-running them, a full `mxcli test` at every
+> batch close), and with no Unit default set, **143 minutes** of microflow tests found stale strings,
+> not one logic bug. A caption change owes one journey and one look.
 
 So the authoring conversation happens **once per module**; everything after is a scoped re-run.
 That is what makes this affordable on a module under active development.

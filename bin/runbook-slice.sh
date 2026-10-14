@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # runbook-slice.sh — print the part of the conversion runbook a helper at one stage needs:
-# §1b (the Live Checklist Protocol, every stage) plus that stage's section under §2.
+# §1b (the Live Checklist Protocol, every stage) plus that stage's section under §2, then the
+# gate-verdict table and §3b's "Ownership is split" paragraph, which every helper needs too.
 #
-#   bin/runbook-slice.sh 5             # §1b + "### Stage 5 — Build"
+#   bin/runbook-slice.sh 5             # §1b + "### Stage 5 — Build" + verdicts + §3b ownership
 #   bin/runbook-slice.sh build-ready   # same as 5
 #   bin/runbook-slice.sh --spans 5     # only the line spans, as gate-check.sh prints them
 #
@@ -12,6 +13,11 @@
 # the whole file: 26% of an mdl helper's Stage 5 reading. This prints the ~1.5k words instead, the
 # same way bin/bug-lookup.sh turned the bug ledger into a lookup. Sections are found by heading
 # (bin/lib/runbook-span.sh, shared with gate-check.sh), never by line number.
+#
+# The two extra spans (review of PR #378): gate-agent reports PASS/PENDING/FAIL/WAIVED/MANUAL and
+# needs their exit codes; mdl and gate need "a helper that hits a BRD-touching decision reports it
+# to the lead" (§3b). Neither is in §1b or a stage section. If either anchor is gone the slice
+# still prints, with a line naming the section to read in the runbook, and warns on stderr.
 #
 # Exit: 0 printed · 1 usage · 2 runbook or heading not found
 set -eu
@@ -39,7 +45,26 @@ if [ "$SPANS_ONLY" -eq 1 ]; then
   printf 'skills/conversion-runbook.md §1b lines %s + Stage %s lines %s\n' "$S1B" "$ST" "$SST"
   exit 0
 fi
-printf '<!-- skills/conversion-runbook.md §1b (lines %s) + Stage %s (lines %s), printed by bin/runbook-slice.sh -->\n\n' "$S1B" "$ST" "$SST"
+SVD="$(runbook_verdicts_span "$RB")"
+S3B="$(runbook_3b_owner_span "$RB")"
+printf '<!-- skills/conversion-runbook.md §1b (lines %s) + Stage %s (lines %s) + gate verdicts (lines %s) + §3b ownership (lines %s), printed by bin/runbook-slice.sh -->\n\n' \
+  "$S1B" "$ST" "$SST" "${SVD:-not found}" "${S3B:-not found}"
 runbook_print_span "$RB" "$S1B"
 echo
 runbook_print_span "$RB" "$SST"
+echo
+if [ -n "$SVD" ]; then
+  runbook_print_span "$RB" "$SVD"
+else
+  echo "runbook-slice: '### What a gate verdict means' not found in $RB" >&2
+  echo "(Gate verdict table not found — read \"What a gate verdict means\" in §2 of skills/conversion-runbook.md.)"
+fi
+echo
+echo "From §3b (Requirements drift-sync):"
+echo
+if [ -n "$S3B" ]; then
+  runbook_print_span "$RB" "$S3B"
+else
+  echo "runbook-slice: '**Ownership is split' not found under '## 3b.' in $RB" >&2
+  echo "(Ownership paragraph not found — read §3b of skills/conversion-runbook.md.)"
+fi

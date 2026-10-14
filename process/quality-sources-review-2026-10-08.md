@@ -3,7 +3,7 @@
 Review of Mendix quality-tooling sources (Best Practice Recommender, QSM/AQM public docs, ATS public docs,
 Menditect public docs, docs.mendix.com) against what the toolkit already enforces. Lintability was read from
 the mxcli lint source and no rule has been probed on a real model. Scan quotes were paraphrased, thresholds
-for QSM/Sigrid and Omnext rule text were not captured, and long pages were cut off, so "no source" means
+for QSM/Sigrid and a third-party analyser's rule text were not captured, and long pages were cut off, so "no source" means
 "not captured". The 19 proposed rows are in `process/lint-backlog.md` (Batch 4); the section letters below
 keep the original review's lettering.
 

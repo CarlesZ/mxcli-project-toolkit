@@ -137,9 +137,27 @@ fidelity	mdl	module	names	docs/PAGE-FIDELITY.tsv	no	yes	5	skills/ui-loop.md
 # module's own dispatch history. It is owed by mdl because mdl-agent is the one that knows, at
 # the moment of writing, whether it is the one writing.
 #
-# Column 9 names skills/agent-roles.md, not agents/mdl-agent.md: agent-roles.md's "Workflow"
-# step 8a is what actually specifies the log line, its path and format, and the discharge rule
+# Column 9 names skills/agent-roles.md, not agents/mdl-agent.md: the mdl-agent "Workflow" step 8a
+# (its full text now lives in agents/README.md, pointed to from agent-roles.md) specifies the log
+# line, its path and format, and the discharge rule
 # ("owes no denominator, just the line") — that is the governing text this column exists to
 # point at. The agent stub is the performer named in column 2 (mdl); it is not itself a skill
 # and holds no verdict of its own to point to (review of PR #99, 2026-09).
 dispatch	mdl	module	path	.claude/loop/dispatch/<Module>/scripts.tsv	no	yes	5	skills/agent-roles.md
+
+# final-look is the whole-app LOOK, run last. The per-module `look` row above judges each
+# module as it was when that module was reviewed. It cannot see a later task undoing an earlier
+# one on a page the later task never claimed, because that page's module review is already
+# discharged.
+#
+# Measured 2026-10-12, a 20-task UX-fix run over three apps: task 4 made a withdrawn record read
+# "Stopped"; task 18 added badges reading the stored status and brought "Notified" back on four
+# pages. Task 18's own review and journeys passed. A read-only whole-app LOOK, run after the last
+# task, found it (and 5 important defects the per-task reviews had missed) — and that pass was a
+# choice somebody made, not a mark anything owed.
+#
+# Project scope, so there is one report. "Final" is enforced by the VALID AT rule: a report
+# stamped before the last model commit is stale (_ob_stale), so the pass is owed again after
+# any later change. Denominator required ("N of N pages, M of M roles"). Governed by
+# module-review.md § "The final LOOK".
+final-look	review	project	names	design/ui-reviews/final-look-*.html	yes	yes	6	skills/module-review.md

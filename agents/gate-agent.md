@@ -38,10 +38,10 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `project-bin/check-page-shell.sh` | Before exec'ing ANY page script — compares the drafted MDL's shell against the wireframe's: page column, layout/nav shell, one H1. Measured 0/10 pages on a real first build, repaired wholesale 47 scripts later |
 | `project-bin/page-fidelity.js` | After drafting and again after exec'ing any page script — scores the page MDL (or `mxcli describe` output on stdin) against its wireframe: headings/actions/content/classes, weighted. The scored companion to check-page-shell's binary gate; 32% median measured without it, 90% first-draft with it. Every run is appended to the project's docs/PAGE-FIDELITY.tsv — first non-stub row per page = first-build score of record vs the ≥80% target (forward-reference stubs score with --stub, exempt) |
 | `bin/exec-approval.sh` | Before any mxcli exec / exec.sh / --mcp write — ask or run? the knob decides |
-| `skills/testing-shape.md` | Before calling any module tested — what testing a module means, and the false-green register of confirmed ways a test reports green over a broken feature |
+| `skills/testing-shape.md` | Before calling any module tested, or before re-running tests after a change — what testing a module means, which re-runs a change owes (UI-only vs logic lane), and the false-green register of confirmed ways a test reports green over a broken feature |
 | `project-bin/verify-module.sh` | Finishing any module — before calling it done. One command that runs every instrument and keeps "instrument faulted" apart from "feature failed"; in a wired project run the installed copy at bin/verify-module.sh |
 | `skills/tool-output-is-not-ground-truth.md` | Any time an exit code, a tool's output or a subagent's report is about to become a stated finding — verify before you conclude |
-| `skills/learned-css-that-never-applied.md` | A style change that appears to have done nothing, or an app still grey after a design port every instrument called green — the three ways a correct rule paints nothing (matches nothing / matches chrome / loses the cascade), the two reads that tell them apart, and the class that arrived in the stylesheet and is bound to no widget |
+| `skills/learned-css-that-never-applied.md` | A style change that appears to have done nothing, a focus ring that paints on every page landing, or an app still grey after a design port every instrument called green — the three ways a correct rule paints nothing (matches nothing / matches chrome / loses the cascade), the two reads that tell them apart, and the class that arrived in the stylesheet and is bound to no widget |
 | `skills/learned-detection-gaps.md` | Before trusting a green check/exec/DESCRIBE result as proof, or when a runtime symptom appears over a fully green model — the register of constructs that pass early rungs and fail later ones |
 | `skills/security-is-not-a-later-script.md` | Creating any entity, or calling a module security-ready — entity and grants land in one script, and ready means SHOW SECURITY MATRIX proves it |
 | `bin/bug-lookup.sh` | A CE error or behavior that looks like a known mxcli quirk rather than a modeling mistake — `bin/bug-lookup.sh CE0117` / `BUG-102` / "keyword" prints the matching ledger entries, so the session reads one entry, not the 32k-word ledger |
@@ -56,14 +56,14 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/cloud-dev-environment.md` | Setting up or resuming an mxcli project in a cloud/ephemeral container |
 | `skills/coverage-ledger.md` | Building the Stage 4 coverage ledger |
 | `bin/coverage-check.sh` | Checking a coverage ledger against its BRD |
-| `skills/iterative-build-loop.md` | Building a module with mxcli |
+| `skills/iterative-build-loop.md` | An exec.sh guard refused a write (not a permission prompt), or building a module with mxcli |
 | `project-bin/conformance-check.sh` | Running the ledger rung alone |
 | `project-bin/graph-sweep.sh` | Running the wiring rung alone |
 | `project-bin/test-stack-up.sh` | Before any runtime test |
 | `skills/company-brain.md` | Setting up or wiring a COMPANY BRAIN |
 | `skills/close-the-loop.md` | Cutover and retrospective |
 | `skills/report-schema.md` | Writing or reading docs/report.json |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `project-bin/coherence-cadence.sh` | After every module's CONFIRM stage |
 | `project-bin/build-plan-status.sh` | After marking a module done, or any time "how much is built vs proven" is asked |
@@ -104,7 +104,9 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
    the user's decision, made in chat; `--update-baseline` refuses a rise without `--reason`, a
    security-tier rise (SEC*, CONV006) also without `--approved-in-chat`, and logs each one to
    `.claude/lint-acceptances.tsv`. A row reading `LINT BLIND` is an instrument fault (a rule
-   inspected nothing), not a rise: name the rule and its configuration fix. If the row says
+   inspected nothing), not a rise: name the rule and its configuration fix. `LINT BLIND: rules
+   reverted to stock (…)` means `mxcli init` re-seeded the toolkit rules and lint did not run:
+   the fix is the toolkit's `bin/sync-project.sh`, never a re-baseline. If the row says
    `lint not installed`, say so as a finding: nothing has checked shape in this project.
 
 ## A clean result is not automatically a pass

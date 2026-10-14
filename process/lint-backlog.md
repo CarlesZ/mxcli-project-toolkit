@@ -29,7 +29,9 @@ project). This file has the *what* and the *order*.
 ## Status legend
 
 `idea` → `drafted` (PR open, fixtures pass) → `warning` (merged, on first projects) → `proven`
-(error severity) · `blocked: <why>` · `skill` (not lintable, lives in a skill instead)
+(error severity) · `blocked: <why>` · `skill` (not lintable, lives in a skill instead) ·
+`covered: <where>` (another check already catches it) · `not lintable` (runtime or CSS; named so
+the source issue's list is complete)
 
 ## Batch 1 — incident evidence and known catalog fields
 
@@ -98,6 +100,46 @@ is still the vocabulary probe from rollout rule 3. The full review is
 - Stock rule ids are now MPR001-012 in the mxcli source; the generated project CLAUDE.md tables still say
   MDL001-007.
 
+## Batch 5 — UI and user-text traps from the 2026-10-12 UX-fix run
+
+Source: issues #276, #280, #282 (retros of one 20-task UX-fix run over three apps built from
+this toolkit). Every candidate the three issues name is listed, lintable or not; runtime, watch-
+mode and journey-assertion halves belong to another PR and appear only to say where they live.
+Lint Batch 3 shipped rows 32–35 (`TXT001`, `TXT002`, `UI001`); the field-run counts are in
+`lint-rules/README.md`. "Seen in" counts apps out of three.
+
+| # | Rule | Category | Evidence | Needs | Status |
+|---|---|---|---|---|---|
+| 32 | Build-process words in user-visible text: `Stage N`, `BR-10`, `F004`, TODO, version tag, "(local, …)", project code names (TXT001) | quality | #280: 3 of 3 apps (page subtitles in 5 scripts, captions, live titles); the glossary grep missed the same lines in 2 of 3 | `strings()` (mxcli >= 0.25.0, FULL catalog) — probed 2026-10-13 | drafted (Batch 3) |
+| 33 | Non-ISO literal date or day/month format pattern in user-visible text (TXT002) | quality | #280: 2 of 3 apps (`dd MMM` in 5 places, `dd MMM HH:mm` in 8, a raw `M/d/yyyy`); "33 of 33 ISO" grep was wrong | `strings()` — probed; sees texts and templates only, see row 36 | drafted (Batch 3) |
+| 34 | List view inside a Data grid 2 column: its own "Load more" / "No items found" per cell (UI001 trap a) | design | #282 | `widgets()` parent walk; Datagrid type string — probed 2026-10-13 | drafted (Batch 3) |
+| 35 | Inline `width` on an Atlas input without `flex`: ignored, even with !important (UI001 trap b) | design | #282 | `widgets().style` — probed | drafted (Batch 3) |
+| 36 | Non-ISO format string inside an expression (`formatDateTime($d, 'dd MMM')`, a CHANGE writing an audit text) | quality | #280: the larger half of the date misses (8 microflow literals in one app) | expression literals in the catalog; `strings()` indexes only `Texts$Text` | blocked: expressions not indexed (upstream) |
+| 37 | DateTime attribute rendered with the locale default (shows `M/d/yyyy`) instead of an explicit format | quality | #280: one admin page | widget date-format setting in `widgets()` | blocked: field not in projection |
+| 38 | Atlas spacing class that the theme does not define (`spacing-outer-left-small`): passes check and mxbuild, renders nothing | design | #276 item 3; #282 (unverified 48px gap) | the theme's class list. A rule cannot read SCSS, and the valid set is per Atlas version: the 2026-10-13 probe found `-small`, `-smaller`, `-smallest` used 90+ times in marketplace modules | blocked: needs class list — shell check against `design-properties.json` instead |
+| 39 | Inline Style on a dynamic text (crashes MxBuild) | correctness | #282 | — | covered: `mxcli check` MDL-WIDGET03 (error at script time); model-level copies exist in Studio-Pro-authored marketplace modules, so a lint rule would flag working pages |
+| 40 | Dynamic text at the top level of a snippet, outside any data view on the parameter: no context object | correctness | #282 | `widgets()` gives the ancestry; whether the text uses the parameter is a template parameter source, not projected | idea (probe template parameters) |
+| 41 | Data grid 2 column whose content walks 2+ associations: writes a null attribute reference | correctness | #282 | column attribute path (a column property, not a widget) | blocked: field not in projection |
+| 42 | Data grid 2 column layout: stored manual width not applied; right alignment only on the header; sort arrow at the far left | design | #282 (CE0463 on ALTER PAGE width is a tooling bug, not lint) | column properties | blocked: field not in projection — skill |
+| 43 | One canonical empty-state sentence and widget, not re-invented per page | design | #280: 3 of 3 apps, plain text on one page and an alert on another | judgement | skill |
+| 44 | "yet" on a terminal state ("not approved yet" on a rejected item) | quality | #280 | judgement over state | skill (TXT001 `PROJECT_WORDS` can carry a fixed list) |
+| 45 | Empty-state text authored in CSS `::before` / `::after`: invisible to innerText checks | — | #276 item 1: 3 of 17 journey steps failed on a working feature | SCSS + journey runner | not lintable — journey check (other PR) |
+| 46 | Outline, background or `scrollIntoView` on a Data grid 2 row paints nothing (rows are `display: contents`) | — | #276 item 2, #282: 3 takes in two films | CSS / runtime | not lintable — skill (`learned-css-that-never-applied.md`) |
+| 47 | `:focus-visible` ring painted on the script-focused first control at every landing | — | #276 item 4 | theme SCSS / JS | not lintable — skill + review checklist |
+| 48 | `--watch` drops `dist/pages` on an SCSS edit; calculated attributes added while running read empty; trial-licence session cap hangs logins | — | #282: 15 NEEDS_RESTART events; 2 of 3 apps hit the cap | runtime | not lintable — runner / skill (other PR) |
+
+## Batch 6 — external-role writes and a tunable threshold
+
+Source: issues #268 and #267. Row 14 covers writes by the anonymous role only; row 49 is the
+same defect for a named external role, which a project has to name, because no catalog field
+says a role is external. Lint Batch 4 shipped both rows; the field-run counts are in
+`lint-rules/README.md`.
+
+| # | Rule | Category | Evidence | Needs | Status |
+|---|---|---|---|---|---|
+| 49 | External role (configured) can write all members, a state enumeration (`Status`/`State`/`Result`/`Stage`/`Phase`), an audit `…At`/`…By` attribute, or the association its own XPath scopes ownership on (SEC014) | security | #268: a partner role held `create, read *, write *` on two self-owned entities with a state attribute; lint showed only CONV006 +4, re-baselined; a manual review found it five days later | `permissions_for()` `MEMBER_WRITE` rows, `attributes_for().data_type` (`Enumeration`), `user_roles()` / `role_mappings()`; `external_roles` option, text not list; absent = sync NOTE, not a `_rule` finding. Probed 2026-10-13 | drafted (Batch 4) |
+| 50 | CONV009 threshold read from `lint-config.yaml` (`maxObjects`, `countLoopBodies`) instead of the stock hard-coded 15 | quality | #267: the generated config's own example does nothing; three apps at 36 / 30 / 5 findings, one app split flows only to satisfy the 15 | `get_option()`; `total_activity_count` (mxcli >= 0.25.0) for loop bodies. Default kept at 15: raising it for every project is a maintainer call | drafted (Batch 4) |
+
 ## Cheap extras (one afternoon each, when a batch has room)
 
 Microflow not in a folder · non-persistent entity committed to the database · many-to-many
@@ -129,6 +171,13 @@ a second backlog section. Forum only to weight by incident frequency.
 
 ## History
 
+- 2026-10-13 — Batch 6 added from #268 / #267 (rows 49–50). Lint Batch 4 shipped them as `SEC014`
+  and a toolkit-owned `CONV009` (status `drafted`, 32 unit cases). First field run, mxcli 0.26.0:
+  SEC014 1 finding with the one external role configured, positive control 7 that a SQL replay
+  matches; CONV009 5 / 5 / 10 at 15 / 20 / 10, while stock CONV009 stayed at 5 with `maxObjects: 20`.
+- 2026-10-13 — Batch 5 added from #276 / #280 / #282 (rows 32–48). Lint Batch 3 shipped rows
+  32–35 as `TXT001`, `TXT002`, `UI001` (status `drafted`, 23 unit cases); first field run 0 / 0 / 0
+  with positive controls 27 / 50 / 17 — counts in `lint-rules/README.md`.
 - 2026-10-08 — file created from the UX001/UX002 work and a brain scan of `skills/`; no rule from
   this list exists yet. UX001/UX002 themselves are `drafted` (PR open, 35 unit cases, field run
   pending).

@@ -44,6 +44,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/tool-output-is-not-ground-truth.md` | Any time an exit code, a tool's output or a subagent's report is about to become a stated finding — verify before you conclude |
 | `bin/status.sh` | The first command of every session, and any time someone asks "where are we" or "what next" — one screen: stage, done/overdue, the ONE next action, from the instruments, never from memory |
 | `skills/retesting-learned-rules.md` | Before obeying any learned-* STOP or workaround that costs a detour — probe the binary you actually have, then stamp the verdict back into the rule |
+| `skills/change-intake-detail.md` | Applying or proving a change request (CR row), a change whose class, size or status is unclear, or a "Change log:" gate line to explain: full class/size/ask tables, the wrong-vs-right example, apply and prove steps, the owners table and what the warn-only gate check counts |
 | `skills/grill-mode.md` | Deep, adaptive interview on one topic, on demand, when a checkpoint's 2+1 or a single question batch isn't enough |
 | `skills/checkpoints/checkpoint-scope.md` | CAC-1, closing Stage 0 in EVERY entry mode |
 | `skills/checkpoints/checkpoint-architecture.md` | CAC-3, after BRD validation and before architecture locks |
@@ -65,13 +66,14 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/architecture-blueprint.md` | Diagramming target architecture |
 | `skills/modularize-domain.md` | Deciding module boundaries before "create module" |
 | `skills/design-artifacts.md` | Designing the brand and ONE ANNOTATED WIREFRAME PER SCREEN before building pages |
+| `skills/interaction-model.md` | Stage 3, after the role model is CONFIRMED and BEFORE THE FIRST WIREFRAME |
 | `skills/brd-to-build-plan.md` | Turning BRDs plus architecture into a numbered, dependency-ordered build plan |
 | `skills/coverage-ledger.md` | Building the Stage 4 coverage ledger |
 | `bin/coverage-check.sh` | Checking a coverage ledger against its BRD |
 | `skills/mendix-agents.md` | Building a Mendix AI agent |
 | `skills/company-brain.md` | Setting up or wiring a COMPANY BRAIN |
 | `skills/close-the-loop.md` | Cutover and retrospective |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `project-bin/build-plan-status.sh` | After marking a module done, or any time "how much is built vs proven" is asked |
 | `skills/workflow-structure-rules.md` | Designing or reviewing a Workflow's SHAPE before or after the MDL |
@@ -80,7 +82,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/upstream-feedback.md` | About to open an issue, PR or discussion against mxcli or the toolkit |
 | `skills/doctor-triage.md` | doctor.sh reports FAIL or WARN, or someone asks whether a red setup line blocks them |
 | `skills/field-run.md` | Driving the whole toolkit pipeline on a real source to find what the written skills don't say |
-| `skills/learned-mdl-cannot-express.md` | Before a wireframe or a design commits to a WIDGET |
+| `skills/learned-mdl-cannot-express.md` | Before a wireframe or a design commits to a WIDGET, when a requirement shows a widget to one role and not another, and when a page script hits a parse error that looks like a syntax mistake: the short list of things MDL cannot write at all, and the four-minute probe that answers it at Stage 3 instead of at build time |
 | `skills/platform-link.md` | At project birth (before the first build script) and any time a model needs a platform home: creating the Team Server app, adopting an existing GitHub-born model into it without rewriting history, or deploying; also when the Platform SDK returns 403, git rejects the PAT, a deploy cannot be triggered from a PAT, or the app turns out to be a Free App |
 | `skills/deploy-to-sandbox.md` | Promoting an app to a deployed sandbox or cloud node, or before a customer tests a deployment |
 | `skills/learned-constants-and-secrets.md` | Adding a constant, installing a marketplace module, deploying to a new environment, or needing a Mendix PAT |
@@ -142,6 +144,7 @@ numbered `RUN` row, never a footnote and never omitted.
 3. Write `.mx-brd.json`, `architecture/` (blueprint, wiring diagrams, fit-gap.md), and once approved, `architecture/build-plan.md` — numbered, dependency-ordered, every new row with its `claims` block.
 3b. **If any process has a workflow: `architecture/workflow-count.md`, all ten rows with numbers** — see the section above. Owed at Stage 3, before the build plan names a workflow row.
 4. Record every decision in `PROJECT.md`.
+5. **Change requests (any stage after 3):** when dispatched with agreed `## Change log` rows of class `structure` or `visual` (page unbuilt), or a wireframe `UNSYNCED` marker, you flush `architecture/`, the module brief's structure, or the wireframe. BRDs stay with ba-agent (`change-intake.md` → Owners).
 
 ## Report back
 Boundaries/decisions proposed vs. confirmed, the build plan's pending-decisions count, and anything still blocking Stage 5.

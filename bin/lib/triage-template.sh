@@ -229,6 +229,5 @@ mxtk_triage_is_pristine() {
   # more robust than pairing it with the comment opener.
   #
   # awk rather than `sed '/a/,/b/d'`: sed's range would not close on a one-line header.
-  awk '/MXTK-TRIAGE-STUB/{skip=1} skip{if(/-->/){skip=0}; next} {print}' "$f" \
-    | grep -q '{{[^}]*}}'
+  grep -q '{{[^}]*}}' <<<"$(awk '/MXTK-TRIAGE-STUB/{skip=1} skip{if(/-->/){skip=0}; next} {print}' "$f")"
 }

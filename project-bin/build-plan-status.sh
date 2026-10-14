@@ -28,7 +28,7 @@
 # --html and --json outputs and never touches the .mpr.
 #
 # Usage:
-#   build-plan-status.sh [project-dir] [--html] [--json] [--quiet] [--refresh]
+#   build-plan-status.sh [project-dir] [--html] [--json] [--quiet] [--refresh]   (flags and path in any order)
 #     --html    also write architecture/build-plan.html (self-contained, no external deps): the
 #               plan itself (phases, rows, claims from build-plan.md, see "P." below) followed
 #               by views A and B
@@ -44,10 +44,11 @@
 
 set -uo pipefail
 
-ROOT="${1:-}"
-[ -n "$ROOT" ] && [ "${ROOT#--}" = "$ROOT" ] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-shift 2>/dev/null || true
-
+# One loop for flags AND the path, in any order (2026-10-13, field report via PR #309): the old
+# form read $1 as the path, fell back to pwd when $1 was a flag, then `shift`ed unconditionally.
+# `--json <root>` therefore dropped --json and refused the real path as "unknown arg" (exit 2), and
+# a bare `--json` from inside a project silently ran without it: no build-plan.json, no error.
+ROOT=""
 WRITE_HTML=0
 WRITE_JSON=0
 QUIET=0
@@ -58,9 +59,11 @@ for a in "$@"; do
     --refresh) WRITE_HTML=1; REFRESH=1; QUIET=1 ;;
     --json)  WRITE_JSON=1 ;;
     --quiet) QUIET=1 ;;
-    *) echo "unknown arg: $a" >&2; exit 2 ;;
+    --*) echo "unknown arg: $a" >&2; exit 2 ;;
+    *) if [ -z "$ROOT" ]; then ROOT="$a"; else echo "unexpected second path: $a (first was $ROOT)" >&2; exit 2; fi ;;
   esac
 done
+[ -n "$ROOT" ] || ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 cd "$ROOT" || exit 0
 

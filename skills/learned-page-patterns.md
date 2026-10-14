@@ -349,3 +349,41 @@ nothing). Making the input itself editable does nothing. Set `Editable: true` on
 between the page and the input. Lint MDL-WIDGET31 checks only native inputs, so it misses a
 pluggable one such as a Switch (BUG-149). (Mendix 11.13.0, mxcli v0.24.0, the same build,
 2026-09-26: fixed only when both the outer and the inner list view were editable.)
+
+## UI fix rounds — fix once in SCSS, apply directly, re-look only what changed
+
+A round of UI fixes across many pages (after a review, a design port, or "the UI looks bad") is
+where calls multiply and regressions sneak in. Field comparison, 2026-09-29: one UI round took
+1,507 calls against 515 for a comparable build in the same ~3 h. Seven drafting agents each ran
+check → exec → mx check → page-fidelity on a scratch copy for every script, and the lead then
+applied each script again: about 25 calls per applied fix. Round 1 also introduced four
+regressions, and about a fifth of the UI tokens went to round 2 repairing them.
+
+**Order of work for a round:**
+
+1. **Cross-cutting fixes first, once, as SCSS** — a token, a spacing rule, a class every page
+   shares. One theme change fixes N pages; N page scripts fix N pages and drift.
+2. **Then the page scripts.** A drafter that has run `mxcli check` and `page-fidelity.js` on its
+   script hands it over for applying with `./bin/exec.sh`. Do not pre-apply to a scratch copy
+   "to be sure": exec.sh's gate is that check. Its lock refuses a second apply while one runs — re-run after
+   the other apply finishes.
+3. **Re-look only the pages the round changed** — the list is the round's BUILD-LOG rows plus
+   the pages an SCSS change reaches. Done when every page on that list has a fresh look
+   (`ui-loop.md`), N of N.
+
+(Expected effect: roughly half the calls per round. That is a hypothesis from one run, not a
+measurement.)
+
+**Before applying, check the round's scripts and SCSS for these four regressions** — each one
+broke previously correct pages in that round, and every one is visible in the source before it is
+visible on screen:
+
+| # | Regression | What it looked like | Check before applying |
+|---|---|---|---|
+| N1 | The page-column class lands on the layout root, not the page body | the app shell (sidebar, top bar) detaches and squeezes into the page column | the page-column class sits on a container **inside** the page's content placeholder; no layout or layout-root selector carries it |
+| N2 | Atlas `.d-none` loses to a project class that sets `display` | an element meant to be hidden shows (seen: a `.pill` badge) | hide with Mendix conditional visibility, not a hiding class; if a class must hide, grep the theme for any rule on the same widget that sets `display` |
+| N3 | Data Grid 2 columns left on `autoFit` | columns starve to 32 px, text cut to an ellipsis | every text column has an explicit width (`autoFill` or `manual`); `autoFit` only for icon or button columns |
+| N4 | A `:focus-visible` ring on navigation | one tab looks selected on every page landing | `learned-css-that-never-applied.md` → "a focus ring that paints on every page landing" |
+
+Denominator: the round's scripts and SCSS files checked against all four rows, M of M, before the
+first apply.

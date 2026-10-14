@@ -1,0 +1,14 @@
+# Provenance: the .docker/.env template embedded in mxcli v0.26.0 (what `mxcli docker init` writes),
+# read out of the binary with `strings -n 4`; lines below are verbatim. Public defaults, no live secret.
+APP_PORT=8080
+ADMIN_PORT=8090
+M2EE_ADMIN_PASS=AdminPassword1!
+MX_LOG_LEVEL=info
+# Database Settings
+DB_NAME=mendix
+DB_USER=mendix
+DB_PASSWORD=mendix
+DB_PORT=5432
+# Test Settings (update ports to match APP_PORT / DB_PORT above)
+TEST_BASE_URL=http://localhost:8080
+TEST_DB_URL=postgresql://mendix:mendix@localhost:5432/mendix

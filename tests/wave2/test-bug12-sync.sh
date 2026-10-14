@@ -360,6 +360,10 @@ AFTER="$(md5 -q "$P10/intake.md" 2>/dev/null || md5sum "$P10/intake.md" | cut -d
 grep -q '^## 10\. Entry mode' "$P10/intake.md" \
   && ok "  new questions continue from 10 rather than renumbering" \
   || bad "  new questions continue from 10 rather than renumbering"
+grep -qF '. Unit tests (`.test.mdl`): project default `no` (default) or `yes`?' "$P10/intake.md" \
+  && grep -qF 'default is `no`' "$P10/intake.md" \
+  && ok "  the unit-test default question (#274) is appended, defaulting to no" \
+  || bad "  the unit-test default question (#274) is appended, defaulting to no"
 [ "$(grep -c 'Answered (CONFIRMED)' "$P10/intake.md")" = "9" ] \
   && ok "  all nine existing answers survive" || bad "  all nine existing answers survive"
 "$GATE" "$P10" P >/dev/null 2>&1 \

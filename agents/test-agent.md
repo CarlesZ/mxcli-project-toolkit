@@ -34,7 +34,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/skills-over-scripts.md` | Before writing any .js or .sh for a check, gate or report — and before adding a rule to an existing one: judgement goes in a skill, code only fetches facts a reader cannot |
 | `skills/degrade-to-judgement.md` | Any pass whose input is missing, stale or unresolvable — before recording UNMEASURED, N/A or a silent skip: name what was missing, say what you assessed against instead, still deliver a verdict |
 | `skills/module-review.md` | Reviewing any module before calling it done — the ONE pass: build, gate, prove, LOOK (is it logical, does it look right, does it match our design, over every page not just the tested ones), confirm with the denominator stated |
-| `skills/testing-shape.md` | Before calling any module tested — what testing a module means, and the false-green register of confirmed ways a test reports green over a broken feature |
+| `skills/testing-shape.md` | Before calling any module tested, or before re-running tests after a change — what testing a module means, which re-runs a change owes (UI-only vs logic lane), and the false-green register of confirmed ways a test reports green over a broken feature |
 | `project-bin/verify-module.sh` | Finishing any module — before calling it done. One command that runs every instrument and keeps "instrument faulted" apart from "feature failed"; in a wired project run the installed copy at bin/verify-module.sh |
 | `skills/tool-output-is-not-ground-truth.md` | Any time an exit code, a tool's output or a subagent's report is about to become a stated finding — verify before you conclude |
 | `bin/status.sh` | The first command of every session, and any time someone asks "where are we" or "what next" — one screen: stage, done/overdue, the ONE next action, from the instruments, never from memory |
@@ -57,7 +57,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/close-the-loop.md` | Cutover and retrospective |
 | `skills/report-schema.md` | Writing or reading docs/report.json |
 | `skills/harness-architecture.md` | Installing, extending, debugging or porting the verification harness |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `skills/e2e-evidence-report.md` | Turning an already-rigorous run into a narrated proof a stakeholder can trust without running anything |
 | `skills/record-demo-video.md` | Recording a narrated screen-capture demo of a running app for a human to watch |

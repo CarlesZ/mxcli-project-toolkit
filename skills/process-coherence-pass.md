@@ -28,7 +28,7 @@ across the same project once looked for systematically: two BRD-named decision s
 working microflow sitting next to their "record decision" button, and the button was never wired.
 Not one bug — a pattern, invisible to every other check in place.
 
-## The four passes
+## The five passes
 
 Run as a read-only review task (no Write/Edit, never touches the real model) — this is
 intentionally a *broader* trace than a targeted conformance question, so budget tens of thousands
@@ -78,6 +78,41 @@ open-ended search without a specific term in mind.
    then trace forward through what passes 1–3 actually found built. This pass is necessarily
    `Judged`, not `Measured` — say so, and cite the specific evidence the judgment rests on.
 
+5. **One displayed fact, one source.** A fact the user reads on screen (a record's status, a
+   count, "reachable", "last synced") can be shown on many pages, and every page must read it
+   from the same place. Otherwise a later task undoes an earlier fix without touching it.
+
+   The field case (2026-10-12, a 20-task UX-fix run over three apps): task 4 made a withdrawn
+   record read "Stopped" through a calculated display status. Task 18 added badges that read
+   the *stored* status, so four pages showed "Notified" again, one of them an external user's
+   main page. Task 18's own review and journeys passed. Only the final whole-app LOOK found it.
+   The same run had a closed record showing zeros from a summary that returns zeros once
+   unpublished, a week-old stored probe shown as live, and one "stale after" rule written as
+   1 hour, 6 hours and 360 minutes in three apps.
+
+   **The register is the decision register, not a new file.** When a fix decides where a fact
+   comes from, log it as a `PROJECT.md` decision whose Decision cell starts `Displayed fact:`:
+
+   ```
+   | 5 | Displayed fact: notice status — source Notices.Notice_GetDisplayStatus; raw Notice/Status is never shown; stale after Notices.StaleAfterMinutes | CONFIRMED | task 4 |
+   ```
+
+   A row names the fact, its **single** microflow or attribute, the raw attribute it
+   replaces, and (if it can go stale) **one** constant for the threshold.
+   `grep -n 'Displayed fact:' PROJECT.md` lists the register. The newest row for a fact wins,
+   because the table is append-only.
+
+   **The pass:** for each register row, find every place that displays the raw attribute
+   (`SHOW REFERENCES OF <Entity>.<Attr>`, or a grep of `mdlsource/` for the attribute in a page
+   or snippet). Any page reference that is not the source itself is a finding. Any stale
+   threshold written as a literal instead of the named constant is a finding. Completion line:
+   "N of N registered facts checked, M page references to raw attributes". A project with no
+   register rows says "0 displayed facts registered", and that should prompt the question of
+   whether any fix in this cluster decided one.
+
+   **When a fix changes what a fact shows,** its journey asserts the old wording is *absent* on
+   every page the register says shows that fact, not only on the page being fixed.
+
 Label every finding `Measured` (a command ran, output directly supports the claim) or `Judged` (a
 view formed from cited evidence, always overrulable at a glance) — same discipline a targeted
 conformance review uses, applied to broader claims instead of single fields.
@@ -118,7 +153,7 @@ it never judges — that stays here. **When a pass finishes, run
   top of the same wrong assumption — the exact shape of the 2026-08-19 incident, where the escaped
   defects had been buildable-and-findable for sessions before anyone ran this pass. `mxcli lint`
   QUAL004 is cheap enough (seconds, no browser) to run at every module-review CONFIRM; this fuller
-  4-pass sweep is the one that waits for a cluster, not the lint check that feeds it.
+  5-pass sweep is the one that waits for a cluster, not the lint check that feeds it.
 - Once requirements-conformance and UI/Data testing are both clean for that module or cluster —
   this pass assumes the pieces already checked out individually and is specifically hunting for
   composition failures between them. Running it before the component checks are clean just

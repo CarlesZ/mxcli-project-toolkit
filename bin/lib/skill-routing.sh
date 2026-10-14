@@ -472,7 +472,7 @@ routing_unrouted_skills() {
     rel="${f#"$root"/}"
     # Exact line match — a substring test would let skills/foo.md hide behind a routed
     # skills/x-foo.md.
-    printf '%s\n' "$routed" | grep -qxF "$rel" && continue
+    grep -qxF -- "$rel" <<<"$routed" && continue
     _routing_is_exempt "$rel" || echo "$rel"
   done
 }
@@ -491,7 +491,7 @@ routing_stale_exemptions() {
       *)
         if [ ! -e "$root/$ex" ]; then
           echo "$ex — exempted file no longer exists"
-        elif printf '%s\n' "$routed" | grep -qxF "$ex"; then
+        elif grep -qxF -- "$ex" <<<"$routed"; then
           echo "$ex — exempted AND routed; drop the exemption"
         fi
         ;;

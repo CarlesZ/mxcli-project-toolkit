@@ -6,7 +6,9 @@ narrated product demo, not a test artifact — with a repeatable technique for
 opening on the app instead of a blank frame, and for keeping narration synced
 to what's on screen.
 **Source:** field-tested on a live mxcli project's Playwright demo-recording
-script (mobile tour, two roles), 2026-09.
+script (mobile tour, two roles), 2026-09; the Node, counter, row-lookup and
+skip notes come from a requirements-driven back-office build's three-film set,
+2026-09.
 
 ## When to use this skill
 
@@ -21,7 +23,7 @@ For assertion-style browser testing use `e2e-harness-base.md` instead. A demo
 video **is not a test**: it must never fail a build, and its job is to be
 legible to a person who has never seen the app.
 
-## The twelve rules
+## The thirteen rules
 
 ### 1. Open on the app, never on a blank frame
 
@@ -114,6 +116,10 @@ there either. Find it with `freezedetect`, which reports `freeze_start` /
 ffmpeg -i trimmed.webm -vf "freezedetect=n=-55dB:d=5" -f null - 2>&1 | grep freeze
 ```
 
+From Node, read that report with `spawnSync(ffmpeg, args, { encoding: 'utf8',
+maxBuffer: 1 << 26 }).stderr`. `execFileSync(...)` returns **stdout only**: one
+script got `null` back and threw in post after a full six-minute take.
+
 Keep ~1.5s of each freeze and drop the rest with a `select`/`setpts` pair. On
 the source project that squeezed 6–20s out of a 100–150s tour without cutting
 a single caption short.
@@ -193,8 +199,10 @@ labels.
 Text swapped in place looks like one long static banner. Three cheap signals
 turn a strip into narration:
 
-- a **step counter** (`07/34`) so the viewer knows where they are and that
-  something advanced;
+- a **step counter** (`07`) so the viewer knows where they are and that
+  something advanced. Show the step number only. The total has to be guessed
+  before the film is final, and the guess ends up in every frame: one film
+  ended on "25/34" after 25 complete steps;
 - a **short entry animation** on text change (~0.34s fade + 7px rise) —
   restart it by removing the class, forcing a reflow, re-adding it;
 - a **dwell timer bar** across the top of the strip, animated to the exact
@@ -279,6 +287,25 @@ Before every recording:
 Also undo state the *tour itself* toggles. A favourite left on from the last
 run hides the "Favourite" button, and the step silently vanishes from the
 recording.
+
+**Film first, then run the test suites.** A film often depends on state that
+took a rehearsal to build: one change followed through three apps, an answer
+seeded in a downstream app. Journey suites that reset or reload demo data
+destroy that state. Nothing in the suite says so, and a full cross-app
+rehearsal is the only way back. In the 2026-10-12 field run, one suite run
+between rehearsal and recording wiped one app's seeded answer. That app never
+appeared in the film, so the narration said "three apps" while the viewer saw
+two.
+
+1. **Before rehearsing**, list the journeys that reset or reload data (grep
+   the journey files for the reset/reload/seed calls your runner uses) and
+   do not run any of them between rehearsal and the final take. If the
+   runner can tag journeys, tag them. If it can't, write the list down in the
+   recording script's header.
+2. **After rehearsing**, snapshot the state the film needs: a database dump,
+   or an export of the specific records by business key. Then a mistake
+   costs a restore, not a re-rehearsal.
+3. Run the suites **after** the film is cut.
 
 ---
 
@@ -383,6 +410,38 @@ jumps. 1.10–1.20× is invisible to a viewer and is usually all a tour needs.
 If the film is still too long at the cap, cut a whole act (a tour of a screen
 the story does not need) and re-record — never shave the holds.
 
+### 13. Every narrated claim is checked against its frame, line by line
+
+Rule 2 keeps captions in sync with the screen. It does not check that what a
+caption *says* is true. In the 2026-10-12 field run, five narration lines had
+to be rewritten after reading the frames:
+
+- a count that differed by one between two apps;
+- a role named wrongly;
+- a noun that was not on the closed-record screen;
+- "answered" said next to a card reading "not answered yet".
+
+A contact-sheet review had already passed the film. None of the five showed up
+until the lines were read one at a time against their frames.
+
+**The claims table, before the cut is final.** One row per narrated line.
+For each line, list every number, name, role and status word it asserts. Pull
+the frame at that line's timestamp (`ffmpeg -ss <t> -i out.mp4 -frames:v 1`)
+and read each one off the screen:
+
+| t (s) | Line | Asserts | On screen | OK |
+|---|---|---|---|---|
+| 41.2 | "Both apps now show 12 open changes" | 12, 12 | 12, 11 | ❌ |
+
+Any ❌ fails the cut: fix the line or the data, and re-record that beat.
+Completion line: "N of N lines checked, 0 mismatches".
+
+**Narration density is measured, not judged.** Sum the seconds of voice (or
+caption-on time, for a captioned film), and divide by the runtime. Aim for
+55–65%, so the viewer gets quiet time to look at the screen. Fail the cut
+above 70%. That is a starting threshold, so tighten it once you have measured
+your own films. The field film measured 92%, and nobody had noticed.
+
 ## Structure of a good tour
 
 Aim for **90–150 seconds** per role, 25–35 narrated beats. Longer and it stops
@@ -415,7 +474,25 @@ be sorted.
   }
   ```
 
-  A skipped step is a hole in the demo; it must be loud, not silent.
+  A skipped step is a hole in the demo. Logging it is not enough: count the
+  skips, print the count in the last line, and end the take with a non-zero
+  exit code (still writing the raw video). That does not make the demo a test,
+  because it never runs in a build. It stops a take with holes from being
+  delivered as finished. One fault film logged four skips, never showed its
+  retry beats and still exited 0.
+- **Find a row by the value the grid displays.** A script knows the key it
+  created, such as a client id, but a list page may show a different one, such
+  as the case id. When the script searched the Technical errors grid by client
+  id, "Open task" was never found. Once the record reaches the state the screen
+  lists, read the displayed key with one query and locate the row by it.
+- **Fail before the browser opens, not at the first `goto`.** Take what the
+  harness config module exports (`const { cfg } = require('./config')`, not the
+  whole module) and check the base URL up front. One first take died on
+  `goto("undefined/")`.
+- **Record and post-process as separate steps.** Write the raw `.webm` before
+  post-processing starts, and make post able to run on its own against a saved
+  raw file. Then a crash in post costs one re-run instead of the whole take. On
+  the source project, a re-run of post alone produced the 3:24 MP4.
 - **Always sign out at the end.** An unlicensed Mendix runtime caps
   concurrent sessions and a killed browser does **not** release one — leak a
   few and the next recording cannot log in at all.
@@ -455,4 +532,10 @@ be sorted.
 | A dropdown or radio beat reads as "it filled itself in" | The marker sits on the control, not on the option being chosen | Rule 10 — mark the option/label, hold, click, release |
 | An "Error / Connection refused" dialog over the app mid-film | An outbound dependency (mail relay, REST endpoint) was simply not there; the recorder still exits 0 | Rule 11 — decide up or down per dependency before rolling, and check frames around every commit beat |
 | Captions unreadable / cursor teleports after a speed-up | Re-timed past the 1.6× readability ceiling to hit a length target | Rule 12 — cap the factor, cut an act instead |
+| The film says "three apps" and shows two; a seeded answer is gone | A reset-bearing journey suite ran between rehearsal and recording | Rule 9 — film first, snapshot the rehearsed state, run suites after the cut |
+| A viewer points out the narration contradicts the screen | Captions synced in time (rule 2) but never read against the frame | Rule 13 — claims table, one row per line, fail on any mismatch |
+| First navigation goes to `undefined/` | The config module was required whole instead of destructuring its export | Instrumentation: destructure the export and check the base URL before launching |
+| Post-processing throws on `null` after a complete take | `execFileSync` returns stdout, and ffmpeg's freezedetect report is on stderr | Rule 1: `spawnSync(...).stderr`. Keep the raw `.webm` and re-run post alone |
+| The last caption reads "25/34" in a complete film | A guessed total is burned into the counter | Rule 4: show the step number only |
+| A block of beats never happens and the take still exits 0 | The row was looked up by a key the grid does not display, and skips were logged but not counted | Instrumentation: locate rows by the displayed key, and make skips set the exit code |
 | An embedded YouTube video's frame is black | Sandbox egress opened only the page-shell domain, not the CDN host that serves media (`*.googlevideo.com`), and/or the headless browser has no H.264 decoder | Not an app defect — caption it (Rule 8); confirm which domains are actually open before assuming egress alone will fix it |

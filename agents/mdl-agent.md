@@ -55,7 +55,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `bin/exec-approval.sh` | Before any mxcli exec / exec.sh / --mcp write — ask or run? the knob decides |
 | `project-bin/verify-module.sh` | Finishing any module — before calling it done. One command that runs every instrument and keeps "instrument faulted" apart from "feature failed"; in a wired project run the installed copy at bin/verify-module.sh |
 | `skills/tool-output-is-not-ground-truth.md` | Any time an exit code, a tool's output or a subagent's report is about to become a stated finding — verify before you conclude |
-| `skills/learned-css-that-never-applied.md` | A style change that appears to have done nothing, or an app still grey after a design port every instrument called green — the three ways a correct rule paints nothing (matches nothing / matches chrome / loses the cascade), the two reads that tell them apart, and the class that arrived in the stylesheet and is bound to no widget |
+| `skills/learned-css-that-never-applied.md` | A style change that appears to have done nothing, a focus ring that paints on every page landing, or an app still grey after a design port every instrument called green — the three ways a correct rule paints nothing (matches nothing / matches chrome / loses the cascade), the two reads that tell them apart, and the class that arrived in the stylesheet and is bound to no widget |
 | `skills/learned-detection-gaps.md` | Before trusting a green check/exec/DESCRIBE result as proof, or when a runtime symptom appears over a fully green model — the register of constructs that pass early rungs and fail later ones |
 | `skills/security-is-not-a-later-script.md` | Creating any entity, or calling a module security-ready — entity and grants land in one script, and ready means SHOW SECURITY MATRIX proves it |
 | `bin/bug-lookup.sh` | A CE error or behavior that looks like a known mxcli quirk rather than a modeling mistake — `bin/bug-lookup.sh CE0117` / `BUG-102` / "keyword" prints the matching ledger entries, so the session reads one entry, not the 32k-word ledger |
@@ -71,17 +71,17 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `bug-logs/mxcli-bugs.md` | Reading a whole class of tool defects (a retest, a new mxcli release, an audit) |
 | `skills/cloud-dev-environment.md` | Setting up or resuming an mxcli project in a cloud/ephemeral container |
 | `skills/microflow-loop-antipatterns.md` | Reading what loop bodies do (LOOP_TQ, deferred commit, nested loop, REST in loop, transaction control per item, scheduled-event reachability) from described MDL; the catalog holds top-level activities only and cannot see inside a loop |
-| `skills/iterative-build-loop.md` | Building a module with mxcli |
+| `skills/iterative-build-loop.md` | An exec.sh guard refused a write (not a permission prompt), or building a module with mxcli |
 | `skills/mdl-cookbook-microflows.md` | Writing MDL microflow scripts |
 | `skills/build/mdl/oneshot-mdl-method.md` | Writing a single MDL script that takes a project from nothing to a working vertical slice |
-| `skills/learned-page-patterns.md` | Building and auditing Mendix pages |
+| `skills/learned-page-patterns.md` | Building and auditing Mendix pages, or starting a UI fix round across many pages |
 | `skills/oneshot-page-structure-patterns.md` | Generating a whole page tree in one script |
 | `skills/mendix-agents.md` | Building a Mendix AI agent |
 | `skills/mendix-agent-ui.md` | Embedding a copilot chat panel |
 | `skills/mendix-agent-setup.md` | Standing up a project's GenAI agents in any environment |
 | `skills/company-brain.md` | Setting up or wiring a COMPANY BRAIN |
 | `skills/close-the-loop.md` | Cutover and retrospective |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `project-bin/coherence-cadence.sh` | After every module's CONFIRM stage |
 | `skills/mpr-corruption-and-sp-load-errors.md` | Studio Pro will not load the project, or the .mpr looks gutted |
@@ -104,7 +104,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/learned-popup-feedback-pattern.md` | Writing ANY microflow behind a button that commits, completes a workflow task, or triggers a backend flow |
 | `skills/anonymize-client-app-for-demo.md` | Turning a client-derived Mendix app into a clean, shareable demo with zero client fingerprint |
 | `skills/field-run.md` | Driving the whole toolkit pipeline on a real source to find what the written skills don't say |
-| `skills/learned-mdl-cannot-express.md` | Before a wireframe or a design commits to a WIDGET |
+| `skills/learned-mdl-cannot-express.md` | Before a wireframe or a design commits to a WIDGET, when a requirement shows a widget to one role and not another, and when a page script hits a parse error that looks like a syntax mistake: the short list of things MDL cannot write at all, and the four-minute probe that answers it at Stage 3 instead of at build time |
 | `skills/learned-dg2-patterns.md` | Building or altering any data grid |
 | `skills/learned-file-upload-widget.md` | Putting any file upload / attachment / document field on a page, an uploader page failing mx check with CE0463, or an uploader DESCRIBE that will not re-execute |
 | `skills/scriptable-sp-verification.md` | Needing Studio Pro load evidence without a human at the GUI |

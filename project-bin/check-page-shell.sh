@@ -289,7 +289,7 @@ for f in $TARGETS; do
     # it, and nothing in a default page tree does.
     col="$(grep -oE 'main\{[^}]*max-width:[0-9]+px' "$wf" | grep -oE '[0-9]+px' | head -1)"
     if [ -n "$col" ]; then
-      if ! printf '%s' "$body" | grep -qE "Class:[^)]*(page-column|page-body|kt-page|container|max-w|measure)"; then
+      if ! grep -qE -- "Class:[^)]*(page-column|page-body|kt-page|container|max-w|measure)" <<<"$body"; then
         report "$f:$ln" "page $page is built full-bleed; its wireframe draws a $col column" \
           "Wrap the page body in the project's page-column container (ds.css supplies 'margin: 0 auto'; the wireframe narrows it to $col). Uncapped, this renders at the full layout region — measured at 1360px on a 900px design."
       fi

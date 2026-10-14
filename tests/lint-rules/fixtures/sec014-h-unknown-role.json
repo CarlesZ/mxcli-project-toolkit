@@ -1,0 +1,456 @@
+{
+ "associations": [
+  {
+   "from_entity": "Portal.Offer",
+   "module_name": "Portal",
+   "name": "Offer_Partner",
+   "qualified_name": "Portal.Offer_Partner",
+   "to_entity": "Portal.Partner"
+  },
+  {
+   "from_entity": "Portal.Offer",
+   "module_name": "Portal",
+   "name": "Offer_Contact",
+   "qualified_name": "Portal.Offer_Contact",
+   "to_entity": "Portal.Contact"
+  }
+ ],
+ "attributes": {
+  "Portal.Contact": [
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Contact",
+    "module_name": "Portal",
+    "name": "Name"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Contact",
+    "module_name": "Portal",
+    "name": "Email"
+   }
+  ],
+  "Portal.Offer": [
+   {
+    "data_type": "Enumeration",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "Status"
+   },
+   {
+    "data_type": "Decimal",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "Amount"
+   },
+   {
+    "data_type": "DateTime",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "SubmittedAt"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "ApprovedBy"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "Note"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "Format"
+   }
+  ]
+ },
+ "entities": [
+  {
+   "entity_type": "Persistent",
+   "module_name": "Portal",
+   "name": "Offer",
+   "qualified_name": "Portal.Offer"
+  },
+  {
+   "entity_type": "Persistent",
+   "module_name": "Portal",
+   "name": "Contact",
+   "qualified_name": "Portal.Contact"
+  }
+ ],
+ "options": {
+  "external_roles": "Partnr"
+ },
+ "permissions": [
+  {
+   "access_type": "CREATE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Status",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Status",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Amount",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Amount",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "SubmittedAt",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "SubmittedAt",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "ApprovedBy",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "ApprovedBy",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Note",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Note",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Format",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Format",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Portal.Offer_Partner",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Portal.Offer_Partner",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Portal.Offer_Contact",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": true,
+   "member_name": "Portal.Offer_Contact",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": "[Portal.Offer_Partner/Portal.Partner/Portal.Partner_Account = '[%CurrentUser%]']"
+  },
+  {
+   "access_type": "READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Status",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Status",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Amount",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Amount",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "SubmittedAt",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "SubmittedAt",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "ApprovedBy",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "ApprovedBy",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Note",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Note",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Format",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Format",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Portal.Offer_Partner",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Portal.Offer_Partner",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Portal.Offer_Contact",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Portal.Offer_Contact",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "xpath_constraint": ""
+  }
+ ],
+ "role_mappings": [
+  {
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "user_role_name": "Partner"
+  },
+  {
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "user_role_name": "Buyer"
+  },
+  {
+   "module_name": "Portal",
+   "module_role_name": "Portal.Customer",
+   "user_role_name": "Customer"
+  }
+ ],
+ "user_roles": [
+  {
+   "module_roles": [
+    "Portal.Partner"
+   ],
+   "name": "Partner"
+  },
+  {
+   "module_roles": [
+    "Portal.Buyer"
+   ],
+   "name": "Buyer"
+  },
+  {
+   "module_roles": [
+    "Portal.Customer"
+   ],
+   "name": "Customer"
+  }
+ ]
+}

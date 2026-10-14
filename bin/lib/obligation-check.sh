@@ -19,6 +19,7 @@
 #   FAULT    a mark exists but cannot be read as evidence (no denominator on a pass that owes one)
 #   WAIVED   the register says this one is out of scope, with a reason
 #   ADOPTED  the project joined the pipeline above this obligation's stage
+#   NOT YET DUE  final-look only: gate-check's derived Current stage has not reached its from-stage
 #   N/A      this project is not running the pipeline at all (a-la-carte; existing-app-assurance.md)
 
 set -uo pipefail
@@ -163,6 +164,32 @@ _ob_adopted_stage() {
 
 _ob_rank() { case "$1" in P|p) echo 0 ;; [0-7]) echo $(( $1 + 1 )) ;; *) echo 99 ;; esac; }
 
+# _ob_current_stage <register>  → prints P or 0-7 from the register's "## Current stage" line, or
+# nothing when it cannot be read (no section, or a hand-written line that names no stage).
+#
+# Why: the from-stage column was read only against --adopt, so final-look (from-stage 6, the
+# whole-app LOOK run LAST) read PENDING on a project still at Stage P (review of #303).
+#
+# ONLY gate-check's own derived readout counts — a line containing "(derived by gate-check".
+# A hand-written line, and the scaffold line init-project.sh writes ("**Stage P — Kickoff**"),
+# read as unreadable → empty → owed. Field evidence (review of #321): hand-written lines
+# disagreed with the gates in 8 of 12 projects and gate-check never overwrites them; the
+# scaffold line often never advances because projects query `gate-check.sh . 5` directly.
+# "Could not tell the stage" must never read as "not due yet".
+_ob_current_stage() {
+  local reg="$1" line
+  [ -f "$reg" ] || return 0
+  line="$(awk '/^## Current stage/{f=1;next} f && /^## /{exit} f && /^\*\*/{print;exit}' "$reg" 2>/dev/null | tr -d '\r')"
+  case "$line" in
+    *"(derived by gate-check"*) ;;
+    *) return 0 ;;
+  esac
+  case "$line" in
+    "**All gates passed"*) printf '7'; return 0 ;;
+  esac
+  printf '%s' "$line" | sed -nE 's/^\*\*Stage[[:space:]]+([Pp0-7])([^0-9A-Za-z].*)?$/\1/p' | tr 'p' 'P'
+}
+
 # The scope unit set. A module is IN SCOPE once it has been opened for work — a brief directory
 # under architecture/modules/, or a verify run. NOT every module in the MPR: an app that predates
 # the toolkit owes nothing for modules nobody is building (obligations.tsv header, and
@@ -225,8 +252,8 @@ _ob_find() {
 # A denominator is a first line that counts something out of something: "12 of 12 pages reviewed".
 # Deliberately loose — the wording belongs to the skill, only the shape is mechanical.
 _ob_has_denominator() {
-  head -c 4000 "$1" 2>/dev/null | tr -d '\r' \
-    | grep -qiE '[0-9]+[[:space:]]+of[[:space:]]+[0-9]+|[0-9]+[[:space:]]*/[[:space:]]*[0-9]+'
+  grep -qiE -- '[0-9]+[[:space:]]+of[[:space:]]+[0-9]+|[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' \
+    <<<"$(head -c 4000 "$1" 2>/dev/null | tr -d '\r\0')"
 }
 
 # _ob_stale <project-root> <artifact>  → prints "<hash>+<n>" and returns 0 if the mark has
@@ -244,11 +271,34 @@ _ob_has_denominator() {
 # quietly stale, is the failure being retired). Unmeasurable (no git, hash unknown here) also
 # returns 1: an instrument reports what it measured, and "could not measure" must not read as
 # "expired".
+#
+# "Newest" is by COMMIT TIME, not by position (#155). A report kept as one dated file with an
+# addendum per build row carries several stamps; whether the author appends addenda at the
+# bottom or prepends them under the headline, the stamp that says the most recent thing is the
+# one whose commit is newest. If ANY stamp does not resolve here (history rewritten by a squash
+# or rebase, a shallow clone), the order of the stamps cannot be measured, so the last stamp in
+# the file is returned, as before: picking an older resolvable stamp instead would report STALE
+# on a report this checker cannot actually date (review of #321).
+_ob_valid_at_stamps() {
+  tr -d '\r' < "$1" 2>/dev/null \
+    | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}' \
+    | grep -oiE '[0-9a-f]{7,40}$'
+}
+_ob_newest_stamp() {
+  local root="$1" hit="$2" h t best="" best_t=-1 last="" unresolved=0
+  while IFS= read -r h; do
+    [ -n "$h" ] || continue
+    last="$h"
+    t="$(git -C "$root" show -s --format=%ct "${h}^{commit}" 2>/dev/null || true)"
+    if [ -z "$t" ]; then unresolved=1; continue; fi
+    if [ "$t" -ge "$best_t" ]; then best="$h"; best_t="$t"; fi
+  done <<< "$(_ob_valid_at_stamps "$hit")"
+  [ "$unresolved" = 1 ] && best=""
+  printf '%s' "${best:-$last}"
+}
 _ob_stale() {
   local root="$1" hit="$2" hash n
-  hash="$(cat "$hit" 2>/dev/null | tr -d '\r' \
-    | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}' \
-    | grep -oiE '[0-9a-f]{7,40}$' | tail -1)"
+  hash="$(_ob_newest_stamp "$root" "$hit")"
   [ -n "$hash" ] || return 1
   git -C "$root" cat-file -e "${hash}^{commit}" 2>/dev/null || return 1
   n="$(git -C "$root" log --oneline "${hash}..HEAD" -- '*.mpr' mdlsource 2>/dev/null | wc -l | tr -d ' ')"
@@ -273,8 +323,18 @@ _ob_stale() {
 #     2. every cited file EXISTS on disk and is ≥ 10 KB — a real full-page PNG is hundreds of
 #        KB; a blank capture or a placeholder is not (base64 embeds in the report are display,
 #        not proof: they cannot be checked for freshness);
-#     3. every cited file is NEWER than the report's VALID AT commit — shots are taken during
-#        the review, after the last model commit; citing last month's screenshots fails here.
+#     3. every cited file is NEWER than the VALID AT commit OF ITS OWN SECTION — shots are
+#        taken during the review, after the last model commit; citing last month's screenshots
+#        fails here. "Its section" = the nearest VALID AT stamp above the citation (a citation
+#        above every stamp belongs to the first stamp: the headline's).
+#
+#   Why per-section and not "one report per pass" (#155, field run 2026-09-26): projects keep
+#   one dated review file and append an addendum per build row, each with its own VALID AT and
+#   its own PROOF-OF-LOOK lines. Judging every citation against the single newest stamp made the
+#   first section's honest proofs "older than VALID AT", so the only way back to green was to
+#   re-shoot every page and delete the earlier proof lines — erasing the review history to
+#   satisfy the checker. Each section is a pass; each pass is judged by its own stamp. Staleness
+#   of the report as a whole is still decided by the newest stamp (_ob_stale).
 #   A report that fails is treated exactly like no report (FAULT): a visual verdict with no
 #   verifiable screenshot behind it is a CSS review wearing a LOOK report's clothes.
 #
@@ -290,7 +350,12 @@ _ob_look_proof_broken() {
   fdate="$(basename "$hit" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)"
   if [ -n "$fdate" ] && [[ "$fdate" < "$_OB_LOOK_PROOF_SINCE" ]]; then return 1; fi
 
-  entries="$(tr -d '\r' < "$hit" | grep -oE 'PROOF-OF-LOOK:[[:space:]]*[^=<]+=[[:space:]]*[^<>[:space:]]+')"
+  # One ordered token stream of stamps and citations, so each citation knows its section.
+  # grep -o emits matches left to right within a line, lines in order: a minified one-line
+  # report sections the same way as a pretty-printed one.
+  local tokens
+  tokens="$(tr -d '\r' < "$hit" | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}|PROOF-OF-LOOK:[[:space:]]*[^=<]+=[[:space:]]*[^<>[:space:]]+')"
+  entries="$(printf '%s\n' "$tokens" | grep -E '^PROOF-OF-LOOK:' || true)"
   if [ -z "$entries" ]; then
     printf 'no PROOF-OF-LOOK citations — verdicts with no screenshot on disk are a CSS review'
     return 0
@@ -301,17 +366,29 @@ _ob_look_proof_broken() {
   claimed="$(head -c 4000 "$hit" 2>/dev/null | tr -d '\r' \
     | grep -oiE '[0-9]+[[:space:]]+of[[:space:]]+[0-9]+' | head -1 | awk '{print $1}')"
 
-  # VALID AT commit time, for freshness. Unresolvable → freshness unmeasured, not failed.
-  local vhash vtime=""
-  vhash="$(cat "$hit" 2>/dev/null | tr -d '\r' \
-    | grep -oiE 'VALID[[:space:]]+AT:?[[:space:]]*[0-9a-f]{7,40}' \
-    | grep -oiE '[0-9a-f]{7,40}$' | tail -1)"
+  # Section stamp for freshness: starts at the FIRST stamp in the file (so citations above
+  # every stamp belong to the headline's), then each stamp met in the stream opens a section.
+  # Unresolvable stamp → that section's freshness is unmeasured, not failed.
+  local vhash="" vtime="" first_stamp
+  first_stamp="$(printf '%s\n' "$tokens" | grep -iE '^VALID' | head -1 | grep -oiE '[0-9a-f]{7,40}$')"
+  vhash="$first_stamp"
   [ -n "$vhash" ] && vtime="$(git -C "$root" show -s --format=%ct "${vhash}^{commit}" 2>/dev/null || true)"
 
   reldir="$(dirname "$hit")"
   local line page shot f sz mt
   while IFS= read -r line; do
     [ -n "$line" ] || continue
+    case "$line" in
+      PROOF-OF-LOOK:*) ;;
+      [Vv][Aa][Ll][Ii][Dd]*)
+         line="$(printf '%s' "$line" | grep -oiE '[0-9a-f]{7,40}$')"
+         if [ "$line" != "$vhash" ]; then
+           vhash="$line"; vtime=""
+           [ -n "$vhash" ] && vtime="$(git -C "$root" show -s --format=%ct "${vhash}^{commit}" 2>/dev/null || true)"
+         fi
+         continue ;;
+      *) continue ;;   # a lower-case "proof-of-look:" was never a citation (case-sensitive, as before)
+    esac
     page="$(printf '%s' "$line" | sed 's/^PROOF-OF-LOOK:[[:space:]]*//;s/[[:space:]]*=.*$//')"
     shot="$(printf '%s' "$line" | sed 's/^.*=[[:space:]]*//')"
     n_cited=$((n_cited+1))
@@ -323,12 +400,12 @@ _ob_look_proof_broken() {
       mt="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || true)"
       [ -n "$mt" ] && [ "$mt" -lt "$vtime" ] && oldshots="$oldshots $page"
     fi
-  done <<< "$entries"
+  done <<< "$tokens"
 
   local why=""
   [ -n "$missing" ] && why="cited screenshots not on disk:$missing"
   [ -n "$small" ] && why="${why:+$why; }cited screenshots under 10KB (blank/placeholder):$small"
-  [ -n "$oldshots" ] && why="${why:+$why; }screenshots older than VALID AT (a previous review's shots):$oldshots"
+  [ -n "$oldshots" ] && why="${why:+$why; }screenshots older than their section's VALID AT (a previous review's shots):$oldshots"
   if [ -n "$claimed" ] && [ "$n_cited" -lt "$claimed" ]; then
     why="${why:+$why; }$n_cited citation(s) for $claimed reviewed page(s)"
   fi
@@ -367,6 +444,10 @@ mxtk_obligations_report() {
   local adopted_rank=0
   [ -n "$adopted" ] && adopted_rank="$(_ob_rank "$adopted")"
 
+  local current; current="$(_ob_current_stage "$reg")"
+  local current_rank=99
+  [ -n "$current" ] && current_rank="$(_ob_rank "$current")"
+
   local modules; modules="$(_ob_modules "$root")"
   local ob performer scope match artifact denom degradable from_stage skill
 
@@ -376,6 +457,16 @@ mxtk_obligations_report() {
     if [ "$(_ob_rank "$from_stage")" -lt "$adopted_rank" ]; then
       printf 'Obligation %-10s ADOPTED — project joined at stage %s, above this pass'"'"'s stage %s (%s)\n' \
         "$ob" "$adopted" "$from_stage" "$skill"
+      continue
+    fi
+
+    # Not yet due: final-look ONLY, the one row that by definition runs last. Every other row
+    # keeps its verdict whatever the readout says — an early stale FAIL holds the derived
+    # readout back while the build goes on, and a general rule would hide owed passes behind it
+    # (review of #321).
+    if [ "$ob" = "final-look" ] && [ "$(_ob_rank "$from_stage")" -gt "$current_rank" ]; then
+      printf 'Obligation %-10s NOT YET DUE — owed from stage %s; the register'"'"'s Current stage is %s (%s)\n' \
+        "$ob" "$from_stage" "$current" "$skill"
       continue
     fi
 
@@ -392,7 +483,14 @@ mxtk_obligations_report() {
       continue
     fi
 
-    local total=0 done_n=0 waived_n=0 pending="" faulted="" stale="" noproof="" u hit reason stale_at proof_why candidates c newest
+    # The two LOOK rows share the pixel rule: module-review.md's per-module LOOK and its "final
+    # LOOK" both require PROOF-OF-LOOK lines, and the final one must also be stamped (VALID AT is
+    # what makes it "final" — an unstamped whole-app report could never go stale, so it would
+    # discharge the pass forever after any later change). Review of #303, 2026-10-13.
+    local is_look=0 needs_stamp=0
+    case "$ob" in look|final-look) is_look=1 ;; esac
+    [ "$ob" = "final-look" ] && needs_stamp=1
+    local total=0 done_n=0 waived_n=0 pending="" faulted="" stale="" noproof="" unstamped="" u hit reason stale_at proof_why candidates c newest
     while IFS= read -r u; do
       [ -n "$u" ] || continue
       total=$((total+1))
@@ -421,7 +519,8 @@ mxtk_obligations_report() {
         [ -n "$c" ] || continue
         [ -n "$newest" ] || newest="$c"
         if [ "$denom" = "yes" ] && ! _ob_has_denominator "$c"; then continue; fi
-        if [ "$ob" = "look" ] && _ob_look_proof_broken "$root" "$c" >/dev/null; then continue; fi
+        if [ "$needs_stamp" = 1 ] && [ -z "$(_ob_valid_at_stamps "$c")" ]; then continue; fi
+        if [ "$is_look" = 1 ] && _ob_look_proof_broken "$root" "$c" >/dev/null; then continue; fi
         if _ob_stale "$root" "$c" >/dev/null; then continue; fi
         hit="$c"; break
       done <<< "$candidates"
@@ -435,7 +534,9 @@ mxtk_obligations_report() {
       # would send them to the wrong place.
       elif [ "$denom" = "yes" ] && ! _ob_has_denominator "$newest"; then
         faulted="$faulted $u"
-      elif [ "$ob" = "look" ] && proof_why="$(_ob_look_proof_broken "$root" "$newest")"; then
+      elif [ "$needs_stamp" = 1 ] && [ -z "$(_ob_valid_at_stamps "$newest")" ]; then
+        unstamped="$unstamped $u"
+      elif [ "$is_look" = 1 ] && proof_why="$(_ob_look_proof_broken "$root" "$newest")"; then
         # A LOOK whose screenshots cannot be verified is a CSS review — treated as no report.
         noproof="$noproof $u($proof_why)"
       elif stale_at="$(_ob_stale "$root" "$newest")"; then
@@ -449,9 +550,10 @@ mxtk_obligations_report() {
 
     local scoped=$((total - waived_n)) tail=""
     [ "$waived_n" -gt 0 ] && tail=" ($waived_n waived)"
-    if [ -n "$faulted" ] || [ -n "$noproof" ]; then
+    if [ -n "$faulted" ] || [ -n "$noproof" ] || [ -n "$unstamped" ]; then
       local why_bits=""
       [ -n "$faulted" ] && why_bits="NO DENOMINATOR:$faulted — a pass that cannot say what it covered has not covered it"
+      [ -n "$unstamped" ] && why_bits="${why_bits:+$why_bits; }NO VALID AT:$unstamped — an unstamped final LOOK can never go stale, so it is treated as no report (stamp it with the commit it was true at)"
       [ -n "$noproof" ] && why_bits="${why_bits:+$why_bits; }NO PROOF-OF-LOOK — a visual verdict with no verifiable screenshot is a CSS review, treated as no report"
       printf 'Obligation %-10s FAULT — %d of %d discharged%s; %s (%s)\n' \
         "$ob" "$done_n" "$scoped" "$tail" "$why_bits" "$skill"
@@ -501,8 +603,8 @@ mxtk_obligations_reverse_check() {
     # skills — an MDL cookbook and a datagrid note among them — and a warning listing 46
     # names is one nobody reads, which is the same as no check at all.
     [ "$group" = "verify" ] || continue
-    printf '%s\n' "$named" | grep -qxF "$path" && continue
-    printf '%s' "$MXTK_OBLIGATIONS_NOROUTE" | awk '{print $1}' | grep -qxF "$name" && continue
+    grep -qxF -- "$path" <<<"$named" && continue
+    grep -qxF -- "$name" <<<"$(awk '{print $1}' <<<"$MXTK_OBLIGATIONS_NOROUTE")" && continue
     unnamed="$unnamed $name"
   done < "$tsv"
   if [ -n "$unnamed" ]; then

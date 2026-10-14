@@ -1,0 +1,7 @@
+# case<TAB>query — run through the released mxcli v0.26.0 binary (`mxcli version v0.26.0
+# (2026-10-11T18:37:07Z)`) against admin-api-stub.js; <case>.stdout / <case>.stderr are its
+# verbatim output (exit 0 for all four). Captured 2026-10-13.
+nullcol	SELECT c.Zeta AS zeta, c.Alpha AS alpha, c.Mid AS mid FROM M.E AS c WHERE 'NULLCOL' = 'NULLCOL'
+allnull	SELECT c.Zeta AS zeta, c.Alpha AS alpha, c.Mid AS mid FROM M.E AS c WHERE 'ALLNULL' = 'ALLNULL'
+view	SELECT b.AttentionCount AS n FROM M.V AS b WHERE 'VIEW' = 'VIEW'
+bracket	SELECT c.Label AS label, COUNT(c.ID) AS n FROM M.E AS c WHERE 'BRACKET' = 'BRACKET' GROUP BY c.Label

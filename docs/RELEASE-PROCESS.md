@@ -5,8 +5,8 @@ that release is cut. `CONTRIBUTING.md` already covers the three ways to *send* a
 (inbox drop, harvest script, direct PR) and the two rules that apply in every lane — read that
 first if you're contributing, not maintaining. This doc adds the fourth intake channel (GitHub
 issues), the triage rubric that turns an arrived item into a verdict, the test tiers a change
-must reach before it can merge, and the release train that turns merged commits into a tagged
-version. Reconciling the two documents into one (folding this rubric into `CONTRIBUTING.md`) is
+must reach before it can merge, the release train that turns merged commits into a tagged
+version, and (§8) what a version name promises: milestones, major versus minor, deprecation. Reconciling the two documents into one (folding this rubric into `CONTRIBUTING.md`) is
 a follow-up, not done here — see "Not yet built" at the end.
 
 ## 1. Intake lanes
@@ -153,6 +153,66 @@ the bottleneck.
   before it leaves the worktree.
 - **One purpose per PR.** A PR that mixes skill prose, an instrument change, and an inbox drop
   is split before grading — the rubric in §2 grades one artifact at a time.
+
+## 8. Versioning: milestones on top of the train
+
+This section is the single source for what a version name promises. The train itself (how
+`## Unreleased` becomes a dated section and a tag) is defined at the top of `CHANGELOG.md` and
+implemented by `bin/cut-release.sh` (§6); nothing here changes either.
+
+**The train stays.** Every cut is tagged `vYYYY.MM.DD`. `bin/sync-project.sh` prints that tag as
+`Toolkit release:`, bug reports name it, and projects pin to it, so the tag format and the script
+do not change for milestones. Tags start at 1.0: earlier dated CHANGELOG sections were never
+pushed, and until the first tag is published sync prints `Toolkit release: none tagged yet`.
+
+**A milestone is a train release the maintainer also names.** Milestones are `1.0`, `1.1`, `2.0`.
+Naming one adds three things to an ordinary cut, and no new tag scheme:
+
+1. curated notes in `docs/releases/v<major>.<minor>.md`, written for someone deciding whether to
+   adopt or upgrade (themes, what each means for them, upgrade steps, known gaps, credits), where
+   every claim traces to a `CHANGELOG.md` line or a commit;
+2. a GitHub Release on the train tag of that cut, titled with the milestone name and using the
+   notes file as its body;
+3. one `CHANGELOG.md` line in that cut's section pointing to the notes file.
+
+**Major or minor.**
+
+| | Major (`2.0`) | Minor (`1.1`) |
+|---|---|---|
+| When | Anything that breaks a consuming project unless someone acts: a changed `PROJECT.md` / register format, a renamed or removed script, gate semantics that turn a passing project red | New capability that needs no action: a skill, a lint rule that only warns, an instrument, a fix |
+| Notes must add | a **Migration** section with the exact steps, and the `bin/sync-project.sh` path that performs or detects them | an **Upgrading** section (pull + sync is enough) |
+
+A change that would be major waits for the next major milestone, or ships behind a sync step that
+migrates the project itself (then it no longer breaks anyone and counts as minor). A `fix(...)`
+line that changes an exit code or output format a project may parse is named in the notes even
+when it is minor (`CHANGELOG.md` already marks these as "Upgrade notes" or "Behaviour change").
+
+**Cadence.** The train's cadence is defined at the top of `CHANGELOG.md`. A milestone is named
+when a theme has landed, roughly monthly; there is no fixed date and no milestone without notes.
+
+**Deprecation.** Announce it in one milestone's notes (what goes, what replaces it, the sync
+behaviour in the meantime). Remove it no earlier than the next **major** milestone. Until removal,
+the old name keeps working or prints a pointer to the new one.
+
+**What "stable" means for consumers.** A train tag never moves (§6: never force-push, never delete
+a tag; a bad release is reverted forward and gets a hotfix tag). A project that wants stability
+pins its toolkit clone to a tag and upgrades on its own schedule with pull + sync. A milestone is
+the recommended pin: its notes say what to check.
+
+### For consumers: which version am I on, how to upgrade, how to pin
+
+- **Which version:** `bin/sync-project.sh <project>` prints `Toolkit release: vYYYY.MM.DD`, or
+  `vYYYY.MM.DD-3-g<sha>` when the clone is three commits past it. `git -C <toolkit> describe
+  --tags` gives the same. Map a train tag to a milestone through the GitHub Releases page or
+  `docs/releases/`.
+- **Upgrade:** `git -C <toolkit> pull`, then `bin/sync-project.sh <project-root>` for each project.
+  Read the milestone notes first when you cross one; for a major, follow its Migration section.
+- **Pin:** `git -C <toolkit> checkout vYYYY.MM.DD` (a detached checkout of the tag; sync's
+  stale-clone check stays quiet for a detached tag and warns only on a named non-`master` branch
+  or a `master` behind `origin/master`). The session-start ritual in `CLAUDE.local.md` runs
+  `git pull --ff-only` and warns that the clone is not on `master`; while pinned, that warning is
+  expected and the clone stays on the tag. To unpin:
+  `git -C <toolkit> checkout master && git -C <toolkit> pull`.
 
 ## Not yet built (follow-ups, not implemented in this change)
 

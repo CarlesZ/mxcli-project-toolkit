@@ -46,10 +46,10 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `project-bin/check-page-shell.sh` | Before exec'ing ANY page script — compares the drafted MDL's shell against the wireframe's: page column, layout/nav shell, one H1. Measured 0/10 pages on a real first build, repaired wholesale 47 scripts later |
 | `project-bin/page-fidelity.js` | After drafting and again after exec'ing any page script — scores the page MDL (or `mxcli describe` output on stdin) against its wireframe: headings/actions/content/classes, weighted. The scored companion to check-page-shell's binary gate; 32% median measured without it, 90% first-draft with it. Every run is appended to the project's docs/PAGE-FIDELITY.tsv — first non-stub row per page = first-build score of record vs the ≥80% target (forward-reference stubs score with --stub, exempt) |
 | `skills/module-review.md` | Reviewing any module before calling it done — the ONE pass: build, gate, prove, LOOK (is it logical, does it look right, does it match our design, over every page not just the tested ones), confirm with the denominator stated |
-| `skills/testing-shape.md` | Before calling any module tested — what testing a module means, and the false-green register of confirmed ways a test reports green over a broken feature |
+| `skills/testing-shape.md` | Before calling any module tested, or before re-running tests after a change — what testing a module means, which re-runs a change owes (UI-only vs logic lane), and the false-green register of confirmed ways a test reports green over a broken feature |
 | `project-bin/verify-module.sh` | Finishing any module — before calling it done. One command that runs every instrument and keeps "instrument faulted" apart from "feature failed"; in a wired project run the installed copy at bin/verify-module.sh |
 | `skills/tool-output-is-not-ground-truth.md` | Any time an exit code, a tool's output or a subagent's report is about to become a stated finding — verify before you conclude |
-| `skills/learned-css-that-never-applied.md` | A style change that appears to have done nothing, or an app still grey after a design port every instrument called green — the three ways a correct rule paints nothing (matches nothing / matches chrome / loses the cascade), the two reads that tell them apart, and the class that arrived in the stylesheet and is bound to no widget |
+| `skills/learned-css-that-never-applied.md` | A style change that appears to have done nothing, a focus ring that paints on every page landing, or an app still grey after a design port every instrument called green — the three ways a correct rule paints nothing (matches nothing / matches chrome / loses the cascade), the two reads that tell them apart, and the class that arrived in the stylesheet and is bound to no widget |
 | `skills/learned-detection-gaps.md` | Before trusting a green check/exec/DESCRIBE result as proof, or when a runtime symptom appears over a fully green model — the register of constructs that pass early rungs and fail later ones |
 | `skills/security-is-not-a-later-script.md` | Creating any entity, or calling a module security-ready — entity and grants land in one script, and ready means SHOW SECURITY MATRIX proves it |
 | `bin/status.sh` | The first command of every session, and any time someone asks "where are we" or "what next" — one screen: stage, done/overdue, the ONE next action, from the instruments, never from memory |
@@ -78,7 +78,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/close-the-loop.md` | Cutover and retrospective |
 | `skills/report-schema.md` | Writing or reading docs/report.json |
 | `skills/harness-architecture.md` | Installing, extending, debugging or porting the verification harness |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `skills/process-coherence-pass.md` | Checking whether the whole journey hangs together rather than each piece |
 | `project-bin/coherence-cadence.sh` | After every module's CONFIRM stage |
@@ -142,9 +142,10 @@ current — that block is the single source of truth and gets corrected independ
 Both are read-only. Neither touches the `.mpr`. Both refuse to report a clean sweep from a stale
 or empty catalog rather than silently passing.
 
-**Stale-catalog self-heal:** if `graph-sweep.sh` faults because `catalog_meta.build_mode` is not
-`full`, you may run `./mxcli -p <mpr> -c 'REFRESH CATALOG FULL'` yourself and retry once — this
-rebuilds the catalog database, it does not write to `.mpr` content, so it's outside what the
+**Stale-catalog self-heal:** if `graph-sweep.sh` faults because the catalog is stale, its refs table
+is empty, or its refs carry no `RefKind` (its `build_mode` label is reported, not judged — mxcli v0.24+ writes
+`source` for a complete catalog), you may run `./mxcli -p <mpr> -c 'REFRESH CATALOG FULL'`
+yourself and retry once — this rebuilds the catalog database, it does not write to `.mpr` content, so it's outside what the
 project's write-approval rule protects. If the retry still faults, report it; don't loop.
 
 ## Four hard rules — STOP, not suggestions

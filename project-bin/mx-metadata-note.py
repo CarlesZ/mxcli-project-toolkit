@@ -5,7 +5,8 @@
 #   bin/mx-metadata-note.py changes  [<commit>]          # print the ModelChanges JSON array
 #   bin/mx-metadata-note.py write    [<commit>] [--force] # write that commit's note
 #   bin/mx-metadata-note.py backfill [<rev-range>] [--dry-run] [--force]
-#   bin/mx-metadata-note.py sync     <remote>            # fetch + merge the remote's notes, then push
+#   bin/mx-metadata-note.py sync     <remote>            # publish: fetch + merge the remote's notes, then push
+#   (git push never carries the notes -- run sync after pushing the branch)
 #   (all take --mpr <path-from-git-top> when there is more than one candidate .mpr)
 #   Run it as "$PY" bin/mx-metadata-note.py, PY from _common.sh's resolve_py -- never through the
 #   shebang: on Windows "python3" is often the Microsoft Store stub.
@@ -240,15 +241,25 @@ def _changes(raw):
         return False
 
 
-def sync(remote):
-    """Merge the remote's notes before pushing ours -- a 3-way merge of the notes history, never a
-    force push. A note only one side changed takes that side's version. A note BOTH sides changed
-    since they last agreed keeps ours (-s ours) -- unless theirs lists model changes: then theirs
-    wins, so our computed notes are never pushed over a colleague's (Studio Pro's) non-empty one."""
-    git("fetch", remote, f"+refs/notes/{REF}:refs/notes/{REF}-remote")
-    if not _ref_ok(f"refs/notes/{REF}-remote"):
-        subprocess.run(["git", "push", remote, f"refs/notes/{REF}:refs/notes/{REF}"], check=True)
-        return 0
+def _fetch_remote(remote):
+    """Fetch the remote's notes into refs/notes/<REF>-remote. True when the remote has notes,
+    False when it has none (a fresh Team Server app, or no CLI/Studio Pro note pushed yet)."""
+    git("update-ref", "-d", f"refs/notes/{REF}-remote", check=False)    # never merge a stale copy
+    r = subprocess.run(["git", "fetch", "-q", remote, f"+refs/notes/{REF}:refs/notes/{REF}-remote"],
+                       capture_output=True)
+    if r.returncode == 0:
+        return True
+    ls = subprocess.run(["git", "ls-remote", "--exit-code", remote, f"refs/notes/{REF}"], capture_output=True)
+    if ls.returncode == 2:                               # reachable, and no such ref
+        return False
+    raise SystemExit(f"mx-metadata-note sync: cannot fetch notes from {remote}: "
+                     + r.stderr.decode("utf-8", "replace").strip())
+
+
+def _merge_remote():
+    """3-way merge refs/notes/<REF>-remote into ours. A note only one side changed takes that
+    side's version. A note BOTH sides changed keeps ours (-s ours) -- unless theirs lists model
+    changes: then theirs wins, so our computed notes never replace a colleague's non-empty one."""
     base = None
     if _ref_ok(f"refs/notes/{REF}"):
         base = git("merge-base", f"refs/notes/{REF}", f"refs/notes/{REF}-remote", check=False).strip() or None
@@ -273,8 +284,29 @@ def sync(remote):
     finally:
         if base:
             git("update-ref", "-d", f"refs/notes/{REF}-base", check=False)
-    subprocess.run(["git", "push", remote, f"refs/notes/{REF}:refs/notes/{REF}"], check=True)
-    return 0
+
+
+def sync(remote):
+    """Publish the notes: fetch the remote's, merge, push ours -- never a force push. This is the
+    ONLY way notes reach the remote; `git push` is left exactly as git and Studio Pro do it. A push
+    rejected because the remote moved on in between is retried once after a fresh fetch + merge."""
+    for attempt in (1, 2):
+        if _fetch_remote(remote):
+            _merge_remote()
+        if not _ref_ok(f"refs/notes/{REF}"):
+            print(f"mx_metadata sync: no notes on either side -- nothing to publish to {remote}")
+            return 0
+        r = subprocess.run(["git", "push", "-q", remote, f"refs/notes/{REF}:refs/notes/{REF}"],
+                           capture_output=True)
+        if r.returncode == 0:
+            print(f"mx_metadata sync: refs/notes/{REF} published to {remote}")
+            return 0
+        err = r.stderr.decode("utf-8", "replace").strip()
+        if attempt == 1:
+            print(f"mx_metadata sync: notes push to {remote} rejected -- re-fetching and merging once more",
+                  file=sys.stderr)
+    raise SystemExit(f"mx-metadata-note sync: notes push to {remote} rejected twice; the branch push is "
+                     f"unaffected. Run sync again in a moment. git said:\n{err}")
 
 
 def main(argv):

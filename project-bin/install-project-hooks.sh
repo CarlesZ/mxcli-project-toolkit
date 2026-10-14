@@ -3,23 +3,23 @@
 #
 #   ./bin/install-project-hooks.sh           # install/refresh the pre-commit + revision-note hooks
 #   ./bin/install-project-hooks.sh --check   # exit 1 if any is missing or stale
-#   ./bin/install-project-hooks.sh --push-refspecs   # notes push refspecs only, no fetch (the post-commit hook runs this)
 #
 # Two jobs. (1) pre-commit: the mxbuild-gate backstop below. (2) post-commit + post-rewrite: the
 # Studio Pro revision note (2026-10-12, field project). Studio Pro's History pane lists a commit's
 # changed documents from refs/notes/mx_metadata "ModelChanges", which only Studio Pro filled; CLI
 # commits showed "Model changes 0". These hooks run bin/mx-metadata-note.py write HEAD after every
 # commit, amend and rebase; they never block (a missing note costs a History entry, nothing
-# more). The installer also adds the notes ref to each Team Server remote's push refspecs, so a
-# plain `git push <remote>` carries the notes with the branch.
+# more). Notes are published explicitly, never by `git push`: after pushing the branch, run
+# mx-metadata-note.py sync <remote> (fetch, 3-way merge, push the notes ref).
 #
-# Push refspecs (review fix, 2026-10-14). A push refspec whose source ref does not exist fails the
-# WHOLE push ("src refspec refs/notes/mx_metadata does not match any") and nothing is pushed, not
-# even the branch. So the notes refspec is only ever added while the local notes ref exists: the
-# installer first fetches the remote's notes when there is no local ref (non-forced: it only
-# creates the ref), and the post-commit hook adds the refspec once the first note is written. And
-# once remote.<r>.push is set, git ignores push.default for that remote entirely, so the branch
-# refspec `HEAD` (current branch -> same name) is added explicitly beside it.
+# No push config, ever (review decision, 2026-10-14). An earlier revision of this script added
+# `HEAD` + `refs/notes/mx_metadata:refs/notes/mx_metadata` to remote.<r>.push. Any push refspec
+# replaces push.default for that remote: `HEAD` pushed a branch tracking a differently named
+# upstream to a NEW same-named branch (push.default=simple refuses that), a detached HEAD failed
+# confusingly, the notes refspec failed the whole push while no local notes ref existed, and
+# nobody knows whether Studio Pro's own push reads remote.<r>.push at all. So git and Studio Pro
+# push exactly as they do without this toolkit. The installer only fetches the remote's notes
+# (non-forced, creates the ref) and removes the exact pair that earlier revision wrote.
 #
 # WHY (2026-09-17, field project). A model can change without the mxbuild gate ever running — a
 # bare `./mxcli exec`, an exec.sh run on a machine with no mxbuild, a Studio Pro save —
@@ -61,42 +61,17 @@ ts_remotes() {
     for r in ${MXTK_TS_REMOTES:-}; do git config --get "remote.$r.url" >/dev/null 2>&1 && echo "$r"; done
   } | sort -u
 }
-has_notes()    { git rev-parse -q --verify refs/notes/mx_metadata >/dev/null 2>&1; }
-pushes_notes() { git config --get-all "remote.$1.push" 2>/dev/null | grep -q 'refs/notes/mx_metadata'; }
-
-# wire_push <remote> fetch|nofetch — add the notes refspec only while it cannot fail the push.
-wire_push() {
-  _r="$1"
-  if ! has_notes && [ "$2" = fetch ]; then
-    # Non-forced, and only creates the ref: a remote with no notes just fails this quietly.
-    if GIT_TERMINAL_PROMPT=0 git fetch -q "$_r" refs/notes/mx_metadata:refs/notes/mx_metadata >/dev/null 2>&1; then
-      echo "  ✓ $_r: fetched its refs/notes/mx_metadata (Studio Pro's notes) before wiring the push"
-    fi
-  fi
-  if ! has_notes; then
-    if pushes_notes "$_r"; then
-      git config --unset-all "remote.$_r.push" '^refs/notes/mx_metadata:' || true
-      echo "  ✓ $_r: removed the notes push refspec — no local refs/notes/mx_metadata, so it would fail every push"
-    fi
-    [ "$2" = fetch ] && echo "  – $_r: notes push not wired yet (no notes on either side); the post-commit hook wires it with the first note"
-    return 0
-  fi
-  if pushes_notes "$_r"; then
-    [ "$2" = fetch ] && echo "  ✓ $_r already pushes refs/notes/mx_metadata"
-    return 0
-  fi
-  # remote.<r>.push REPLACES push.default for this remote, so keep the branch push explicitly. An
-  # existing push config is extended, never replaced.
-  git config --get-all "remote.$_r.push" >/dev/null 2>&1 || git config --add "remote.$_r.push" HEAD
-  git config --add "remote.$_r.push" "refs/notes/mx_metadata:refs/notes/mx_metadata"
-  echo "  ✓ $_r: 'git push $_r' now carries refs/notes/mx_metadata with the branch" >&2
-  echo "    (rejected as non-fast-forward = a colleague's Studio Pro noted commits too: run mx-metadata-note.py sync $_r)" >&2
+has_notes() { git rev-parse -q --verify refs/notes/mx_metadata >/dev/null 2>&1; }
+# The exact pair an earlier revision of this script wrote (HEAD first, only when the remote had
+# no push config). Anything else in remote.<r>.push is the user's, and is never touched.
+OLD_PAIR="HEAD
+refs/notes/mx_metadata:refs/notes/mx_metadata"
+leftover() {   # ours | foreign | none
+  _p="$(git config --get-all "remote.$1.push" 2>/dev/null)"
+  if [ "$_p" = "$OLD_PAIR" ]; then echo ours
+  elif printf '%s\n' "$_p" | grep -q 'refs/notes/mx_metadata'; then echo foreign
+  else echo none; fi
 }
-
-if [ "${1:-}" = "--push-refspecs" ]; then
-  for r in $(ts_remotes); do wire_push "$r" nofetch; done
-  exit 0
-fi
 
 if [ -n "$(git config --get core.hooksPath 2>/dev/null)" ]; then
   echo "⚠ core.hooksPath is set ($(git config --get core.hooksPath)) — add this to that pre-commit yourself:"
@@ -104,7 +79,6 @@ if [ -n "$(git config --get core.hooksPath 2>/dev/null)" ]; then
   echo "  and this to its post-commit (revision notes for Studio Pro History; python via resolve_py, never the shebang):"  # portability-ok: advice text
   echo "    b=\"\$(git rev-parse --show-toplevel)/$BIN_REL\"; py=\"\$(PROJECT_ROOT=\"\$b/..\" bash -c '. \"\$1/_common.sh\" >/dev/null 2>&1 && resolve_py' _ \"\$b\")\""
   echo "    [ -n \"\$py\" ] && MXTK_HOOK=1 \"\$py\" \"\$b/mx-metadata-note.py\" write HEAD || true"
-  echo "    [ -n \"\$py\" ] && bash \"\$b/install-project-hooks.sh\" --push-refspecs >/dev/null || true   # wires the notes push once a note exists"
   exit 1
 fi
 
@@ -117,10 +91,10 @@ if [ "${1:-}" = "--check" ]; then
     else echo "  ✗ $h revision-note hook missing — run ./bin/install-project-hooks.sh"; rc=1; fi
   done
   for r in $(ts_remotes); do
-    if has_notes && pushes_notes "$r"; then echo "  ✓ $r pushes refs/notes/mx_metadata"
-    elif has_notes; then echo "  ✗ $r does not push refs/notes/mx_metadata — run ./bin/install-project-hooks.sh"; rc=1
-    elif pushes_notes "$r"; then echo "  ✗ $r pushes refs/notes/mx_metadata but there is no local notes ref — every 'git push $r' fails; run ./bin/install-project-hooks.sh"; rc=1
-    else echo "  – $r: no notes yet, so no notes refspec (the post-commit hook adds it with the first note)"; fi
+    case "$(leftover "$r")" in
+      ours)    echo "  ✗ remote.$r.push still holds the HEAD + notes refspecs an earlier toolkit revision added — run ./bin/install-project-hooks.sh to remove them"; rc=1 ;;
+      foreign) echo "  – remote.$r.push names refs/notes/mx_metadata beside other entries; not ours to remove (see 'git config --get-all remote.$r.push')" ;;
+    esac
   done
   exit $rc
 fi
@@ -212,13 +186,20 @@ else
   note_one() { MXTK_HOOK=1 "\$py" "\$note" write "\$1" || true; }
 fi
 $RUN
-# The first note just appeared? Then the Team Server push refspec can be wired without failing a push.
-inst="\$(dirname "\$note")/install-project-hooks.sh"
-git rev-parse -q --verify refs/notes/mx_metadata >/dev/null 2>&1 && [ -f "\$inst" ] && PROJECT_ROOT="\$proj" bash "\$inst" --push-refspecs >/dev/null || true
 exit 0
 HOOKEOF
   chmod +x "$HF"
 done
 echo "  ✓ post-commit + post-rewrite revision-note hooks installed (Studio Pro History lists each commit's changed documents)"
 
-for r in $(ts_remotes); do wire_push "$r" fetch 2>&1; done
+for r in $(ts_remotes); do
+  if ! has_notes && GIT_TERMINAL_PROMPT=0 git fetch -q "$r" refs/notes/mx_metadata:refs/notes/mx_metadata >/dev/null 2>&1; then
+    echo "  ✓ $r: fetched its refs/notes/mx_metadata (non-forced; Studio Pro's notes, so ours merge onto them)"
+  fi
+  case "$(leftover "$r")" in
+    ours)    git config --unset-all "remote.$r.push"
+             echo "  ✓ $r: removed the HEAD + notes push refspecs an earlier toolkit revision added — git push behaves as git's default again" ;;
+    foreign) echo "  ⚠ $r: remote.$r.push names refs/notes/mx_metadata beside other entries — left alone, as it may be yours." ;;
+  esac
+done
+echo "  Publish the History notes after pushing a branch:  \"\$PY\" bin/mx-metadata-note.py sync <remote>   (PY from resolve_py)"

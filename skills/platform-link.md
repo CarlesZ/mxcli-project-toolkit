@@ -206,12 +206,11 @@ better engine: it also notes the root commit and `Moved` units). An older pin fa
 `bin/mx-metadata-note.py write <commit>`; on 160 field commits both produced the same 3,594 entries.
 The fallback keeps every key an existing note has, reads `ModelerVersion` from the commit's own `.mpr`,
 and computes `ModelChanges` from the commit's changed `.mxunit` files. A note that already lists
-changes (Studio Pro's) is left alone unless you pass `--force`. The installer also adds the notes ref
-to the Team Server remote's push refspecs, so a plain `git push teamserver` carries the notes, but only
-once a local notes ref exists. A push refspec with no source ref fails the whole push, branch
-included. So the installer first fetches the remote's notes, and the post-commit hook wires the
-refspec with the first note. `HEAD` goes in beside it, because a configured push refspec replaces
-`push.default`.
+changes (Studio Pro's) is left alone unless you pass `--force`.
+
+`git push` never carries the notes; the toolkit leaves push config alone. **After you push your
+branch, publish the notes with `sync`.** It fetches, merges (a colleague's non-empty note wins) and
+pushes, with no force. A Studio Pro push does not carry CLI notes either, until someone runs sync.
 
 ```bash
 ./bin/install-project-hooks.sh                 # once; init-project.sh / sync-project.sh run it too
@@ -219,9 +218,8 @@ PY="$(PROJECT_ROOT=. bash -c '. bin/_common.sh >/dev/null 2>&1 && resolve_py')" 
 "$PY" bin/mx-metadata-note.py backfill --dry-run   # history from before the hook: what it would write
 "$PY" bin/mx-metadata-note.py backfill             # fill it; skips notes that already list changes
                                                # mxcli v0.26+: ./mxcli git note -p App.mpr --write <commits>
-git push teamserver                            # branch + notes (refspecs set by the installer)
-"$PY" bin/mx-metadata-note.py sync teamserver  # only if the notes push was rejected: 3-way merge, no
-                                               # force; a colleague's non-empty note always wins
+git push teamserver                            # the branch, exactly as before
+"$PY" bin/mx-metadata-note.py sync teamserver  # then publish the History notes
 ```
 
 Field proof (2026-10-12, Mendix 11.15.0): 158 notes backfilled and pushed on a 357-commit app, and
@@ -489,7 +487,7 @@ Each has a read-only form; run that first and read it before anything writes.
 |---|---|---|
 | After every mxcli upgrade, and before any merge or Studio Pro pull of CLI-written history | `bin/doctor.sh --property-sets <project>` — wraps `mxcli fix property-sets -p <app>.mpr --dry-run` (v0.26.0+) | `bin/doctor.sh --fix-property-sets <project>` — runs `mxcli fix property-sets` through `exec.sh --patch` (snapshot, mxbuild gate, restore) |
 | After a `git checkout`, `git restore` or merge touched `mprcontents/` | `./mxcli fix hashes -p <app>.mpr` (v0.25.0+; exits 1 on any mismatch) | `./mxcli fix hashes -p <app>.mpr --repair` — rewrites the `.mpr` hash index from the files, never the files |
-| After committing model changes with git | `./mxcli git note -p <app>.mpr` (v0.26.0+) prints the `mx_metadata` note per unpushed commit | `--write` attaches it; push `refs/notes/mx_metadata` with the branch (trap 6c) |
+| After committing model changes with git | `./mxcli git note -p <app>.mpr` (v0.26.0+) prints the `mx_metadata` note per unpushed commit | `--write` attaches it; after the branch push, publish it with `mx-metadata-note.py sync <remote>` (trap 6c) |
 
 **Property sets, the one no gate sees.** mxcli up to v0.25 wrote units without part of the
 property set Studio Pro writes for the project's Mendix version. `mx check`, the build and the

@@ -31,10 +31,12 @@ bin/interview-mode.sh <project-dir> --explain
 | `assist` | Questions batched at gates only. Low-consequence ones are assumed and reported rather than asked. |
 | `auto` | Nothing blocks. You take positions and keep moving — **and record every one of them**. |
 
-Set it with an `Interview mode:` line in `PROJECT.md` (project default), or
+Set it with an `Interview mode:` line in `PROJECT.md` (project default; a note may follow `steering`,
+but `assist`/`auto` must stand alone on the line or it reads as steering), or
 `bin/interview-mode.sh <dir> --set assist` (this session), or `$CLAUDE_INTERVIEW_MODE` (one
-command). Any unrecognised value anywhere falls back to `steering` and says so: the failure
-direction of a typo must be "asked too much".
+command). `attended` and `unattended` are accepted aliases for `steering` and `auto` (noted on
+stderr; the script always outputs the canonical name). Any other unrecognised value falls back to
+`steering` and says so: the failure direction of a typo must be "asked too much".
 
 **`remote` is a flag, not a fourth mode.** It says the user is not at the keyboard, so gates
 message them and the run continues rather than parking. It changes the *channel*, never how

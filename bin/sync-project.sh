@@ -353,9 +353,13 @@ elif [ -n "$INTAKE" ]; then
     # alarming — it is the expected state of a project whose interview has not happened yet.
     # Without this branch every freshly-scaffolded project drew the "text has been edited, NOT
     # touching it" warning below, which is both false and --strict-failing.
+    # An earlier template's Q9 (body still opening "_Not yet asked._") is the same state: the
+    # 2026-10-14 body rewrite (steering|assist|auto) must not turn every untouched scaffold
+    # into the "edited, NOT touching it" warning below.
     q9_current_text > "$Q9_REF"
-    if cmp -s "$Q9_TMP" "$Q9_REF"; then
-      echo "Note: $INTAKE Q9 is the current template, still unanswered — Stage P will FAIL until"
+    if cmp -s "$Q9_TMP" "$Q9_REF" \
+       || sed -n '2,$p' "$Q9_TMP" | grep -v '^[[:space:]]*$' | head -1 | grep -q '^_Not yet asked\._'; then
+      echo "Note: $INTAKE Q9 is the unanswered template text — Stage P will FAIL until"
       echo "      the kickoff interview happens. That is correct; nothing to repair."
 
     elif q9_stale_scaffold_text > "$Q9_REF"; cmp -s "$Q9_TMP" "$Q9_REF"; then

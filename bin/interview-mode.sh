@@ -133,22 +133,37 @@ if [ -z "$MODE" ] && [ -f "$PROJECT_DIR/PROJECT.md" ]; then
   # `Interview mode: assist` anywhere in PROJECT.md. Case-insensitive on the key and the
   # value; first occurrence wins so an appended log entry cannot silently retune the project.
   # PROJECT.md is human-written, so only the FIRST WORD of the value counts — after stripping
-  # bold/backticks and trailing ,.;:!?) — and `auto (user asked 2026-…)`, `**auto** — fast POC`
+  # bold/backticks and trailing ,.;:) — and `auto (user asked 2026-…)`, `**auto** — fast POC`
   # and `Unattended, per user` all resolve. Reading the whole rest of the line turned every
   # annotated opt-in into steering. The first word must still be a mode or alias exactly
   # (`auto-ish` is a typo), and the env var, session file and --set stay exact: those are
   # machine-written, so trailing text there is corruption rather than annotation.
-  FROM_MD=$(grep -iEm1 '^[[:space:]]*(-[[:space:]]*)?\**Interview mode\**[[:space:]]*:' "$PROJECT_DIR/PROJECT.md" 2>/dev/null \
-            | sed -E 's/^[^:]*:[[:space:]]*//' \
-            | tr '[:upper:]' '[:lower:]' | tr -d '*`' \
-            | awk '{print $1}' | sed -E 's/[,.;:!?)]+$//')
+  #
+  # A HEDGE is not a choice. A first-word read must never resolve quieter than the whole-line
+  # read did, so a value containing `?` or `|`, or proposed/TBD/todo/unconfirmed/not confirmed/
+  # to confirm/recommend/suggest anywhere, is invalid → steering, with the reason on stderr.
+  # (`auto? (to confirm with user)` and `auto | steering` gave auto on the first cut of this
+  # read — review of #335, 2026-10-14.)
+  MD_RAW=$(grep -iEm1 '^[[:space:]]*(-[[:space:]]*)?\**Interview mode\**[[:space:]]*:' "$PROJECT_DIR/PROJECT.md" 2>/dev/null \
+            | sed -E 's/^[^:]*:[[:space:]]*//' | tr '[:upper:]' '[:lower:]')
+  FROM_MD=$(printf '%s\n' "$MD_RAW" | tr -d '*`' | awk '{print $1}' | sed -E 's/[,.;:)]+$//')
   if [ -n "$FROM_MD" ]; then
-    FROM_MD=$(canon "$FROM_MD")
-    if is_valid "$FROM_MD"; then
-      MODE="$FROM_MD"; SOURCE="PROJECT.md"
+    HEDGE=""
+    case "$MD_RAW" in
+      *'?'*|*'|'*|*propos*|*tbd*|*todo*|*unconfirmed*|*'not confirmed'*|*'to confirm'*|*recommend*|*suggest*)
+        HEDGE=1 ;;
+    esac
+    if [ -n "$HEDGE" ]; then
+      echo "interview-mode: PROJECT.md says 'Interview mode: $MD_RAW', which is a hedge (?, |, proposed, to confirm …), not a stated mode; using steering" >&2
+      MODE="steering"; SOURCE="fallback (hedged PROJECT.md value)"
     else
-      echo "interview-mode: PROJECT.md says 'Interview mode: $FROM_MD', which is not a mode; using steering" >&2
-      MODE="steering"; SOURCE="fallback (bad PROJECT.md value)"
+      FROM_MD=$(canon "$FROM_MD")
+      if is_valid "$FROM_MD"; then
+        MODE="$FROM_MD"; SOURCE="PROJECT.md"
+      else
+        echo "interview-mode: PROJECT.md says 'Interview mode: $FROM_MD', which is not a mode; using steering" >&2
+        MODE="steering"; SOURCE="fallback (bad PROJECT.md value)"
+      fi
     fi
   fi
 fi

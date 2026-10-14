@@ -32,7 +32,8 @@ bin/interview-mode.sh <project-dir> --explain
 | `auto` | Nothing blocks. You take positions and keep moving — **and record every one of them**. |
 
 Set it with an `Interview mode:` line in `PROJECT.md` (project default; only the value's first
-word counts, so a trailing note is fine), or
+word counts, so a note may follow, but a hedge such as `?`, `|`, "proposed" or "to confirm"
+reads as steering), or
 `bin/interview-mode.sh <dir> --set assist` (this session), or `$CLAUDE_INTERVIEW_MODE` (one
 command). `attended` and `unattended` are accepted aliases for `steering` and `auto` (noted on
 stderr; the script always outputs the canonical name). Any other unrecognised value falls back to

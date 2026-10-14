@@ -144,6 +144,19 @@ md_case "alias + comma note"                auto     'Interview mode: Unattended
 md_case "alias + bracket note"              steering 'Interview mode: attended (default)'
 md_case "typo first word + note"            steering 'Interview mode: atuo (user asked)'
 md_case "a word that merely starts with a mode" steering 'Interview mode: auto-ish'
+# A HEDGE is not a stated mode. The first-word read must never resolve quieter than the
+# whole-line read did (header rule: "a typo never resolves quieter") — a line that proposes,
+# questions or offers alternatives is the user not having decided. Review of #335, 2026-10-14.
+md_case "hedge: question mark"              steering 'Interview mode: auto? (to confirm with user)'
+md_case "hedge: alias + question"           steering 'Interview mode: unattended? ask user'
+md_case "hedge: alternatives with |"        steering 'Interview mode: auto | steering'
+md_case "hedge: proposed, not confirmed"    steering 'Interview mode: auto (proposed, not confirmed)'
+md_case "hedge: TBD"                        steering 'Interview mode: auto TBD'
+md_case "hedge: recommended"                steering '- **Interview mode:** auto (recommended by triage)'
+printf 'Interview mode: auto (proposed)\n' > "$A/PROJECT.md"
+bash "$SUBJECT" "$A" 2>&1 >/dev/null | grep -qi 'hedge' \
+  && ok "a hedged value says on stderr why it fell back" \
+  || bad "a hedged value fell back silently"
 md_case "empty value"                       steering 'Interview mode:'
 md_case "empty bold value"                  steering '- **Interview mode:** '
 printf 'Interview mode: auto (user asked 2026-10-14)\n' > "$A/PROJECT.md"

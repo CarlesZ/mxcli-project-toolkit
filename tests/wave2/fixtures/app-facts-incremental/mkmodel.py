@@ -5,7 +5,7 @@
 #   python3 mkmodel.py <model-dir> <prep-catalog.db> <spec.tsv> [<captured-units-dir>]
 #
 # spec.tsv, one microflow per line:  <Name> <TAB> <version> <TAB> <folder or -> <TAB> <loops 1|0>
-# All microflows live in MyFirstModule. <version> changes the unit's bytes (so its ContentsHash)
+# All microflows live in MyFirstModule ($MKMODEL_MODULE renames it: same UnitID, new Name). <version> changes the unit's bytes (so its ContentsHash)
 # and the MDL the stub mxcli "describes" for it; <folder> moves the unit without changing them.
 #
 # WHAT IS CAPTURED AND WHAT IS NOT. With <captured-units-dir> (tests/wave2/fixtures/
@@ -18,7 +18,7 @@ import base64, hashlib, os, shutil, sqlite3, struct, sys
 
 md, prep, spec = sys.argv[1:4]
 cap = sys.argv[4] if len(sys.argv) > 4 else None
-MODNAME = "MyFirstModule"
+MODNAME = os.environ.get("MKMODEL_MODULE", "MyFirstModule")   # another name = a renamed module
 MOD = "16747dc6-b6b7-42ae-aabf-255dca2aeeaf"
 ROOT = bytes.fromhex("4d827743a25b514b800e658754fc369b")      # the captured project root container
 CAPTURED_MF = {"MyFirstLogic": "4a8475b3-14cb-4100-8963-58f2fd3a0be8"}
@@ -59,7 +59,7 @@ for line in open(spec, encoding="utf-8"):
     flows.append((name, ver, None if folder == "-" else folder, loops == "1"))
 
 units = []   # (uid, container blob, containment, bytes)
-mod_bytes = open(os.path.join(cap, MOD + ".mxunit"), "rb").read() if cap else \
+mod_bytes = open(os.path.join(cap, MOD + ".mxunit"), "rb").read() if cap and MODNAME == "MyFirstModule" else \
     bson([("$Type", "Projects$ModuleImpl"), ("Name", MODNAME)])
 units.append((MOD, ROOT, "Modules", mod_bytes))
 for f in sorted({f for _, _, f, _ in flows if f}):

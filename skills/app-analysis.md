@@ -35,6 +35,8 @@ carry them all across.
    describes in 2 h 45 at 6 workers, about 31 s each. Tell the user before a first run on a
    large app. A refresh re-describes only units whose hash, module or folder changed since
    their output was written (`manifest.json` → `sections.loops.sweep`); `--full` forces all.
+   Run `--full` after edits made outside Studio Pro (a scripted rename, say): a describe can
+   show another document's name, and only the described unit's own hash is compared.
    Exit 2 means the facts are not trustworthy; read the message, fix the cause, rerun. Do not
    write a dossier from a run that exited 2.
 2. **Read `manifest.json` first.** Check `sections.*.status`. Note `parse_mismatch`, `failed`

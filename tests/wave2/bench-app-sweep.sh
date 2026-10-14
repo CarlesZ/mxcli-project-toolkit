@@ -7,7 +7,8 @@
 # Builds a synthetic model of N microflow units, every one loop-containing (the worst case: one
 # describe per unit), through fixtures/app-facts-incremental/ (a stub mxcli that counts describes),
 # then runs: a first map (full), a refresh with nothing changed, a refresh with P % of the units
-# changed, and a --full refresh. The count of describes is the number that matters: on a real
+# changed, and a --full refresh; and --freshness after the map, after the change and after the
+# refresh (fresh / N changed / fresh) on a model past the 128 KB single-env-var size. The count of describes is the number that matters: on a real
 # model each one costs seconds to tens of seconds (~31 s each measured on a 17,500-unit app), and
 # the stub's wall time here says nothing about that. Exit 1 when the incremental refresh describes
 # anything other than exactly the changed units.
@@ -39,13 +40,23 @@ run() {
   DESC=$(grep -c . "$DESCRIBE_LOG"); SECS=$(( $(date +%s) - t0 ))
 }
 
+fresh() { ( cd "$P" && PROJECT_ROOT="$P" bash "$AF" --freshness --facts-dir "$P/facts" ) 2>&1; }
+
 echo "bench-app-sweep: $N units, all loop-containing; $CHANGED changed ($PCT %)"
 printf '%-34s %10s %8s\n' "refresh" "describes" "wall s"
 build 1; run;        printf '%-34s %10s %8s\n' "first map (full)" "$DESC" "$SECS"; D_FIRST=$DESC
 run;                 printf '%-34s %10s %8s\n' "refresh, nothing changed" "$DESC" "$SECS"; D_NONE=$DESC
-build 2; run;        printf '%-34s %10s %8s\n' "refresh, $PCT % changed (incremental)" "$DESC" "$SECS"; D_INC=$DESC
+FR_FIRST="$(fresh)"
+build 2; FR_STALE="$(fresh)"
+run;                 printf '%-34s %10s %8s\n' "refresh, $PCT % changed (incremental)" "$DESC" "$SECS"; D_INC=$DESC
+FR_AFTER="$(fresh)"
 run --full;          printf '%-34s %10s %8s\n' "refresh, $PCT % changed (--full)" "$DESC" "$SECS"; D_FULL=$DESC
 echo "(wall time is the stub's; on a real model multiply describes by the per-describe cost)"
+echo "freshness: after first map '$FR_FIRST' · after $PCT % changed '$FR_STALE' · after refresh '$FR_AFTER'"
+case "$FR_FIRST|$FR_STALE|$FR_AFTER" in
+  "app map: fresh "*"|app map: $CHANGED units changed since "*"|app map: fresh "*) : ;;
+  *) echo "FAIL: --freshness did not report fresh / $CHANGED changed / fresh"; exit 1 ;;
+esac
 if [ "$D_FIRST" -eq "$N" ] && [ "$D_NONE" -eq 0 ] && [ "$D_INC" -eq "$CHANGED" ] && [ "$D_FULL" -eq "$N" ]; then
   echo "OK: incremental describes $D_INC of $N ($PCT %), full describes $D_FULL"
   exit 0

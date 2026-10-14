@@ -236,25 +236,31 @@ DB="$MODEL_DIR/.mxcli/catalog.db"
 # ---------------------------------------------------------------------------------------------
 if [ "$FRESHNESS" -eq 1 ]; then
   [ -f "$FACTS_DIR/manifest.json" ] || exit 0
-  NOW_TSV="$("$PY" "$UNITS_PY" units "$MODEL_DIR/$MPR_BASE" --hashes-only 2>/dev/null)" || NOW_TSV="__unreadable__"
-  NOW_TSV="$NOW_TSV" "$PY" - "$FACTS_DIR/manifest.json" <<'PY'
-import json, os, sys
+  # The unit list goes through a temp file, never an env var or argv: one env string is capped at
+  # 128 KB on Linux, ~1,600 units' worth, and the line vanished on exactly the large apps (#297 review).
+  NOW_FILE="$(mktemp "${TMPDIR:-/tmp}/app-facts-units.XXXXXX")" || exit 0
+  trap 'rm -f "$NOW_FILE"' EXIT
+  if "$PY" "$UNITS_PY" units "$MODEL_DIR/$MPR_BASE" --hashes-only > "$NOW_FILE" 2>/dev/null; then NOW_OK=1; else NOW_OK=0; fi
+  "$PY" - "$FACTS_DIR/manifest.json" "$NOW_FILE" "$NOW_OK" <<'PY'
+import json, sys
 try:
     man = json.load(open(sys.argv[1]))
 except (OSError, ValueError):
     print("app map: manifest.json unreadable — rerun bin/app-facts.sh"); sys.exit(0)
-when = (man.get("generated") or "?")[:16].replace("T", " ")
-snap = (man.get("units") or {}).get("snapshot")
-now = os.environ["NOW_TSV"]
+units = man.get("units") or {}
+# The snapshot's own date: a --skip-loops run carries the last loop sweep's snapshot forward.
+when = (units.get("snapshot_taken") or man.get("generated") or "?")[:16].replace("T", " ")
+snap = units.get("snapshot")
 if not snap:
     print("app map: built %s with no unit snapshot — rerun bin/app-facts.sh to track freshness" % when)
-elif now == "__unreadable__":
+elif sys.argv[3] != "1":
     print("app map: built %s; unit table unreadable, freshness unknown" % when)
 else:
-    cur = dict(l.split("\t", 1) for l in now.splitlines() if "\t" in l)
+    cur = dict(l.rstrip("\n").split("\t", 1) for l in open(sys.argv[2], encoding="utf-8") if "\t" in l)
     n = sum(1 for u, h in cur.items() if snap.get(u) != h) + sum(1 for u in snap if u not in cur)
     print("app map: fresh (built %s)" % when if n == 0 else "app map: %d units changed since %s" % (n, when))
 PY
+  rm -f "$NOW_FILE"; trap - EXIT
   exit 0
 fi
 mkdir -p "$FACTS_DIR/mdl" || exit 2
@@ -687,7 +693,7 @@ T1="$T1" T2="$T2" T3="$T3" TALL="$(( $(date +%s) - START_ALL ))" \
 LOOP_STATUS="$LOOP_STATUS" LOOP_REASON="$LOOP_REASON" N_CAND="$N_CAND" N_DESC="$N_DESC" N_FAILED="$N_FAILED" N_RULES="$N_RULES" \
 BUILD_MODE="$BUILD_MODE" N_MODULES="$N_MODULES" N_REFS="$N_REFS" N_ACTS="$N_ACTS" WORKERS="$WORKERS" MAX_LOOPS="$MAX_LOOPS" \
 UNITS_TSV="$UNITS_TSV" UNITS_STATUS="$UNITS_STATUS" UNITS_REASON="$UNITS_REASON" PLAN="$PLAN" FULL="$FULL" \
-SWEEP_MODE="$SWEEP_MODE" SWEEP_REASON="$SWEEP_REASON" "$PY" - <<'PY'
+SWEEP_MODE="$SWEEP_MODE" SWEEP_REASON="$SWEEP_REASON" SKIP_LOOPS="$SKIP_LOOPS" "$PY" - <<'PY'
 import json, os, datetime, hashlib
 F = os.environ["FACTS_DIR"]
 try:
@@ -708,6 +714,18 @@ if snap and prev_snap:
                "changed": sum(1 for u, h in snap.items() if u in prev_snap and prev_snap[u] != h),
                "added": sum(1 for u in snap if u not in prev_snap),
                "removed": sum(1 for u in prev_snap if u not in snap)}
+# The snapshot dates the map, and the loop section is its slowest part. A --skip-loops run leaves
+# mdl/ as it was, so it keeps the snapshot (and its date) of the last loop sweep: otherwise
+# --freshness would say "fresh" over stale loop outputs (#297 review). None yet: none stored.
+gen = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+units_note = ""
+if os.environ["SKIP_LOOPS"] == "1":
+    snap_out = prev_snap
+    snap_taken = (prev.get("units") or {}).get("snapshot_taken") or prev.get("generated", "") if prev_snap else ""
+    units_note = ("; snapshot carried from the last loop sweep (--skip-loops)" if prev_snap
+                  else "; no snapshot stored: --skip-loops and no earlier loop sweep")
+else:
+    snap_out, snap_taken = snap, (gen if snap else "")
 # mdl_index: which unit state each mdl/ file was described from. Only files that exist now are
 # indexed, so a failed describe is retried next run. --skip-loops leaves mdl/ alone and carries the
 # previous index forward unchanged.
@@ -728,15 +746,15 @@ loops = json.load(open(os.path.join(F, "loops.json"))) if os.path.exists(os.path
 mismatch = len(loops["_meta"]["parse_mismatch"]) if loops else 0
 man = {
   "schema": "app-facts/1",
-  "generated": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+  "generated": gen,
   "mpr": os.environ["MPR_BASE"], "mpr_sha256_16": sha(mp) if os.path.exists(mp) else "",
   "mxcli": os.environ["MX_VERSION"],
   "catalog": {"modules": int(os.environ["N_MODULES"]), "refs": int(os.environ["N_REFS"]), "activities": int(os.environ["N_ACTS"]), "build_mode": os.environ.get("BUILD_MODE", "")},
   "timings_s": {"catalog_and_graph_report": int(os.environ["T1"]), "inventory_and_dependencies": int(os.environ["T2"]), "loops": int(os.environ["T3"]), "total": int(os.environ["TALL"])},
   "options": {"workers": int(os.environ["WORKERS"]), "max_loops": int(os.environ["MAX_LOOPS"]), "full": os.environ["FULL"] == "1"},
-  "units": {"status": os.environ["UNITS_STATUS"], "reason": os.environ["UNITS_REASON"], "count": len(snap),
+  "units": {"status": os.environ["UNITS_STATUS"], "reason": os.environ["UNITS_REASON"] + units_note, "count": len(snap_out),
             "source": "the .mpr Unit table; ContentsHash format, computed from each .mxunit's bytes", "changed_since_previous_map": changed,
-            "snapshot": snap},
+            "snapshot_taken": snap_taken, "snapshot": snap_out},
   "mdl_index": mdl_index, "mdl_index_mxcli": mdl_index_mxcli,
   "sections": {
     "inventory":    {"status": "pass", "file": "inventory.json"},

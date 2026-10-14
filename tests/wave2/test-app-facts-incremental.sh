@@ -28,6 +28,9 @@
 #   T10 --freshness: "fresh", then "N units changed since <date>"; silent with no map
 #   T11 bin/status.sh shows the app map line (full screen and --brief); no line without a map
 #   T12 the real captured units map to MyFirstModule.MyFirstLogic through mx-metadata-note.py units
+#   T13 --freshness and status.sh on 2,101 units (past the 128 KB single-env-var cap)
+#   T14 a renamed module: old outputs deleted, every candidate re-described under the new name
+#   T15 a --skip-loops run keeps the last loop sweep's snapshot, so freshness is not "fresh"
 
 set -uo pipefail
 TK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -213,6 +216,27 @@ NEW_One	1	-	1"
     mv "$W/man.bak" "$FACTS/manifest.json"
   fi
 
+  # --- T15 --skip-loops keeps the last loop sweep's snapshot -----------------------------------
+  # The model has 2 changed units since the map; a --skip-loops run leaves mdl/ stale, so the
+  # freshness line must not turn "fresh" (#297 review).
+  run --skip-loops
+  case "$(fresh)" in "app map: 2 units changed since "*) ok "[$layout] T15 after --skip-loops the line still counts 2 changed units" ;;
+    *) bad "[$layout] T15 --skip-loops made a stale loop map read fresh" "$(fresh)" ;; esac
+  run
+  case "$(fresh)" in "app map: fresh (built "*) ok "[$layout] T15 a loop sweep then makes it fresh" ;;
+    *) bad "[$layout] T15 freshness after the loop sweep" "$(fresh)" ;; esac
+
+  # --- T14 module renamed: same UnitIDs and microflow bytes, new qualified names ---------------
+  SPEC_REN="$(printf '%s\n' "$SPEC_NOW" | sed 's/^SUB_A	1/SUB_A	3/')
+NEW_One	1	-	1"
+  MKMODEL_MODULE=Renamed model "$SPEC_REN"
+  run
+  check "[$layout] T14 renamed module: every loop microflow re-described (5)" "$NDESC" "5"
+  check "[$layout] T14 no output left under the old module name" "$(ls "$FACTS/mdl" | grep -c "^$M\.")" "0"
+  check "[$layout] T14 5 outputs under the new name" "$(ls "$FACTS/mdl" | grep -c '^Renamed\.')" "5"
+  check "[$layout] T14 loops.json lists the new names only" \
+    "$("$PY" -c 'import json,sys;print(sorted({k.split(".")[0] for k in json.load(open(sys.argv[1]))["microflows"]}))' "$FACTS/loops.json")" "['Renamed']"
+
   # --- T9 unreadable Unit table ----------------------------------------------------------------
   P9="$W/$layout-v1"; mkdir -p "$P9"; if [ "$layout" = two ]; then MD9="$P9/app"; else MD9="$P9"; fi
   MD_SAVE="$MD"; P_SAVE="$P"; FACTS_SAVE="$FACTS"
@@ -236,6 +260,23 @@ check "T12 hash is the Unit table's ContentsHash = base64(sha256(.mxunit))" "$(p
   "$("$PY" -c 'import base64,hashlib,sys;print(base64.b64encode(hashlib.sha256(open(sys.argv[1],"rb").read()).digest()).decode())' "$CAP/4a8475b3-14cb-4100-8963-58f2fd3a0be8.mxunit")"
 check "T12 the module unit itself has no qualified name" \
   "$("$PY" "$SRC/project-bin/mx-metadata-note.py" units "$MD/App.mpr" | grep '^16747dc6' | cut -f3,4)" "Projects\$ModuleImpl	"
+
+# --- T13 --freshness on a model of more than 2,000 units ---------------------------------------
+# The unit list once went to Python through one env var, capped at 128 KB on Linux (~1,600 units):
+# "Argument list too long", and status.sh, which hides stderr, silently dropped the line.
+echo "== T13 --freshness on 2,100 units"
+P="$W/big"; MD="$P"; PREP_DB="$W/big.db"; DESCRIBE_LOG="$W/big.log"; FACTS="$P/analysis/app-facts"; mkdir -p "$P"
+BIG="$(awk 'BEGIN { for (i = 1; i <= 2100; i++) printf "ACT_%05d\t1\t-\t0\n", i }')"
+model "$BIG"; run
+check "T13 map of 2,100 units built" "$(jq_ "$FACTS/manifest.json" units/count)" "2101"
+F13="$( (cd "$P" && PROJECT_ROOT="$P" bash "$AF" --freshness --facts-dir "$FACTS") 2>&1)"
+case "$F13" in "app map: fresh (built "*) ok "T13 2,101 units: freshness says fresh" ;; *) bad "T13 freshness on 2,101 units" "$F13" ;; esac
+model "$(printf '%s\n' "$BIG" | sed 's/^ACT_00007	1/ACT_00007	2/')"
+F13="$( (cd "$P" && PROJECT_ROOT="$P" bash "$AF" --freshness --facts-dir "$FACTS") 2>&1)"
+case "$F13" in "app map: 1 units changed since "*) ok "T13 2,101 units, one changed: counted" ;; *) bad "T13 changed count on 2,101 units" "$F13" ;; esac
+printf '# PROJECT\n\n## Current stage\n**Stage 1 in progress.**\n' > "$P/PROJECT.md"
+bash "$STATUS" "$P" --brief 2>/dev/null | grep -q "app map: 1 units changed since " && ok "T13 status.sh --brief carries the line on 2,101 units" \
+  || bad "T13 status.sh lost the app map line on a large model"
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"

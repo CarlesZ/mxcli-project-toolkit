@@ -381,6 +381,15 @@ unverified write. If gate time dominates, reduce the number of applies at the gr
 unlikely, fewer stub-then-fill passes), keep parallel **drafting**, and let the exec lock
 refuse overlapping applies — re-run a refused one after the other finishes.
 
+**Draft the ready set, apply one at a time.** The ready set is every build-plan row whose
+"Depends on" rows are all applied (`brd-to-build-plan.md`). Dispatch one `mdl-agent` per row in
+it at once; queue the drafts and apply them one by one through `exec.sh`; after each apply,
+recompute the ready set and draft what it newly admits. The failure this prevents: a run that
+drafted one script at a time and sat idle while each draft finished, though most rows depended
+only on the domain script. A draft made before an earlier apply landed may be stale — re-run
+`./mxcli check <script> -p <mpr> --references` just before applying it, and on failure re-draft
+it, never patch it. Report `ready set N, drafted N, applied k`.
+
 ### Pre-exec sequence when MCP work was done
 
 Before running exec.sh after any MCP session:

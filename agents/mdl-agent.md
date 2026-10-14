@@ -205,6 +205,7 @@ treat it as full-discipline.
     only record that this module's scripting went through mdl-agent's preflight rather than being
     drafted in the main session; it owes no denominator, just the line.
 9. Do NOT run `mxcli exec` — that stays in the main session under the user's confirmation.
+   You may be one of several drafters running at once: you never apply, and your script must not depend on another draft that is not yet applied.
 
 ## Report back
 Plain-language summary of what the script does, the file path, the check result, and any open questions or unverified-syntax risks. Also include:

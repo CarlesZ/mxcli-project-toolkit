@@ -154,8 +154,12 @@ _routing_stage_arm() {
 #
 #   One script row IS counted: bin/runbook-slice.sh. Its whole output is read into context —
 #   it replaces the runbook for the helper roles — so it is counted as the words it prints for
-#   <stage> (about 1.5k at Stage 5), not as zero and not as the script's own text. With an
+#   <stage> (about 1.7k at Stage 5), not as zero and not as the script's own text. With an
 #   unrecognised <stage> (the "full" pack) it is counted as the whole runbook, the upper bound.
+#   When skills/conversion-runbook.md is itself in the pack (no <role>, or lead/ba/architect)
+#   the slice counts 0: it prints a subset of a file already counted whole. Before this (review
+#   of PR #378) the no-role full pack counted the runbook twice — 85,797 words, over the 80,000
+#   budget, on gate-check's advisory line.
 _ROUTING_READ_SCRIPTS="bin/runbook-slice.sh"
 _routing_slice_words() { # _routing_slice_words <root> <stage> <full>
   if [ "$3" -eq 1 ]; then
@@ -167,7 +171,7 @@ _routing_slice_words() { # _routing_slice_words <root> <stage> <full>
 routing_baseline_pack() {
   local stage="$1" root="$2" role="${3:-}" words=0 files=0 paths="" p wc_out
   local name path when agents stages tier group
-  local known_stages=" P 0 1 2 3 4 5 6 7 " full=0
+  local known_stages=" P 0 1 2 3 4 5 6 7 " full=0 rb_counted=0 slice_words=0
   case "$known_stages" in *" $stage "*) : ;; *) full=1 ;; esac
   while IFS=$'\t' read -r name path when agents stages tier group; do
     [ "$tier" = "baseline" ] || continue
@@ -179,8 +183,13 @@ routing_baseline_pack() {
     p="$root/$path"
     [ -f "$p" ] || continue
     if [ "$path" = "$_ROUTING_READ_SCRIPTS" ]; then
-      wc_out="$(_routing_slice_words "$root" "$stage" "$full")"
+      # Held back until the loop ends: whether the runbook row is counted too is known only
+      # then, whatever the TSV order.
+      slice_words="$(_routing_slice_words "$root" "$stage" "$full")"
+      [ -n "$slice_words" ] || slice_words=0
+      wc_out=0
     else
+      [ "$path" = "skills/conversion-runbook.md" ] && rb_counted=1
       wc_out="$(LC_ALL=C wc -w < "$p" 2>/dev/null | tr -d '[:space:]')"   # LC_ALL=C: see BASELINE_BUDGET in render-routing.sh
     fi
     [ -n "$wc_out" ] || wc_out=0
@@ -188,6 +197,7 @@ routing_baseline_pack() {
     files=$((files + 1))
     paths="$paths $path"
   done < <(routing_rows)
+  [ "$rb_counted" -eq 1 ] || words=$((words + slice_words))
   if [ "$full" -eq 1 ]; then
     printf '%s\t%s\t%s\tfull\n' "$words" "$files" "${paths# }"
   else

@@ -11,6 +11,8 @@
 #   T3  Stage 0 is the "### Stage 0 — " section, not "### Stage 0 runs in every entry mode"
 #   T4  usage errors: no stage / unknown stage exit 1 and print nothing to stdout
 #   T5  the per-role word count counts the slice's OUTPUT for helpers, the runbook for lead
+#   T6  every stage also prints the gate-verdict table (all five verdicts with exit codes) and
+#       §3b's "a helper ... reports it to the lead" paragraph (review of PR #378)
 set -uo pipefail
 
 SUT="${1:?usage: test-runbook-slice.sh /path/to/bin/runbook-slice.sh}"
@@ -88,6 +90,25 @@ case " $PATHS " in
   *" skills/conversion-runbook.md "*) ok "lead keeps the whole runbook" ;;
   *) bad "lead has no runbook in its pack ($PATHS)" ;;
 esac
+
+echo "== T6: the gate-verdict table and §3b's helper-reports-to-lead paragraph, every stage =="
+for st in P 0 1 2 3 4 5 6 7; do
+  OUT="$(bash "$SUT" "$st" 2>/dev/null)"; MISS=""
+  for v in "PASS\` | Checked, and it holds. | 0" "PENDING\`" "FAIL\`" "WAIVED\`" "MANUAL\`"; do
+    printf '%s\n' "$OUT" | grep -q "^| \`$v" || MISS="$MISS verdict:${v%%\`*}"
+  done
+  printf '%s\n' "$OUT" | grep -q 'Exit code on a stage query' || MISS="$MISS exit-code-column"
+  printf '%s\n' "$OUT" | grep -q 'A helper that hits a BRD-touching decision reports it to the lead' || MISS="$MISS 3b-helper-reports"
+  [ -z "$MISS" ] && ok "stage $st: verdict table (5 verdicts + exit codes) and §3b helper paragraph present" \
+    || bad "stage $st: missing$MISS"
+done
+# Located by heading/anchor through the shared lib, not by line number.
+if grep -q 'runbook_verdicts_span' "$SUT" && grep -q 'runbook_3b_owner_span' "$SUT" \
+   && ! grep -Eq 'sed -n ["'"'"']?[0-9]+,[0-9]+p["'"'"']? "?\$\{?RB' "$SUT"; then
+  ok "runbook-slice.sh finds both spans through lib/runbook-span.sh, no hard-coded line numbers"
+else
+  bad "runbook-slice.sh does not use runbook_verdicts_span/runbook_3b_owner_span, or hard-codes a line range"
+fi
 
 printf '\n%s: %d ok, %d FAIL\n' "$(basename "$0")" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

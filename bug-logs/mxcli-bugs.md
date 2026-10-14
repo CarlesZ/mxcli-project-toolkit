@@ -6950,3 +6950,49 @@ Two related findings from reading the v0.26.0 source (not field-run):
 matching the project. Recipe and the rule-set comparison to run before any diff:
 `skills/lint-that-actually-runs.md` → "Linting a copy of the model". `lint-gate.sh`'s collapse
 guard catches this inside the gate. Nothing catches it when lint is run directly.
+
+## BUG-DRAFT-microflow-header-grammar: a microflow header without `()` fails `check` with three parse errors that point at `returns` and `List of`, not at the missing parentheses (2026-10-14)
+
+> **NOT YET FILED.** The grammar is as designed; the ask upstream is a clearer message.
+
+**Discovered:** 2026-10-14, on an existing-app change project (a connector app), while drafting a small list-transforming microflow: no parameters, returns a list, lives in a sub-folder, loops over the list and sets one attribute.
+**Reproducible:** yes, on every such header. **mxcli version:** v0.26.0. **Mendix:** 11.15.0. macOS.
+
+**What happens.** The natural-language header shape
+
+```
+create microflow M.Name returns List of M.E in '<Folder>' …
+```
+
+fails `mxcli check` with
+
+```
+line 11:2  missing '(' at 'returns'
+line 11:10 missing ':' at 'List of'
+line 12:2  mismatched input 'in' expecting ')'
+```
+
+The parser takes `returns` as the start of a parameter, so the second and third messages describe a parameter list that was never written. The agent spent a check cycle guessing.
+
+**Fix (built clean: check, exec, mxbuild, lint ratchet):**
+
+```
+create microflow M.Name ()
+  returns List of M.E
+  folder '<Folder>'
+begin
+  …
+  loop $M in $L begin
+    change $M (A = <expr>);
+  end loop;
+  …
+end;
+```
+
+1. The parameter parentheses are mandatory even when empty.
+2. Placement is the `folder '…'` clause, not `in`.
+3. A list member is changed inside `loop … begin … end loop;` with `change $var (…)`; there is no `foreach`/`for`.
+
+**Expected:** when `returns` follows the microflow name directly, `check` says "parameter list `()` required before `returns`" instead of three cascading errors.
+
+**Toolkit side:** `learned-mdl-preflight.md` STOP row 29.

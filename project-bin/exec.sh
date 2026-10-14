@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # exec.sh — the guard chain around a model write.
 #
-#   concurrent-writer guard → module-brief advisory → mxcli check → snapshot → baseline → exec
+#   STOP-row scan → concurrent-writer guard → module-brief advisory → mxcli check → snapshot → baseline → exec
 #   → mxbuild delta gate → auto-restore only on a NEW error → lint ratchet → SP reopen
 #
 # The mxbuild gate is a DELTA gate, not an absolute "0 errors" one: a write is kept
@@ -72,6 +72,7 @@
 #            ALLOW_UNVERIFIED=1 (write even though the mxbuild gate cannot run —
 #            the write is then refused by default, see "Gate must be able to run"),
 #            MXTK_NO_INSTALL=1 (never download mxbuild; offline CI)
+#            MXTK_SCAN_OVERRIDE="<reason>" (the user only: run despite a STOP-row scan hit, #349)
 set -e
 _T0=$(date +%s)
 
@@ -436,7 +437,7 @@ HDR2
   # The gate cell is read from GATE_STATE rather than passed in, so no caller
   # can omit it — a blank cell in this table reads as "fine", which is the exact
   # false-green the gate exists to prevent.
-  _detail="$2${CHANGE_CLASS:+ · change: $CHANGE_CLASS}${CR_ID:+ · cr: $CR_ID}$_EXEC_APPROVAL_SUFFIX"
+  _detail="$2${CHANGE_CLASS:+ · change: $CHANGE_CLASS}${CR_ID:+ · cr: $CR_ID}${SCAN_OVERRIDE_NOTE:+ · $SCAN_OVERRIDE_NOTE}$_EXEC_APPROVAL_SUFFIX"
   printf '| %s | `%s` | %s | %s | %s |\n' \
     "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$LOG_NAME" \
     "${GATE_STATE:-not-run}" "$1" "$_detail" >> "$BUILD_LOG"
@@ -473,6 +474,49 @@ take_score() {
     echo "  ⚠ ${_sc:-score not taken}"
   fi
 }
+
+# ── STOP-row scan (added 2026-10-14, #349) ───────────────────────────────────
+# The toolkit's bin/mdl-scan.sh greps the script for the STOP rows of learned-mdl-preflight.md
+# that a text pattern identifies — each one a script that passed `mxcli check`, cost a full
+# apply and failed at mxbuild or on Studio Pro open. It runs first, before the lock, the
+# commit, `mxcli check` and the snapshot: a hit costs milliseconds here and 22-65 s plus a
+# restore after the apply. A hit refuses the exec and prints the scan. FORCE_EXEC and
+# SKIP_CHECK do not skip it. The only override is MXTK_SCAN_OVERRIDE="<reason>", for the human:
+# it is printed and lands in the BUILD-LOG row. Hardening that override against an agent
+# setting it itself is #348's job. Found like exec-approval.sh: $MXTK_ROOT, else the
+# "Toolkit root" row of CLAUDE.local.md. Not found, or the scan itself errors (exit 2) → one
+# warning, and the exec goes on: mxcli check and the mxbuild gate still stand behind it.
+SCAN_OVERRIDE_NOTE=""
+if [ "$PATCH_MODE" != "1" ]; then
+  _SCAN=""
+  for _s in "${MXTK_ROOT:-}/bin/mdl-scan.sh" \
+            "$(sed -nE 's/^\| *Toolkit root *\| *`([^`]+)`.*/\1/p' "$PROJECT_ROOT/CLAUDE.local.md" 2>/dev/null | head -1)/bin/mdl-scan.sh"; do
+    [ -f "$_s" ] && { _SCAN="$_s"; break; }
+  done
+  if [ -z "$_SCAN" ]; then
+    echo "⚠ STOP-row scan skipped: bin/mdl-scan.sh not found (set MXTK_ROOT to the toolkit)." >&2
+  else
+    _scan_rc=0; _scan_out="$(bash "$_SCAN" "$SCRIPT" 2>&1)" || _scan_rc=$?   # set -e: keep the rc
+    if [ "$_scan_rc" -ne 0 ] && [ "$_scan_rc" -ne 1 ]; then   # 2 = the scan itself could not run
+      echo "⚠ STOP-row scan could not run (exit $_scan_rc): $_scan_out" >&2
+    elif [ "$_scan_rc" -eq 1 ]; then
+      echo "$_scan_out"
+      case "${MXTK_SCAN_OVERRIDE:-}" in
+        ""|1|true|yes)
+          echo ""
+          echo "✗ STOP-row scan: refusing exec. NOTHING was locked, snapshotted or written."
+          echo "  Each line above names its learned-mdl-preflight.md row and the rewrite. Fix the script."
+          echo "  Only the user may override, with a reason: MXTK_SCAN_OVERRIDE=\"<why>\" ./bin/exec.sh $SCRIPT"
+          log_build "🚫 blocked" "STOP-row scan: $(printf '%s\n' "$_scan_out" | grep -c '^STOP-') hit(s), $(printf '%s\n' "$_scan_out" | sed -n 's/^\(STOP-[0-9a-z]*\) .*/\1/p' | sort -u | tr '\n' ' ')— nothing written"
+          exit 1 ;;
+        *)
+          echo "⚠ STOP-row scan OVERRIDDEN by MXTK_SCAN_OVERRIDE: ${MXTK_SCAN_OVERRIDE}" >&2
+          echo "  Only the user sets this. An agent that set it has broken the preflight rule." >&2
+          SCAN_OVERRIDE_NOTE="scan overridden: $(printf '%s' "$MXTK_SCAN_OVERRIDE" | tr '|' '/')" ;;
+      esac
+    fi
+  fi
+fi
 
 # ── Concurrent-writer guard ──────────────────────────────────────────────────
 # The .mpr must have exactly ONE writer. Two mxcli/SP writers on the same file

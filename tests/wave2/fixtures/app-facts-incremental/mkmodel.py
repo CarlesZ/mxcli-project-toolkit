@@ -12,8 +12,8 @@
 # mx-metadata-note), the module unit and the MyFirstLogic microflow are the real .mxunit bytes and
 # real Unit-table container of a Mendix 11.15.0 model, so the UnitID -> qualified-name mapping is
 # exercised on real BSON. Every other unit is synthetic BSON carrying only $Type, Name and
-# Documentation. ContentsHash is base64(sha256(<unit bytes>)), the relation measured on all 2,337
-# units of a field app's Unit table. The Unit table schema is the captured one, verbatim.
+# Documentation. ContentsHash is base64(sha256(<unit bytes>)), the format mx-metadata-note.py units
+# computes. The Unit table schema is the captured one, verbatim.
 import base64, hashlib, os, shutil, sqlite3, struct, sys
 
 md, prep, spec = sys.argv[1:4]

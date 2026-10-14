@@ -26,7 +26,7 @@
 #
 # INCREMENTAL SWEEP (#297). manifest.json keeps a {UnitID: ContentsHash} snapshot of the .mpr
 # Unit table (the hash taken from the .mxunit bytes, which the column normally equals; see
-# mx-metadata-note.py units for the one stale row measured), and an index of which unit state each mdl/ file was described from. A refresh
+# mx-metadata-note.py units for why the bytes win), and an index of which unit state each mdl/ file was described from. A refresh
 # re-describes only a candidate whose unit is new, changed (hash), moved (module/folder path)
 # or has no output yet; it keeps every other mdl/ file and deletes the outputs of units that are
 # gone or no longer loop. UnitID -> name comes from mx-metadata-note.py (beside this script):
@@ -563,7 +563,7 @@ T2=$(( $(date +%s) - T2 ))
 
 # ---------------------------------------------------------------------------------------------
 # Step 2b — unit snapshot: {UnitID: ContentsHash} from the .mpr Unit table, with each unit's
-# type, qualified name and folder path. Seconds, not minutes (0.3 s on 2,337 units). A model
+# type, qualified name and folder path. One read of each .mxunit file, no mxcli. A model
 # whose table cannot be read gets a full sweep, never a guessed incremental one.
 # ---------------------------------------------------------------------------------------------
 UNITS_TSV="$FACTS_DIR/.units.tsv"; UNITS_STATUS="fault"; UNITS_REASON=""

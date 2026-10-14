@@ -115,8 +115,8 @@ for layout in single two; do
   check "[$layout] T3 manifest counts 1 changed unit" "$(jq_ "$FACTS/manifest.json" units/changed_since_previous_map/changed)" "1"
 
   # --- T3b a stale Unit-table ContentsHash does not hide a changed unit ------------------------
-  # Measured on a field app's history: at one committed state one unit's column disagreed with
-  # its file. Here SUB_B's file changes while its row keeps the hash the last map recorded.
+  # Nothing guarantees a row is rewritten together with its file. Here SUB_B's file changes while
+  # its row keeps the hash the last map recorded.
   model "$(printf '%s\n' "$SPEC_BASE" | sed 's/^SUB_B	1/SUB_B	3/')"
   "$PY" - "$MD/App.mpr" "$FACTS/manifest.json" "$M.SUB_B" <<'PY'
 import json, sqlite3, sys

@@ -224,9 +224,9 @@ def units(mpr, hashes_only=False):
     folder path (Module/Folder/.../Name).
 
     The hash has the Unit table's ContentsHash format, base64(sha256(<the .mxunit bytes>)), and
-    is computed from the bytes. Measured on a field app's history: the column equals that value on
-    all 2,337 units at HEAD, Studio Pro- and mxcli-written alike, but at one of 8 committed states
-    one unit's column was stale (its file had changed, its row had not). The bytes are what
+    is computed from the bytes. The column normally holds that same value, but nothing guarantees
+    a row is rewritten in the same moment as its file (a save in progress, a checkout of the two
+    at different states), and a stale row would hide a change. The bytes are what
     `mxcli describe` reads, so they win; the column is the fallback for a unit with no file, and
     each disagreement is counted on stderr."""
     t = Tree(mpr)

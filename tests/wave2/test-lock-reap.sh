@@ -75,8 +75,10 @@ reset
 echo "-- ticket N+1 only when ticket N's pid is dead — never by age"
 D="$(dead_pid)"; X="$D 1700000000 old.mdl nonce=7"; K="$(key "$X")"; printf '%s\n' "$X" > "$L"
 live_holder; printf '%s 1\n' "$LP" > "$L.reap.$K.1"; touch -t 200001010000 "$L.reap.$K.1"
-OUT="$(lk 'mxtk_lock_take "$L" me 3; echo "rc=$?"')"
+OUT="$(lk 'mxtk_lock_take "$L" me 3; echo "rc=$? blocker=$MXTK_LOCK_BLOCKER"; mxtk_lock_blocked_text')"
 case "$OUT" in *rc=2*) ok "a live reaper's ticket (dated 2000) blocks: gave up (rc 2)" ;; *) bad "an old live ticket was overtaken: $OUT" ;; esac
+case "$OUT" in *"blocker=$LP $L.reap.$K.1"*) ok "  MXTK_LOCK_BLOCKER names the reaper's pid and ticket file" ;; *) bad "  blocker not named: $OUT" ;; esac
+case "$OUT" in *"kill -CONT $LP"*"kill $LP"*) ok "  and the message says to resume or end that pid (review of #379)" ;; *) bad "  no remedy in: $OUT" ;; esac
 [ "$(cat "$L")" = "$X" ] && ok "the stale line was left to the live reaper" || bad "lock changed: $(cat "$L")"
 [ ! -e "$L.reap.$K.2" ] && ok "no ticket 2 taken while ticket 1 lives" || bad "ticket 2 taken over a live ticket 1"
 kill -KILL "$LP" 2>/dev/null; wait "$LP" 2>/dev/null
@@ -148,6 +150,21 @@ case "$OUT" in *rc=2*) ok "a fresh empty lock is waited on, not reaped" ;; *) ba
 touch -t 200001010000 "$L"
 OUT="$(lk 'mxtk_lock_take "$L" me 2; echo "rc=$?"; mxtk_lock_release "$L"')"
 case "$OUT" in *rc=0*) ok "an empty lock over a minute old is reaped" ;; *) bad "$OUT" ;; esac
+reset
+
+echo "-- an EMPTY stale lock replaced mid-reap by a fresh empty one is not removed (review of #379)"
+# An empty line is not unique: the old code creates its lock empty and writes after. A reaper of an
+# old empty lock, paused at compare while that lock is replaced by a fresh empty one, must not rm it.
+: > "$L"; touch -t 200001010000 "$L"
+cat > "$WORK/empty-swap.sh" <<'H'
+#!/usr/bin/env bash
+[ "$1" = compare ] && { rm -f "$L"; : > "$L"; }
+exit 0
+H
+chmod +x "$WORK/empty-swap.sh"
+OUT="$(MXTK_LOCK_TEST_PAUSE="$WORK/empty-swap.sh" lk 'export L; mxtk_lock_take "$L" me 1; echo "rc=$?"')"
+[ -e "$L" ] && [ ! -s "$L" ] && [ -z "$(find "$L" -mmin +1 2>/dev/null)" ] && ok "the fresh empty lock survives" || bad "the fresh empty lock was removed: $OUT"
+[ -z "$(left)" ] && ok "  and the reaper's ticket is gone" || bad "  left: $(left)"
 reset
 
 echo "-- mixed versions: an old-style <lock>.takeover"

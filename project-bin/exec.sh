@@ -531,8 +531,12 @@ if [ "$_lrc" = 1 ]; then
   echo "    (A dead holder is detected and taken over automatically — no manual rm is ever needed.)"
   exit 1
 elif [ "$_lrc" != 0 ]; then
-  echo "✗ Could not take the exec lock $LOCK after 6 attempts — another session keeps re-taking it."
-  echo "  → Wait for the other exec to finish, then re-run. Nothing was written."
+  if [ -n "$MXTK_LOCK_BLOCKER" ]; then
+    echo "✗ Could not take the exec lock $LOCK after 6 attempts. Nothing was written."; mxtk_lock_blocked_text
+  else
+    echo "✗ Could not take the exec lock $LOCK after 6 attempts — another session keeps re-taking it."
+    echo "  → Wait for the other exec to finish, then re-run. Nothing was written."
+  fi
   exit 1
 fi
 [ -z "$MXTK_LOCK_REAPED" ] || echo "  (stale exec lock from PID ${MXTK_LOCK_REAPED%% *}, which is not running — taking it over)"

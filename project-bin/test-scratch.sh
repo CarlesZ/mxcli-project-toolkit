@@ -171,7 +171,8 @@ take_lock() {  # $1 = lock file, $2 = what it guards (for messages). 0 = taken, 
        echo "✗ test-scratch: $2 is held by PID $MXTK_LOCK_HPID ($MXTK_LOCK_HLABEL) — wait for it to finish." >&2
        return 1 ;;
   esac
-  echo "✗ test-scratch: could not take the lock on $2 after 8 attempts." >&2; return 1
+  echo "✗ test-scratch: could not take the lock on $2 after 8 attempts." >&2
+  mxtk_lock_blocked_text >&2; return 1
 }
 release() { mxtk_lock_release "$1"; }
 

@@ -1019,7 +1019,9 @@ _mxtk_lock_legacy_busy() {
 # holds the highest ticket for X (or an old-style takeover is live) — wait and look again.
 _mxtk_lock_reap() {
   local L="$1" X="$2" key max=0 n f t
-  _mxtk_lock_legacy_busy "$L" && return 1
+  if _mxtk_lock_legacy_busy "$L"; then
+    MXTK_LOCK_BLOCKER="$(head -1 "$L.takeover" 2>/dev/null | cut -d' ' -f1) $L.takeover"; return 1
+  fi
   key="$(_mxtk_lock_key "$X")"
   for f in "$L.reap.$key".*; do
     n="${f##*.}"; case "$n" in ''|*[!0-9]*) continue ;; esac
@@ -1027,9 +1029,10 @@ _mxtk_lock_reap() {
   done
   if [ "$max" -gt 0 ]; then
     f="$L.reap.$key.$max"; t="$(head -1 "$f" 2>/dev/null || true)"
-    if [ -n "$t" ]; then mxtk_lock_live "${t%% *}" && return 1
+    if [ -n "$t" ]; then
+      mxtk_lock_live "${t%% *}" && { MXTK_LOCK_BLOCKER="${t%% *} $f"; return 1; }
     # Empty: only the no-hard-link fallback writes after the create. Its creator is mid-write.
-    elif [ -e "$f" ] && [ -z "$(find "$f" -mmin +1 2>/dev/null)" ]; then return 1; fi
+    elif [ -e "$f" ] && [ -z "$(find "$f" -mmin +1 2>/dev/null)" ]; then MXTK_LOCK_BLOCKER="? $f"; return 1; fi
   fi
   n=$((max + 1)); f="$L.reap.$key.$n"
   _mxtk_lock_excl "$L" "$f" "$$ $_MXTK_LOCK_NONCE" || return 1   # another reaper took N first
@@ -1039,6 +1042,12 @@ _mxtk_lock_reap() {
   _mxtk_lock_anchor compare
   if [ -e "$L" ] && [ "$(head -1 "$L" 2>/dev/null || true)" = "$X" ]; then
     _mxtk_lock_anchor rm
+    # An EMPTY X is not unique: the old code (and the no-hard-link fallback) creates its lock empty
+    # and writes after, so a fresh empty lock can replace the stale one under us. The stale one is
+    # over a minute old (mxtk_lock_take judged it so); a replacement is seconds old. Review of #379.
+    if [ -z "$X" ] && { [ -s "$L" ] || [ -z "$(find "$L" -mmin +1 2>/dev/null)" ]; }; then
+      rm -f "$f"; return 0
+    fi
     rm -f "$L"
     MXTK_LOCK_REAPED="$X"
     return 0   # the ticket stays until the next holder clears it
@@ -1066,10 +1075,12 @@ _mxtk_lock_gc() {
 
 # mxtk_lock_take <lockfile> <label> [tries=6] — 0 taken (MXTK_LOCK_REAPED = the dead holder's line
 # when we reaped one, else ""); 1 a live holder has it (MXTK_LOCK_HELD = its line); 2 gave up after
-# <tries> attempts (others kept taking it). Call it directly, not in $( ): it sets variables.
+# <tries> attempts (others kept taking it, or MXTK_LOCK_BLOCKER = "<pid> <file>": a live reaper's
+# ticket, or an old-style takeover file, that never finished — mxtk_lock_blocked_text says what to
+# do). Call it directly, not in $( ): it sets variables.
 mxtk_lock_take() {
   local L="$1" label="$2" tries="${3:-6}" i=0 held line slp="${MXTK_LOCK_RETRY_SLEEP:-1}"
-  MXTK_LOCK_HELD=""; MXTK_LOCK_REAPED=""
+  MXTK_LOCK_HELD=""; MXTK_LOCK_REAPED=""; MXTK_LOCK_BLOCKER=""
   [ -n "${_MXTK_LOCK_NONCE:-}" ] || _MXTK_LOCK_NONCE="$$$RANDOM$RANDOM$(date +%s)"
   line="$$ $(date +%s) $label nonce=$_MXTK_LOCK_NONCE"
   while [ "$i" -lt "$tries" ]; do
@@ -1088,11 +1099,29 @@ mxtk_lock_take() {
     elif mxtk_lock_live "${held%% *}"; then
       MXTK_LOCK_HELD="$held"; return 1
     fi
+    MXTK_LOCK_BLOCKER=""
     _mxtk_lock_reap "$L" "$held" && continue
     sleep "$slp"   # another live reaper is on it; see who won
   done
   MXTK_LOCK_HELD="$(head -1 "$L" 2>/dev/null || true)"
   return 2
+}
+
+# mxtk_lock_blocked_text — after rc 2, when a live reaper blocked the reap: which pid and which file,
+# and what to do. A reaper normally holds its ticket for milliseconds; one that does not is stopped
+# (Ctrl+Z / SIGSTOP), hung, or a dead reaper's pid reused by another exec.sh-named process where
+# `ps -o args=` cannot tell them apart (Git Bash). Prints nothing when MXTK_LOCK_BLOCKER is empty.
+mxtk_lock_blocked_text() {
+  local p="${MXTK_LOCK_BLOCKER%% *}" f="${MXTK_LOCK_BLOCKER#* }"
+  [ -n "${MXTK_LOCK_BLOCKER:-}" ] || return 0
+  echo "  The dead holder's lock is being reaped by PID $p, which is alive but has not finished:"
+  echo "    $f"
+  if [ "$p" = "?" ]; then
+    echo "  → Its creator died mid-write; it stops counting a minute after it was created. Re-run then."
+  else
+    echo "  → If PID $p is stopped (Ctrl+Z), resume it: kill -CONT $p (or fg in its terminal)."
+    echo "    If it is hung, or not an exec.sh / test-scratch.sh at all (a reused pid), end it: kill $p — then re-run."
+  fi
 }
 
 # mxtk_lock_release <lockfile> — remove it only while it holds our own line (pid AND nonce).

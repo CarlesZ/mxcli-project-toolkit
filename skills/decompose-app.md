@@ -6,10 +6,11 @@ Mendix apps, one slice at a time, with the monolith staying live (strangler).
 module package (MPK), account for every crossing edge, and report the level each slice reached.
 This is the Change-an-existing-app mode (`existing-app-change.md`) with a cut-scoring Stage 3 and a
 per-slice Stage 5 loop.
-**Evidence:** eight increments run 2026-10-12/13 on a public field-service template (Mendix 9.24.2,
-MPR v1): increment 3 a native notes slice by MPK, 4 a first seam probe, 5 an asset/parts web slice,
-6 the monolith publishing its core, 7 that slice strangled out of the monolith (level 3), 8 a
-dispatch/workforce slice run from this skill. "Increment N" below names those runs; results in
+**Evidence:** increments run 2026-10-12/13. Increment 1 built `bin/cut-score.sh` on a synthetic
+4-module app (Mendix 10.24). Increments 2–8 ran on a public field-service template (Mendix 9.24.2,
+MPR v1): increment 2 the read probe and the first cut scoring, 3 a native notes slice by MPK,
+4 a first seam probe, 5 an asset/parts web slice, 6 the monolith publishing its core, 7 that
+slice strangled out of the monolith (level 3), 8 a dispatch/workforce slice run from this skill. "Increment N" below names those runs; results in
 `pipelines/mendix-mpr/README.md` → "Field runs". Their captures are not committed to the toolkit.
 
 **Not this skill:** regenerating a whole `.mpr` as MDL into a clean app → `rehost-app.md`.
@@ -53,7 +54,7 @@ reason beside its coupling numbers.
    no-lane calls, one sentence of business fit — and rank. A slice that is mostly inbound reads
    (OData-able) and a plausible separate system of record (Assets & Parts, Insights) beats a cheap
    fragment of the core.
-4. Known score blind spots (measured on the field-service template, increment 5): `call` mixes server and client-side calls
+4. Known score blind spots (measured on the field-service template, increment 2): `call` mixes server and client-side calls
    (a nanoflow/JS-action call lanes *copy*, not OData); `sync` refs never reach
    `dependencies.json`, so an entity synced to the device that lands in the other app is an
    unseen blocker. Check both by hand.
@@ -190,7 +191,10 @@ Not describe → edit → exec: on the field-service template 25 of 38 referenci
 
 ## Stage 6 — Prove and report the level
 
-Bound: the slice report names exactly one level (decided with the maintainer 2026-10-12).
+Bound: the slice report names exactly one level. The three levels were CONFIRMED with the user
+2026-10-12; level 3 was amended 2026-10-13 from field evidence: "one journey per crossing edge"
+became **one journey per crossing kind**, because per edge was undefined for 536 in-edge rows
+(increment 7).
 
 | Level | Criteria |
 |---|---|

@@ -138,6 +138,9 @@ For each page, ask and answer in writing:
   heights cover them (`learned-detection-gaps.md`).
 - **Submit every New/Edit form with required fields empty.** A visible validation message must
   appear. A 4xx/5xx with no user-facing feedback is high-severity silent failure, not a pass.
+- **Can I get back?** Without the browser's Back button, per `design-spacing.md` §3 crumbs.
+- **Does every tile go somewhere?** `wiring-sweep.md` proves each click does something; judge
+  where it lands: a "Tasks" menu entry opens a list of tasks, not one record's page.
 - **Does every View/Edit/action button point at the *current* page?** Confirm with
   `DESCRIBE PAGE Module.Page` — superseded pages from an earlier build script survive as live
   targets and nothing mechanical notices.

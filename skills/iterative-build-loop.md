@@ -384,7 +384,8 @@ unlikely, fewer stub-then-fill passes) — never by drafting less in parallel.
 set is every `BUILD` row whose "Depends on" rows are all applied, minus overlapping writers: two
 rows whose scripts `create or replace`, `alter` or drop+create the same document (the row's
 written documents are listed in Produces, `brd-to-build-plan.md`) are never in one ready set,
-whatever "Depends on" says. Rows in the ready set run at once; within a row, its scripts go in
+whatever "Depends on" says, and no row is drafted while its Produces overlaps a drafted but
+unapplied row. Rows in the ready set run at once; within a row, its scripts go in
 order, one `mdl-agent` per script. Applies go one at a time through `exec.sh` (the exec lock
 refuses a second); after each apply, recompute the ready set. The failure this prevents: a run
 that drafted one script at a time and sat idle while each draft finished. The risk it adds: a
@@ -392,8 +393,9 @@ queued draft can restate a document as it was before a sibling apply — STOP ru
 where the second of two drop+creates of a shared seed aggregator silently dropped a seed call
 with `mx check` at 0 errors. So before applying a draft, if any apply has landed since it was
 drafted, run `mxcli diff -p <mpr> <script> --format struct` (`learned-mdl-preflight.md` STOP
-rule 23): any `-` line, or any target STOP rule 21 covers (aggregator, after-startup chain,
-navigation), means re-draft from a fresh `describe` — never patch. `exec.sh`'s own
+rule 23; check each `-` line against `describe` per its BUG-146 note before re-drafting): any
+confirmed `-` line, or any target STOP rule 21 covers (aggregator, after-startup chain, navigation), means
+re-draft from a fresh `describe` — never patch. `exec.sh`'s own
 `check --references` cannot see this: a stale restatement still resolves. Report
 `ready set N, drafted N, applied k`.
 

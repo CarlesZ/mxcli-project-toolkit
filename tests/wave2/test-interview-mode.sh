@@ -128,45 +128,69 @@ printf 'Interview mode: unattend\n' > "$A/PROJECT.md"
 [ "$(bash "$SUBJECT" "$A" 2>/dev/null)" = "steering" ] \
   && ok "typo 'unattend' in PROJECT.md still falls back to steering" \
   || bad "a misspelled PROJECT.md alias did not fall back to steering"
-# PROJECT.md is human-written: only the FIRST WORD of the value counts, after stripping bold
-# and backticks. People annotate the line ("auto (user asked …)"), and the whole-line read
-# turned every annotated opt-in into steering. Env, file and --set stay exact (machine-written).
+# PROJECT.md is human-written and gets annotated. The rule (review of #335, 2026-10-14):
+#   - a value that is exactly one mode or alias (bold/backticks stripped, trailing '.' allowed)
+#     is used;
+#   - trailing text after `steering`/`attended` is a harmless note: steering is the loudest mode;
+#   - trailing text after `assist`/`auto`/`unattended` falls back to steering, with a stderr line
+#     saying a quieter mode must stand alone on the line.
+# Two hedge WORD LISTS were tried first and both leaked ("auto / steering", "auto (pending
+# sign-off)", "(maybe)", "(tentative)" …). A quieter mode never resolves from an annotated line,
+# so no list of hedge words is needed and none can leak. Env, file and --set stay exact.
 md_case() {  # md_case <label> <expected> <PROJECT.md line>
   printf '%s\n' "$3" > "$A/PROJECT.md"
   _got=$(bash "$SUBJECT" "$A" 2>/dev/null)
   [ "$_got" = "$2" ] && ok "PROJECT.md $1 resolves to $2" \
                      || bad "PROJECT.md $1 resolved to '$_got', want '$2'"
 }
-md_case "canonical + trailing note"         auto     'Interview mode: auto (user asked 2026-10-14)'
-md_case "bold value + dash note"            auto     '- **Interview mode:** **auto** — fast POC'
-md_case "backticked value + note"           assist   'Interview mode: `assist` until Stage 3'
-md_case "alias + comma note"                auto     'Interview mode: Unattended, per user'
-md_case "alias + bracket note"              steering 'Interview mode: attended (default)'
+# stand-alone values resolve
+md_case "bare bold value"                   auto     '- **Interview mode:** **auto**'
+md_case "bare backticked value"             auto     'Interview mode: `auto`'
+md_case "value with a trailing full stop"   auto     'Interview mode: auto.'
+md_case "bare capitalised alias"            auto     'Interview mode: Unattended'
+md_case "bare backticked assist"            assist   'Interview mode: `assist`'
+# a note after steering is fine
+md_case "steering + note"                   steering 'Interview mode: steering (default, user asked)'
+printf 'Interview mode: steering (default, user asked)\n' > "$A/PROJECT.md"
+[ -z "$(bash "$SUBJECT" "$A" 2>&1 >/dev/null)" ] \
+  && ok "steering + note prints nothing on stderr" \
+  || bad "steering + note printed something on stderr"
+md_case "attended + note"                   steering 'Interview mode: attended (default)'
+# BEHAVIOUR CHANGE vs 12838b4: a quieter mode with ANY note is not taken. Plain notes too —
+# telling a plain note from a hedge is the word list that did not converge.
+md_case "auto + plain note (now steering)"      steering 'Interview mode: auto (user asked 2026-10-14)'
+md_case "bold auto + dash note (now steering)"  steering '- **Interview mode:** **auto** — fast POC'
+md_case "alias + comma note (now steering)"     steering 'Interview mode: Unattended, per user'
+md_case "assist + note (now steering)"          steering 'Interview mode: `assist` until Stage 3'
+# every hedge from both reviews
+md_case "hedge: auto?"                      steering 'Interview mode: auto?'
+md_case "hedge: auto? + note"               steering 'Interview mode: auto? (to confirm with user)'
+md_case "hedge: unattended? ask user"       steering 'Interview mode: unattended? ask user'
+md_case "hedge: auto | steering"            steering 'Interview mode: auto | steering'
+md_case "hedge: auto / steering"            steering 'Interview mode: auto / steering'
+md_case "hedge: auto or steering"           steering 'Interview mode: auto or steering'
+md_case "hedge: auto (proposed…)"           steering 'Interview mode: auto (proposed, not confirmed)'
+md_case "hedge: auto TBD"                   steering 'Interview mode: auto TBD'
+md_case "hedge: auto (pending sign-off)"    steering 'Interview mode: auto (pending sign-off)'
+md_case "hedge: auto (maybe)"               steering 'Interview mode: auto (maybe)'
+md_case "hedge: auto (tentative)"           steering 'Interview mode: auto (tentative)'
+md_case "hedge: auto (draft)"               steering 'Interview mode: auto (draft)'
+md_case "hedge: auto — awaiting user"       steering 'Interview mode: auto — awaiting user'
+md_case "hedge: recommended"                steering '- **Interview mode:** auto (recommended by triage)'
+printf 'Interview mode: auto (pending sign-off)\n' > "$A/PROJECT.md"
+_err=$(bash "$SUBJECT" "$A" 2>&1 >/dev/null)
+case "$_err" in *"must stand alone on the line"*) ok "auto + note says on stderr it must stand alone" ;;
+  *) bad "auto + note gave no stand-alone message (stderr: $_err)" ;; esac
+[ "$(printf '%s\n' "$_err" | grep -c .)" = "1" ] \
+  && ok "and says it in exactly one line" || bad "stand-alone fallback printed $(printf '%s\n' "$_err" | grep -c .) lines"
+bash "$SUBJECT" "$A" --explain 2>/dev/null | grep -q 'fallback (quieter mode with trailing text)' \
+  && ok "--explain names the stand-alone fallback" \
+  || bad "--explain does not name the stand-alone fallback"
+# typos and empties
 md_case "typo first word + note"            steering 'Interview mode: atuo (user asked)'
 md_case "a word that merely starts with a mode" steering 'Interview mode: auto-ish'
-# A HEDGE is not a stated mode. The first-word read must never resolve quieter than the
-# whole-line read did (header rule: "a typo never resolves quieter") — a line that proposes,
-# questions or offers alternatives is the user not having decided. Review of #335, 2026-10-14.
-md_case "hedge: question mark"              steering 'Interview mode: auto? (to confirm with user)'
-md_case "hedge: alias + question"           steering 'Interview mode: unattended? ask user'
-md_case "hedge: alternatives with |"        steering 'Interview mode: auto | steering'
-md_case "hedge: proposed, not confirmed"    steering 'Interview mode: auto (proposed, not confirmed)'
-md_case "hedge: TBD"                        steering 'Interview mode: auto TBD'
-md_case "hedge: recommended"                steering '- **Interview mode:** auto (recommended by triage)'
-printf 'Interview mode: auto (proposed)\n' > "$A/PROJECT.md"
-bash "$SUBJECT" "$A" 2>&1 >/dev/null | grep -qi 'hedge' \
-  && ok "a hedged value says on stderr why it fell back" \
-  || bad "a hedged value fell back silently"
 md_case "empty value"                       steering 'Interview mode:'
 md_case "empty bold value"                  steering '- **Interview mode:** '
-printf 'Interview mode: auto (user asked 2026-10-14)\n' > "$A/PROJECT.md"
-[ -z "$(bash "$SUBJECT" "$A" 2>&1 >/dev/null)" ] \
-  && ok "an annotated canonical value prints nothing on stderr" \
-  || bad "an annotated canonical value printed something on stderr"
-printf 'Interview mode: unattended (user asked)\n' > "$A/PROJECT.md"
-bash "$SUBJECT" "$A" 2>&1 >/dev/null | grep -q "read as 'auto' (alias)" \
-  && ok "an annotated alias still prints the alias note" \
-  || bad "an annotated alias printed no alias note"
 # Machine-written sources stay exact: trailing text there is corruption, not annotation.
 printf 'auto extra\n' > "$A/.claude/.interview-mode"; rm -f "$A/PROJECT.md"
 [ "$(bash "$SUBJECT" "$A" 2>/dev/null)" = "steering" ] \

@@ -34,7 +34,7 @@
 # RESOLUTION ORDER (first hit wins)
 #   1. $CLAUDE_INTERVIEW_MODE          one command, one session
 #   2. <project>/.claude/.interview-mode   set by --set, survives the turn
-#   3. PROJECT.md `Interview mode:`    the project's stated default (first word of the value)
+#   3. PROJECT.md `Interview mode:`    the project's stated default (assist/auto must stand alone)
 #   4. steering
 #
 # A typo never resolves quieter. An unrecognised value anywhere falls back to steering and
@@ -132,39 +132,47 @@ fi
 if [ -z "$MODE" ] && [ -f "$PROJECT_DIR/PROJECT.md" ]; then
   # `Interview mode: assist` anywhere in PROJECT.md. Case-insensitive on the key and the
   # value; first occurrence wins so an appended log entry cannot silently retune the project.
-  # PROJECT.md is human-written, so only the FIRST WORD of the value counts — after stripping
-  # bold/backticks and trailing ,.;:) — and `auto (user asked 2026-…)`, `**auto** — fast POC`
-  # and `Unattended, per user` all resolve. Reading the whole rest of the line turned every
-  # annotated opt-in into steering. The first word must still be a mode or alias exactly
-  # (`auto-ish` is a typo), and the env var, session file and --set stay exact: those are
-  # machine-written, so trailing text there is corruption rather than annotation.
-  #
-  # A HEDGE is not a choice. A first-word read must never resolve quieter than the whole-line
-  # read did, so a value containing `?` or `|`, or proposed/TBD/todo/unconfirmed/not confirmed/
-  # to confirm/recommend/suggest anywhere, is invalid → steering, with the reason on stderr.
-  # (`auto? (to confirm with user)` and `auto | steering` gave auto on the first cut of this
-  # read — review of #335, 2026-10-14.)
+  # PROJECT.md is human-written and gets annotated, so (after stripping bold/backticks and
+  # lower-casing):
+  #   - a value that is exactly one mode or alias (trailing '.' allowed) is used;
+  #   - trailing text after `steering`/`attended` is a harmless note — steering is the loudest;
+  #   - trailing text after `assist`/`auto`/`unattended` falls back to steering, saying a
+  #     quieter mode must stand alone on the line.
+  # WHY NOT "first word wins": that let `auto? (to confirm)`, `auto | steering` and
+  # `auto (pending sign-off)` resolve QUIETER than the old whole-line read. Two hedge word
+  # lists were tried on #335 and both leaked (`auto / steering`, `(maybe)`, `(tentative)` …).
+  # Never taking a quieter mode from an annotated line cannot leak. The env var, session file
+  # and --set stay exact: those are machine-written.
   MD_RAW=$(grep -iEm1 '^[[:space:]]*(-[[:space:]]*)?\**Interview mode\**[[:space:]]*:' "$PROJECT_DIR/PROJECT.md" 2>/dev/null \
-            | sed -E 's/^[^:]*:[[:space:]]*//' | tr '[:upper:]' '[:lower:]')
-  FROM_MD=$(printf '%s\n' "$MD_RAW" | tr -d '*`' | awk '{print $1}' | sed -E 's/[,.;:)]+$//')
-  if [ -n "$FROM_MD" ]; then
-    HEDGE=""
-    case "$MD_RAW" in
-      *'?'*|*'|'*|*propos*|*tbd*|*todo*|*unconfirmed*|*'not confirmed'*|*'to confirm'*|*recommend*|*suggest*)
-        HEDGE=1 ;;
+            | sed -E 's/^[^:]*:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr -d '*`' \
+            | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  if [ -n "$MD_RAW" ]; then
+    MD_WHOLE=$(printf '%s' "$MD_RAW" | sed -E 's/\.$//')
+    case "$MD_WHOLE" in
+      *[[:space:]]*)   # a mode plus trailing text
+        MD_FIRST=$(printf '%s\n' "$MD_RAW" | awk '{print $1}' | sed -E 's/[,.;:)]+$//')
+        MD_CANON=$(canon "$MD_FIRST" 2>/dev/null)
+        case "$MD_CANON" in
+          steering)
+            FROM_MD=$(canon "$MD_FIRST"); MODE="$FROM_MD"; SOURCE="PROJECT.md" ;;
+          assist|auto)
+            echo "interview-mode: PROJECT.md says 'Interview mode: $MD_RAW'; a quieter mode must stand alone on the line — write 'Interview mode: $MD_CANON' and put notes on the next line. Using steering." >&2
+            MODE="steering"; SOURCE="fallback (quieter mode with trailing text)" ;;
+          *)
+            echo "interview-mode: PROJECT.md says 'Interview mode: $MD_RAW', which is not a mode; using steering" >&2
+            MODE="steering"; SOURCE="fallback (bad PROJECT.md value)" ;;
+        esac
+        ;;
+      *)
+        FROM_MD=$(canon "$MD_WHOLE")
+        if is_valid "$FROM_MD"; then
+          MODE="$FROM_MD"; SOURCE="PROJECT.md"
+        else
+          echo "interview-mode: PROJECT.md says 'Interview mode: $MD_RAW', which is not a mode; using steering" >&2
+          MODE="steering"; SOURCE="fallback (bad PROJECT.md value)"
+        fi
+        ;;
     esac
-    if [ -n "$HEDGE" ]; then
-      echo "interview-mode: PROJECT.md says 'Interview mode: $MD_RAW', which is a hedge (?, |, proposed, to confirm …), not a stated mode; using steering" >&2
-      MODE="steering"; SOURCE="fallback (hedged PROJECT.md value)"
-    else
-      FROM_MD=$(canon "$FROM_MD")
-      if is_valid "$FROM_MD"; then
-        MODE="$FROM_MD"; SOURCE="PROJECT.md"
-      else
-        echo "interview-mode: PROJECT.md says 'Interview mode: $FROM_MD', which is not a mode; using steering" >&2
-        MODE="steering"; SOURCE="fallback (bad PROJECT.md value)"
-      fi
-    fi
   fi
 fi
 

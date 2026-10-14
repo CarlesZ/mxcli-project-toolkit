@@ -128,7 +128,7 @@ if [ -z "$MODE" ] && [ -f "$PROJECT_DIR/PROJECT.md" ]; then
   # `Exec approval: auto` anywhere in PROJECT.md. Case-insensitive on the key and the value;
   # first occurrence wins so an appended log entry cannot silently retune the project. The whole
   # rest of the line is the value, so any trailing note is invalid → `ask`. (interview-mode.sh
-  # reads only the first word and rejects hedges; this read deliberately stays exact.)
+  # allows a note after `steering` only; this read deliberately stays exact.)
   FROM_MD=$(grep -iEm1 '^[[:space:]]*(-[[:space:]]*)?\**Exec approval\**[[:space:]]*:' "$PROJECT_DIR/PROJECT.md" 2>/dev/null \
             | sed -E 's/.*[Aa]pproval\**[[:space:]]*:[[:space:]]*//' \
             | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]*`')

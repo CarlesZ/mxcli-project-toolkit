@@ -378,17 +378,24 @@ re-run it after the other apply finishes.
 `FORCE_EXEC` or raw `mxcli exec` runs between gates — each of those is an unrecorded or
 unverified write. If gate time dominates, reduce the number of applies at the granularity level
 (see "Iterative Granularity": layer scripts rather than per-page ones where partial recovery is
-unlikely, fewer stub-then-fill passes), keep parallel **drafting**, and let the exec lock
-refuse overlapping applies — re-run a refused one after the other finishes.
+unlikely, fewer stub-then-fill passes) — never by drafting less in parallel.
 
-**Draft the ready set, apply one at a time.** The ready set is every build-plan row whose
-"Depends on" rows are all applied (`brd-to-build-plan.md`). Dispatch one `mdl-agent` per row in
-it at once; queue the drafts and apply them one by one through `exec.sh`; after each apply,
-recompute the ready set and draft what it newly admits. The failure this prevents: a run that
-drafted one script at a time and sat idle while each draft finished, though most rows depended
-only on the domain script. A draft made before an earlier apply landed may be stale — re-run
-`./mxcli check <script> -p <mpr> --references` just before applying it, and on failure re-draft
-it, never patch it. Report `ready set N, drafted N, applied k`.
+**Draft the ready set in parallel, apply serially.** The unit is the build-plan row. The ready
+set is every `BUILD` row whose "Depends on" rows are all applied, minus overlapping writers: two
+rows whose scripts `create or replace`, `alter` or drop+create the same document (the row's
+written documents are listed in Produces, `brd-to-build-plan.md`) are never in one ready set,
+whatever "Depends on" says. Rows in the ready set run at once; within a row, its scripts go in
+order, one `mdl-agent` per script. Applies go one at a time through `exec.sh` (the exec lock
+refuses a second); after each apply, recompute the ready set. The failure this prevents: a run
+that drafted one script at a time and sat idle while each draft finished. The risk it adds: a
+queued draft can restate a document as it was before a sibling apply — STOP rule 21's incident,
+where the second of two drop+creates of a shared seed aggregator silently dropped a seed call
+with `mx check` at 0 errors. So before applying a draft, if any apply has landed since it was
+drafted, run `mxcli diff -p <mpr> <script> --format struct` (`learned-mdl-preflight.md` STOP
+rule 23): any `-` line, or any target STOP rule 21 covers (aggregator, after-startup chain,
+navigation), means re-draft from a fresh `describe` — never patch. `exec.sh`'s own
+`check --references` cannot see this: a stale restatement still resolves. Report
+`ready set N, drafted N, applied k`.
 
 ### Pre-exec sequence when MCP work was done
 

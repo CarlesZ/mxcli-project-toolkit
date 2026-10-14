@@ -229,5 +229,68 @@ else
   fi
 fi
 
+# ── T6–T8 (2026-10-14): the per-role on-demand token "<role>?" in the agents column ───────────
+# A baseline row whose cell says "mdl?,review" is baseline for review and on demand for mdl:
+# out of mdl's word count, still in mdl's stub (below the baseline rows, trigger only, so it
+# stays findable — CLAUDE.md skill rule 8), and named in the Role(s) column.
+echo "== T6: a 'mdl?' token keeps the row in mdl's stub, on demand, and out of mdl's count =="
+{ echo "# Per Role"; echo; i=0; while [ "$i" -lt 40 ]; do printf 'pr '; i=$((i+1)); done; echo; } > "$R/skills/per-role.md"
+PR_WORDS="$(LC_ALL=C wc -w < "$R/skills/per-role.md" | tr -d ' ')"
+printf 'perrole\tskills/per-role.md\tPer-role probe trigger — tail that only baseline readers see\tmdl?,review\t-\tbaseline\treference\n' >> "$R/bin/lib/skill-routing.tsv"
+printf 'allbut\tskills/anchor.md\tAll-but probe — tail\tall,mdl?\t-\tbaseline\treference\n' >> "$R/bin/lib/skill-routing.tsv"
+OUT6="$("$R/bin/render-routing.sh" 2>&1)" || bad "render with a '?' token exited 0" "$OUT6"
+CHECK6="$("$R/bin/render-routing.sh" --check 2>&1)"; RC6=$?
+[ "$RC6" -eq 0 ] && ok "--check accepts 'mdl?,review' and 'all,mdl?'" || bad "--check rejected a valid '?' token" "$CHECK6"
+MDL_LINE="$(grep -n 'skills/per-role.md' "$R/agents/mdl-agent.md" | head -1)"
+ANCHOR_LINE="$(grep -n 'skills/anchor.md' "$R/agents/mdl-agent.md" | head -1 | cut -d: -f1)"
+case "$MDL_LINE" in
+  *'| Per-role probe trigger |') ok "mdl stub lists the row with its trigger only (on-demand form)" ;;
+  '') bad "mdl stub lost the row — an on-demand row must stay findable" ;;
+  *) bad "mdl stub lists the row in baseline form" "$MDL_LINE" ;;
+esac
+[ -n "$ANCHOR_LINE" ] && [ "${MDL_LINE%%:*}" -gt "$ANCHOR_LINE" ] 2>/dev/null \
+  && ok "mdl stub places it below the baseline rows" || bad "mdl stub row order wrong" "$MDL_LINE / anchor $ANCHOR_LINE"
+grep -q 'skills/per-role.md` | Per-role probe trigger — tail that only baseline readers see |' "$R/agents/review-agent.md" \
+  && ok "review stub keeps the full baseline row" || bad "review stub lost the baseline form" "$(grep per-role "$R/agents/review-agent.md")"
+grep -q 'per-role' "$R/agents/gate-agent.md" && bad "gate stub got a row it is not named on" || ok "gate stub does not get the row"
+role_words() { printf '%s\n' "$CHECK6" | grep '^  stage 5:' | sed -n "s/.* $1 \([0-9]*\)\/.*/\1/p"; }
+RB_W="$(LC_ALL=C wc -w < "$R/skills/conversion-runbook.md" | tr -d ' ')"
+A_W="$(LC_ALL=C wc -w < "$R/skills/anchor.md" | tr -d ' ')"
+MW="$(role_words mdl)"; RW="$(role_words review)"
+# Baseline rows at this point: anchor, runbook, perrole (mdl?,review), allbut (all,mdl? — it
+# points at anchor.md again, so a role it reaches counts anchor twice). demo was demoted in T2.
+[ "$RW" = "$((2 * A_W + RB_W + PR_WORDS))" ] && ok "review's count includes both rows ($RW)" \
+  || bad "review count $RW, wanted $((2 * A_W + RB_W + PR_WORDS))" "$CHECK6"
+[ "$MW" = "$((A_W + RB_W))" ] && ok "mdl's count excludes the 'mdl?,review' and 'all,mdl?' rows ($MW)" \
+  || bad "mdl count $MW, wanted $((A_W + RB_W))" "$CHECK6"
+
+echo "== T7: the Role(s) column names the on-demand roles =="
+case "$(sed -n '/ROUTING:BEGIN readme-baseline/,/ROUTING:END/p' "$R/README.md")" in
+  *'skills/per-role.md` | every stage | review (mdl: on demand) |'*) ok "Role(s) reads 'review (mdl: on demand)'" ;;
+  *) bad "Role(s) cell for 'mdl?,review' wrong" "$(grep per-role "$R/README.md")" ;;
+esac
+case "$(sed -n '/ROUTING:BEGIN readme-baseline/,/ROUTING:END/p' "$R/README.md")" in
+  *'| every stage | every role except mdl (on demand for those) |'*) ok "Role(s) reads 'every role except mdl (on demand for those)'" ;;
+  *) bad "Role(s) cell for 'all,mdl?' wrong" "$(grep 'All-but' "$R/README.md")" ;;
+esac
+
+echo "== T8: the agent audit refuses a '?' token that cannot mean anything =="
+cp "$R/bin/lib/skill-routing.tsv" "$TMP/tsv.good"
+printf 'odrow\tskills/anchor.md\tOn-demand row probe\tmdl?\t-\tondemand\treference\n' >> "$R/bin/lib/skill-routing.tsv"
+O="$("$R/bin/render-routing.sh" --check 2>&1)"; RC=$?
+[ "$RC" -ne 0 ] && printf '%s' "$O" | grep -q 'odrow.*on-demand token on a ondemand row' \
+  && ok "'mdl?' on an ondemand row fails --check, named" || bad "'mdl?' on an ondemand row not refused" "$O"
+cp "$TMP/tsv.good" "$R/bin/lib/skill-routing.tsv"
+printf 'dup\tskills/anchor.md\tDup probe\tmdl,mdl?\t-\tbaseline\treference\n' >> "$R/bin/lib/skill-routing.tsv"
+O="$("$R/bin/render-routing.sh" --check 2>&1)"; RC=$?
+[ "$RC" -ne 0 ] && printf '%s' "$O" | grep -q 'dup.*also listed plain' \
+  && ok "'mdl,mdl?' fails --check, named" || bad "'mdl,mdl?' not refused" "$O"
+cp "$TMP/tsv.good" "$R/bin/lib/skill-routing.tsv"
+printf 'bogus\tskills/anchor.md\tBogus probe\tmdx?\t-\tbaseline\treference\n' >> "$R/bin/lib/skill-routing.tsv"
+O="$("$R/bin/render-routing.sh" --check 2>&1)"; RC=$?
+[ "$RC" -ne 0 ] && printf '%s' "$O" | grep -q 'bad token: mdx?' \
+  && ok "an unknown role with '?' fails --check" || bad "'mdx?' not refused" "$O"
+cp "$TMP/tsv.good" "$R/bin/lib/skill-routing.tsv"
+
 printf '\n%s: %d ok, %d FAIL\n' "$(basename "$0")" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

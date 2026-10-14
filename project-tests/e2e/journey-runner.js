@@ -51,11 +51,14 @@ const PROTECT_STATE = process.argv.includes('--protect-state');
 // --assert-landing (or any journey with "assertLanding": true): the landing check after login.
 const ASSERT_LANDING = process.argv.includes('--assert-landing');
 const files = process.argv.slice(2).filter(a => !a.startsWith('--'));
+// --out=<file.json>: write findings there instead of the default slot. named-controls.js uses it
+// so a named control never overwrites the real walk's (or the positive control's) findings (#159).
+const OUT_ARG = (process.argv.find(a => a.startsWith('--out=')) || '').slice(6);
 // `require.main === module` guard: tests/e2e/journey-rung4-scope.test.js requires this
 // file to exercise the rung-4 SQL builders directly. Without the guard, requiring it
 // would parse the TEST runner's argv, find no journey files and exit(3).
 if (require.main === module && !files.length) {
-  console.error('usage: node tests/e2e/journey-runner.js <journey.json...> [--positive-control]');
+  console.error('usage: node tests/e2e/journey-runner.js <journey.json...> [--positive-control] [--out=<file.json>]');
   process.exit(3);
 }
 
@@ -1337,11 +1340,12 @@ function flagAppDown(rows, detail) {
 // fixture rows without a running app. See tests/e2e/journey-rung4-scope.test.js.
 // runExitCode is exported for tests/wave2/test-journey-control-exit.sh, personaMismatch
 // for tests/wave2/test-journey-persona.sh, the preflight/ordering set for
-// tests/wave2/test-journey-preflight.sh.
+// tests/wave2/test-journey-preflight.sh, namedControlGaps/findControls for
+// tests/wave2/test-named-controls.sh.
 module.exports = {
   sqlRowCount, sqlWatermark, whereScoped, scopeLiteral,
   sqlAssocTotal, sqlAssocLinked, sqlMustPointAt, captureScope, scopeEvidence,
-  runExitCode, personaMismatch,
+  runExitCode, personaMismatch, namedControlGaps, findControls,
   classifyAdminProbe, journeyNeedsAdmin, missingEnv, preflight, orderJourneys, stateTracker,
   judgeLanding,
   traceRung, controlMutants, forbiddenSample, probeApp, appGate, flagAppDown, LIVENESS_SKEW_MS,
@@ -1390,8 +1394,45 @@ function armSignals() {
   }
 }
 
-const findingsFile = () => path.join(cfg.artifactsDir,
+const findingsFile = () => OUT_ARG ? path.resolve(OUT_ARG) : path.join(cfg.artifactsDir,
   POSITIVE_CONTROL ? 'journey-findings-control.json' : 'journey-findings.json');
+
+// ── Named controls: every journey names its claim and ships a control (#159) ─
+// The positive control proves the harness can fail; it cannot prove the claim a journey exists
+// for. Field case (card-disbursement build, 2026-09-26): a journey passed every rung, its positive
+// control proved every rung, and its claim ("a case waits while an upstream system is offline")
+// was true only by accident; its named control read NOT PROVEN. So each journey declares
+// `"claim"` and has a control file (`"control": {"of": <id>, "mustFail": ...}`) beside it or in
+// controls/ beside it, run by named-controls.js. WARN-ONLY until a field run: printed and written
+// to the findings as `namedControlGaps`, never a row, never the exit code. A control file is not
+// itself checked.
+function namedControlGaps(journeys, controlOf) {
+  const gaps = [];
+  for (const j of journeys) {
+    if (j.control) continue;
+    if (!j.claim) gaps.push(`${j.id}: no "claim" — name the business claim this journey exists to prove`);
+    if (!controlOf.has(j.id)) gaps.push(`${j.id}: no named control — no .json beside it (or in controls/) ` +
+      `with control.of = "${j.id}"; write one and run named-controls.js`);
+  }
+  return gaps;
+}
+
+// The journey ids that have a control file in the given journey files' directories (and their
+// controls/ subdirectories). Unreadable or non-journey JSON is skipped: this is a warning scan.
+function findControls(journeyFiles) {
+  const of = new Set();
+  const dirs = new Set();
+  for (const f of journeyFiles) { const d = path.dirname(path.resolve(f)); dirs.add(d); dirs.add(path.join(d, 'controls')); }
+  for (const d of dirs) {
+    let names = [];
+    try { names = fs.readdirSync(d).filter(n => n.endsWith('.json')); } catch (_) { continue; }
+    for (const n of names) {
+      try { const c = JSON.parse(fs.readFileSync(path.join(d, n), 'utf8')).control; if (c && c.of) of.add(c.of); } catch (_) { /* not a journey */ }
+    }
+  }
+  return of;
+}
+let CONTROL_GAPS = [];
 
 (async () => {
   const loaded = files.map(f => JSON.parse(fs.readFileSync(f, 'utf8')));
@@ -1407,6 +1448,8 @@ const findingsFile = () => path.join(cfg.artifactsDir,
   console.log('\n=== PREFLIGHT ===');
   const pf = preflight(journeys);
   for (const l of pf.lines) console.log(`  ${l}`);
+  CONTROL_GAPS = namedControlGaps(journeys, findControls(files));
+  for (const g of CONTROL_GAPS) console.log(`  WARN   named control: ${g}`);
   results.push(...pf.rows);
   if (pf.abort !== null) {
     console.log('\n=== SUMMARY ===');
@@ -1609,7 +1652,7 @@ const findingsFile = () => path.join(cfg.artifactsDir,
     capturedAt: new Date().toISOString(),
     configuredUser: cfg.user, actualUser: li.user, usedFallback: !!li.usedFallback,
     baseUrl: cfg.baseUrl, positiveControl: POSITIVE_CONTROL, mutants, results, walks,
-    appDown, appDiedIn,
+    appDown, appDiedIn, namedControlGaps: CONTROL_GAPS,
   }, null, 2));
   console.log(`  findings → ${path.relative(cfg.root, out)}`);
 

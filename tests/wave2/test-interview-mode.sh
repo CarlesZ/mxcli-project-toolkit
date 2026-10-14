@@ -102,8 +102,7 @@ alias_case "file unattended" auto     bash "$SUBJECT" "$A"
 printf 'attended\n' > "$A/.claude/.interview-mode"
 alias_case "file attended"   steering bash "$SUBJECT" "$A"
 rm -f "$A/.claude/.interview-mode"
-# Same parse rules as the canonical values: list bullet, bold key, any case. (Trailing prose
-# after the value is not accepted for canonical values either — not this fixture's subject.)
+# Same parse rules as the canonical values: list bullet, bold key, any case.
 printf -- '- **Interview mode:** Unattended\n' > "$A/PROJECT.md"
 alias_case "PROJECT.md bold key, capitalised unattended" auto bash "$SUBJECT" "$A"
 printf 'Interview mode: attended\n' > "$A/PROJECT.md"
@@ -129,6 +128,44 @@ printf 'Interview mode: unattend\n' > "$A/PROJECT.md"
 [ "$(bash "$SUBJECT" "$A" 2>/dev/null)" = "steering" ] \
   && ok "typo 'unattend' in PROJECT.md still falls back to steering" \
   || bad "a misspelled PROJECT.md alias did not fall back to steering"
+# PROJECT.md is human-written: only the FIRST WORD of the value counts, after stripping bold
+# and backticks. People annotate the line ("auto (user asked …)"), and the whole-line read
+# turned every annotated opt-in into steering. Env, file and --set stay exact (machine-written).
+md_case() {  # md_case <label> <expected> <PROJECT.md line>
+  printf '%s\n' "$3" > "$A/PROJECT.md"
+  _got=$(bash "$SUBJECT" "$A" 2>/dev/null)
+  [ "$_got" = "$2" ] && ok "PROJECT.md $1 resolves to $2" \
+                     || bad "PROJECT.md $1 resolved to '$_got', want '$2'"
+}
+md_case "canonical + trailing note"         auto     'Interview mode: auto (user asked 2026-10-14)'
+md_case "bold value + dash note"            auto     '- **Interview mode:** **auto** — fast POC'
+md_case "backticked value + note"           assist   'Interview mode: `assist` until Stage 3'
+md_case "alias + comma note"                auto     'Interview mode: Unattended, per user'
+md_case "alias + bracket note"              steering 'Interview mode: attended (default)'
+md_case "typo first word + note"            steering 'Interview mode: atuo (user asked)'
+md_case "a word that merely starts with a mode" steering 'Interview mode: auto-ish'
+md_case "empty value"                       steering 'Interview mode:'
+md_case "empty bold value"                  steering '- **Interview mode:** '
+printf 'Interview mode: auto (user asked 2026-10-14)\n' > "$A/PROJECT.md"
+[ -z "$(bash "$SUBJECT" "$A" 2>&1 >/dev/null)" ] \
+  && ok "an annotated canonical value prints nothing on stderr" \
+  || bad "an annotated canonical value printed something on stderr"
+printf 'Interview mode: unattended (user asked)\n' > "$A/PROJECT.md"
+bash "$SUBJECT" "$A" 2>&1 >/dev/null | grep -q "read as 'auto' (alias)" \
+  && ok "an annotated alias still prints the alias note" \
+  || bad "an annotated alias printed no alias note"
+# Machine-written sources stay exact: trailing text there is corruption, not annotation.
+printf 'auto extra\n' > "$A/.claude/.interview-mode"; rm -f "$A/PROJECT.md"
+[ "$(bash "$SUBJECT" "$A" 2>/dev/null)" = "steering" ] \
+  && ok "session file with trailing text is still rejected (exact match)" \
+  || bad "session file with trailing text was accepted"
+rm -f "$A/.claude/.interview-mode"
+[ "$(CLAUDE_INTERVIEW_MODE='auto please' bash "$SUBJECT" "$A" 2>/dev/null)" = "steering" ] \
+  && ok "env value with trailing text is still rejected (exact match)" \
+  || bad "env value with trailing text was accepted"
+bash "$SUBJECT" "$A" --set 'auto please' >/dev/null 2>&1
+[ "$?" -eq 2 ] && ok "--set with trailing text is still rejected" \
+               || bad "--set accepted a value with trailing text"
 printf 'Interview mode: auto\n' > "$A/PROJECT.md"
 [ -z "$(bash "$SUBJECT" "$A" 2>&1 >/dev/null)" ] \
   && ok "a canonical value prints no alias note" \

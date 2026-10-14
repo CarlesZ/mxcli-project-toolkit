@@ -34,7 +34,7 @@
 # RESOLUTION ORDER (first hit wins)
 #   1. $CLAUDE_INTERVIEW_MODE          one command, one session
 #   2. <project>/.claude/.interview-mode   set by --set, survives the turn
-#   3. PROJECT.md `Interview mode:`    the project's stated default
+#   3. PROJECT.md `Interview mode:`    the project's stated default (first word of the value)
 #   4. steering
 #
 # A typo never resolves quieter. An unrecognised value anywhere falls back to steering and
@@ -132,9 +132,16 @@ fi
 if [ -z "$MODE" ] && [ -f "$PROJECT_DIR/PROJECT.md" ]; then
   # `Interview mode: assist` anywhere in PROJECT.md. Case-insensitive on the key and the
   # value; first occurrence wins so an appended log entry cannot silently retune the project.
+  # PROJECT.md is human-written, so only the FIRST WORD of the value counts — after stripping
+  # bold/backticks and trailing ,.;:!?) — and `auto (user asked 2026-…)`, `**auto** — fast POC`
+  # and `Unattended, per user` all resolve. Reading the whole rest of the line turned every
+  # annotated opt-in into steering. The first word must still be a mode or alias exactly
+  # (`auto-ish` is a typo), and the env var, session file and --set stay exact: those are
+  # machine-written, so trailing text there is corruption rather than annotation.
   FROM_MD=$(grep -iEm1 '^[[:space:]]*(-[[:space:]]*)?\**Interview mode\**[[:space:]]*:' "$PROJECT_DIR/PROJECT.md" 2>/dev/null \
-            | sed -E 's/.*[Mm]ode\**[[:space:]]*:[[:space:]]*//' \
-            | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]*`')
+            | sed -E 's/^[^:]*:[[:space:]]*//' \
+            | tr '[:upper:]' '[:lower:]' | tr -d '*`' \
+            | awk '{print $1}' | sed -E 's/[,.;:!?)]+$//')
   if [ -n "$FROM_MD" ]; then
     FROM_MD=$(canon "$FROM_MD")
     if is_valid "$FROM_MD"; then

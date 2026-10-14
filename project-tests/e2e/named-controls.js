@@ -1,10 +1,11 @@
 'use strict';
 // named-controls.js — prove each journey's OWN claim can fail (#159)
-//   node tests/e2e/named-controls.js journeys/controls/*.control.json
+//   node tests/e2e/named-controls.js journeys/*.control.json journeys/controls/*.control.json
 //
 // --positive-control proves the HARNESS can fail: it breaks generic rungs. It cannot prove the
-// claim a journey exists for. A control file is a copy of its journey with ONE claim the app must
-// not satisfy, plus  "control": { "of": "J-01", "mustFail": "<check-name text>" }.
+// claim a journey exists for. A control file, named *.control.json (never *.journey.json, which
+// real walks pick up), is a copy of its journey with ONE claim the app must not satisfy, plus
+// "control": { "of": "J-01", "mustFail": "<check-name text>" }.
 // PROVEN only when all three hold: (1) the runner exits 1; (2) every check whose name contains
 // mustFail is FAIL, and there is at least one; (3) nothing else is FAIL or INVALID. Rule 3 is the
 // point: a control that goes red somewhere else (a login fault, a moved landing) proves nothing
@@ -29,6 +30,7 @@ function judge(exitCode, results, mustFail) {
 }
 
 function runControl(file, { user, artifactsDir, runner = path.join(__dirname, 'journey-runner.js') }) {
+  if (!file.endsWith('.control.json')) return { id: path.basename(file), verdict: 'FAULT', why: 'not named *.control.json; not run' };
   const j = JSON.parse(fs.readFileSync(file, 'utf8'));
   const c = j.control || {};
   if (!c.of || !c.mustFail) return { id: j.id, verdict: 'FAULT', why: 'no control.of / control.mustFail' };

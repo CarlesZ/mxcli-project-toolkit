@@ -246,12 +246,14 @@ the same vacuity bug one level up.
 ### Every journey names its claim and ships a control
 
 **Trigger:** you write or change a journey. Declare `"claim"` (the one business sentence the journey
-exists to prove), then copy the journey to a control file beside it, or in `controls/` beside it,
-with one claim the app must not satisfy and `"control": { "of": "<journey id>", "mustFail":
+exists to prove), then copy the journey to `<id>.control.json` beside it, or in `controls/` beside
+it, with one claim the app must not satisfy and `"control": { "of": "<journey id>", "mustFail":
 "<check-name text>" }`. Run `tests/e2e/named-controls.js <control files>`. A control is PROVEN only
 when the runner exits 1, every check whose name contains `mustFail` is FAIL (at least one), and
 nothing else is FAIL or INVALID. Its `persona` must equal `TEST_USER`, or it is a FAULT and does not
-run. The seven mutants above prove the harness. Only a named control proves the claim.
+run. Never name a control `*.journey.json`: real walks, `report-normalize.js` and
+`fixture-manifest.sh` discover journeys by that suffix, and would walk the control as a journey.
+The seven mutants above prove the harness. Only a named control proves the claim.
 
 *Failure it prevents (2026-09-26, #159):* a journey claimed "a case waits while an upstream system is
 offline". It passed every rung, and its positive control proved 7 of 7. Its named control read

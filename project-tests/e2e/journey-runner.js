@@ -1375,7 +1375,7 @@ function armRelease(page, li) {
 // as this run — the same stale-slot defect the preflight abort already guards against.
 function writeAbortedFindings(reason, extra = {}) {
   try {
-    fs.mkdirSync(cfg.artifactsDir, { recursive: true });
+    fs.mkdirSync(path.dirname(findingsFile()), { recursive: true });   // --out= may name a new dir
     fs.writeFileSync(findingsFile(), JSON.stringify({
       capturedAt: new Date().toISOString(), aborted: reason,
       configuredUser: cfg.user, actualUser: extra.actualUser ?? null, usedFallback: !!extra.usedFallback,
@@ -1402,8 +1402,10 @@ const findingsFile = () => OUT_ARG ? path.resolve(OUT_ARG) : path.join(cfg.artif
 // for. Field case (card-disbursement build, 2026-09-26): a journey passed every rung, its positive
 // control proved every rung, and its claim ("a case waits while an upstream system is offline")
 // was true only by accident; its named control read NOT PROVEN. So each journey declares
-// `"claim"` and has a control file (`"control": {"of": <id>, "mustFail": ...}`) beside it or in
-// controls/ beside it, run by named-controls.js. WARN-ONLY until a field run: printed and written
+// `"claim"` and has a control file named `*.control.json` (`"control": {"of": <id>, "mustFail": ...}`)
+// beside it or in controls/ beside it, run by named-controls.js. The suffix is required: every real
+// walk discovers journeys as `*.journey.json` (verify-module, report-normalize, fixture-manifest),
+// so a control saved under that suffix would be walked, normalized and seeded as a real journey. WARN-ONLY until a field run: printed and written
 // to the findings as `namedControlGaps`, never a row, never the exit code. A control file is not
 // itself checked.
 function namedControlGaps(journeys, controlOf) {
@@ -1411,21 +1413,22 @@ function namedControlGaps(journeys, controlOf) {
   for (const j of journeys) {
     if (j.control) continue;
     if (!j.claim) gaps.push(`${j.id}: no "claim" — name the business claim this journey exists to prove`);
-    if (!controlOf.has(j.id)) gaps.push(`${j.id}: no named control — no .json beside it (or in controls/) ` +
+    if (!controlOf.has(j.id)) gaps.push(`${j.id}: no named control — no *.control.json beside it (or in controls/) ` +
       `with control.of = "${j.id}"; write one and run named-controls.js`);
   }
   return gaps;
 }
 
-// The journey ids that have a control file in the given journey files' directories (and their
-// controls/ subdirectories). Unreadable or non-journey JSON is skipped: this is a warning scan.
+// The journey ids that have a `*.control.json` file in the given journey files' directories (and
+// their controls/ subdirectories). Other names are never read as controls; unreadable JSON is
+// skipped: this is a warning scan.
 function findControls(journeyFiles) {
   const of = new Set();
   const dirs = new Set();
   for (const f of journeyFiles) { const d = path.dirname(path.resolve(f)); dirs.add(d); dirs.add(path.join(d, 'controls')); }
   for (const d of dirs) {
     let names = [];
-    try { names = fs.readdirSync(d).filter(n => n.endsWith('.json')); } catch (_) { continue; }
+    try { names = fs.readdirSync(d).filter(n => n.endsWith('.control.json')); } catch (_) { continue; }
     for (const n of names) {
       try { const c = JSON.parse(fs.readFileSync(path.join(d, n), 'utf8')).control; if (c && c.of) of.add(c.of); } catch (_) { /* not a journey */ }
     }
@@ -1648,6 +1651,7 @@ let CONTROL_GAPS = [];
   // These two files answer different questions ("does the app work" / "can this
   // harness tell when it doesn't") and must never share storage.
   const out = findingsFile();
+  fs.mkdirSync(path.dirname(out), { recursive: true });   // --out= may name a new directory
   fs.writeFileSync(out, JSON.stringify({
     capturedAt: new Date().toISOString(),
     configuredUser: cfg.user, actualUser: li.user, usedFallback: !!li.usedFallback,

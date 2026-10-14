@@ -88,19 +88,25 @@ process.exit(1);
 EOF
 LAST="$(node -e 'const w=require(process.argv[1]); console.log(w.results[w.results.length-1].name)' "$FIX/walk-run.json")"
 mk() { node -e 'const [f,id,p,mf]=process.argv.slice(1); const j={id,title:"control",steps:[{name:"s"}],control:{of:"J-01",mustFail:mf}}; if(p!=="-") j.persona=p; require("fs").writeFileSync(f,JSON.stringify(j))' "$@"; }
-mk "$WORK/journeys/controls/C-ok.json" C-ok demo_user "$LAST"
-mk "$WORK/journeys/controls/C-who.json" C-who Reviewer "$LAST"
+mk "$WORK/journeys/controls/C-ok.control.json" C-ok demo_user "$LAST"
+mk "$WORK/journeys/controls/C-who.control.json" C-who Reviewer "$LAST"
+# Misnamed controls: a control saved as *.journey.json beside its journey, and a bare .json in
+# controls/. Neither may count as J-02's / J-03's control, and named-controls.js must refuse it.
+mk "$WORK/journeys/C-bad.journey.json" C-bad demo_user "$LAST"; node -e 'const f=process.argv[1],j=require(f);j.control.of="J-02";require("fs").writeFileSync(f,JSON.stringify(j))' "$WORK/journeys/C-bad.journey.json"
+mk "$WORK/journeys/controls/C-bare.json" C-bare demo_user "$LAST"; node -e 'const f=process.argv[1],j=require(f);j.control.of="J-03";require("fs").writeFileSync(f,JSON.stringify(j))' "$WORK/journeys/controls/C-bare.json"
 IFS= read -r -d '' JS2 <<'EOF' || true
 const [runner, art, dir] = process.argv.slice(2);
 const N = require('./named-controls.js');
 const fs = require('fs');
 const show = (k, r) => console.log(`${k} ${r.verdict} | ${r.why}`);
-show('RUN', N.runControl(dir + '/C-ok.json', { user: 'demo_user', artifactsDir: art, runner }));
+show('RUN', N.runControl(dir + '/C-ok.control.json', { user: 'demo_user', artifactsDir: art, runner }));
 console.log('OUTFILE ' + fs.existsSync(art + '/control-C-ok.json'));
-show('WHO', N.runControl(dir + '/C-who.json', { user: 'demo_user', artifactsDir: art, runner }));
+show('WHO', N.runControl(dir + '/C-who.control.json', { user: 'demo_user', artifactsDir: art, runner }));
 fs.writeFileSync(art + '/control-C-ok.json', JSON.stringify({ results: [] }));   // stale file
 process.env.STUB_MODE = 'nofile';
-show('STALE', N.runControl(dir + '/C-ok.json', { user: 'demo_user', artifactsDir: art, runner }));
+show('STALE', N.runControl(dir + '/C-ok.control.json', { user: 'demo_user', artifactsDir: art, runner }));
+delete process.env.STUB_MODE;
+show('NAME', N.runControl(dir + '/../C-bad.journey.json', { user: 'demo_user', artifactsDir: art, runner }));
 EOF
 mkdir -p "$WORK/art"; : > "$WORK/argv"
 OUT="$(cd "$WORK/tests/e2e" && printf '%s' "$JS2" | APP_PORT=1 WALK="$FIX/walk-run.json" STUB_ARGV="$WORK/argv" \
@@ -111,6 +117,8 @@ grep -q -- "--out=$WORK/art/control-C-ok.json" "$WORK/argv" && ok "runner is pas
 case "$(line WHO)" in 'FAULT |'*'not run'*) ok "persona ≠ run user → FAULT, runner not spawned" ;; *) bad "persona mismatch not a FAULT" "$(line WHO)" ;; esac
 [ "$(grep -c 'C-who' "$WORK/argv")" -eq 0 ] || bad "runner was spawned for a persona-mismatched control"
 case "$(line STALE)" in 'NOT PROVEN |'*'wrote no findings'*) ok "a stale findings file from an earlier run is not read" ;; *) bad "stale findings file read" "$(line STALE)" ;; esac
+case "$(line NAME)" in 'FAULT |'*'not named *.control.json'*) ok "a control not named *.control.json → FAULT, not run" ;; *) bad "misnamed control was run" "$(line NAME)" ;; esac
+[ "$(grep -c 'C-bad' "$WORK/argv")" -eq 0 ] || bad "runner was spawned for a misnamed control"
 
 echo "== journey-runner.js: named-control gaps (warn-only) =="
 IFS= read -r -d '' JS3 <<'EOF' || true
@@ -132,6 +140,30 @@ if printf '%s\n' "$OUT" | grep -qx NOFN; then bad "journey-runner.js exports no 
   case "$G" in *'J-02: no \"claim\"'*'J-02: no named control'*) ok "no claim and no control → both named" ;; *) bad "J-02 gaps missing" "$G" ;; esac
   case "$G" in *'J-03: no \"claim\"'*) bad "J-03 has a claim, flagged anyway" "$G" ;; *'J-03: no named control'*) ok "claim without control → control gap only" ;; *) bad "J-03 control gap missing" "$G" ;; esac
   case "$G" in *'C-ok'*) bad "a control file was itself checked" "$G" ;; *) ok "control files are not themselves checked" ;; esac
+  case "$G" in *'J-02: no named control'*) ok "a control saved as *.journey.json does not count as one" ;; *) bad "misnamed *.journey.json control counted" "$G" ;; esac
+  case "$G" in *'J-03: no named control'*) ok "a bare .json in controls/ does not count as one" ;; *) bad "bare .json in controls/ counted" "$G" ;; esac
+fi
+
+echo "== a *.control.json is NOT discovered as a real journey =="
+# Every real-walk discovery point selects journeys by the *.journey.json suffix. Assert each one
+# still does (by inspection of the shipped source), then apply those exact patterns to a journeys/
+# dir holding J-01.journey.json and J-01.control.json: only the journey may be selected.
+D="$WORK/disc"; mkdir -p "$D/journeys"
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({id:"J-01",steps:[{name:"s"}]}))' "$D/journeys/J-01.journey.json"
+mk "$D/journeys/J-01.control.json" C-01 demo_user "$LAST"
+TK="$(cd "$E2E/../.." && pwd)"
+RN="$E2E/report-normalize.js"; FM="$TK/project-bin/fixture-manifest.sh"; VM="$TK/project-bin/verify-module.sh"
+if [ -f "$RN" ] && [ -f "$FM" ] && [ -f "$VM" ]; then
+  grep -qF "f.endsWith('.journey.json')" "$RN" && grep -qF '"*.journey.json"' "$FM" && grep -qF '$MODULE.journey.json' "$VM" \
+    && ok "report-normalize, fixture-manifest and verify-module select journeys by *.journey.json" \
+    || bad "a discovery point no longer selects by *.journey.json — re-check control naming"
+  NODEPICK="$(node -e 'console.log(require("fs").readdirSync(process.argv[1]).filter(f => f.endsWith(".journey.json")).sort().join(" "))' "$D/journeys")"
+  GLOBPICK="$(cd "$D/journeys" && ls -1 *.journey.json | paste -sd' ' -)"
+  [ "$NODEPICK" = "J-01.journey.json" ] && [ "$GLOBPICK" = "J-01.journey.json" ] \
+    && ok "J-01.control.json beside J-01.journey.json is not picked up as a journey" \
+    || bad "control file discovered as a journey" "node: $NODEPICK / glob: $GLOBPICK"
+else
+  echo "  skip — discovery sources not found under $TK (subject copied out of the toolkit)"
 fi
 
 echo "== real runner: --out= and the WARN line, through a preflight abort =="
@@ -139,9 +171,9 @@ echo "== real runner: --out= and the WARN line, through a preflight abort =="
 # findings, so this exercises --out= and the warning without an app.
 node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({id:"J-02",steps:[{name:"s"}]}))' "$WORK/journeys/J-02.journey.json"
 E2EOUT="$(cd "$WORK/tests/e2e" && env -u TEST_PASS -u APP_PASS -u ALLOW_CONFIG_CREDENTIALS APP_PORT=1 \
-          node journey-runner.js "$WORK/journeys/J-02.journey.json" "--out=$WORK/art/custom.json" 2>&1)"; RC=$?
+          node journey-runner.js "$WORK/journeys/J-02.journey.json" "--out=$WORK/art/new/deeper/custom.json" 2>&1)"; RC=$?
 [ "$RC" -eq 2 ] && ok "preflight abort exit 2 (fixture precondition)" || bad "expected preflight exit 2" "rc=$RC $(printf '%s' "$E2EOUT" | tail -3)"
-[ -f "$WORK/art/custom.json" ] && ok "findings written to the --out= path" || bad "no findings at --out= path" "$(printf '%s' "$E2EOUT" | grep findings)"
+[ -f "$WORK/art/new/deeper/custom.json" ] && ok "findings written to an --out= path whose directories did not exist" || bad "no findings at --out= path (parent dir not created?)" "$(printf '%s' "$E2EOUT" | grep findings)"
 [ ! -f "$WORK/tests/e2e/artifacts/journey-findings.json" ] && ok "default slot untouched under --out=" || bad "default slot written under --out="
 [ "$(printf '%s\n' "$E2EOUT" | grep -c 'WARN   named control: J-02')" -eq 2 ] && ok "two WARN lines for J-02 (no claim, no control)" \
   || bad "WARN lines missing" "$(printf '%s\n' "$E2EOUT" | grep -i 'named control')"

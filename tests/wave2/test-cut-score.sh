@@ -124,6 +124,26 @@ case "$(jq_ "$TMP/emptyacts.json" aggregate/reason)" in
   *) bad "the reason names the empty table" "$(jq_ "$TMP/emptyacts.json" aggregate/reason)" ;;
 esac
 
+echo "== 2d. rows carry the actual reason, not always 'no catalog' (review of #341) =="
+check "no catalog: rows read NOT DETECTED (no catalog)" "$(rows_ "$TMP/nocat.json" Reporting Billing retrieve aggregate)" "NOT DETECTED (no catalog)"
+check "empty activities_data: rows say so" "$(rows_ "$TMP/emptyacts.json" Reporting Billing retrieve aggregate)" "NOT DETECTED (catalog activities_data is empty)"
+printf 'not a database\n' >"$TMP/garbage.db"
+bash "$CS" --facts "$FIX/facts" --catalog "$TMP/garbage.db" --cut "$CUT" --json >"$TMP/garbage.json" 2>/dev/null; RC=$?
+check "an unreadable catalog: exit 0" "$RC" "0"
+check "an unreadable catalog: rows say so" "$(rows_ "$TMP/garbage.json" Reporting Billing retrieve aggregate)" "NOT DETECTED (catalog unreadable)"
+
+echo "== 2e. own modules derived from edges never include a missing endpoint (review of #341) =="
+mkdir -p "$TMP/noscope"; cp "$FIX/facts/manifest.json" "$TMP/noscope/"
+"$PY" -c 'import json,sys
+d=json.load(open(sys.argv[1])); d.pop("scope", None); d["edges"][0].pop("from", None)
+json.dump(d, open(sys.argv[2], "w"))' "$FIX/facts/dependencies.json" "$TMP/noscope/dependencies.json"
+bash "$CS" --facts "$TMP/noscope" --cut "$CUT" --json >"$TMP/noscope.json" 2>"$TMP/noscope.err"; RC=$?
+check "no scope + an edge without 'from': exit 0" "$RC" "0"
+case "$(jq_ "$TMP/noscope.json" gaps)" in
+  *"derived from the edges"*) ok "the derived module set is named as a gap" ;;
+  *) bad "the derived module set is named as a gap" "$(cat "$TMP/noscope.err")" ;;
+esac
+
 echo "== 3. association-only is acceptable; nothing-out is clean =="
 check "Orders -> Core associate is acceptable" "$(rows_ "$TMP/run1.json" Orders Core associate class)" "acceptable"
 check "Orders -> Core associate lane is odata-external-entity" "$(rows_ "$TMP/run1.json" Orders Core associate lane)" "odata-external-entity"

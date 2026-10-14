@@ -48,6 +48,16 @@
 # Field run: lab checkout lab/decompose (CutFixture, Mendix 10.24.0, mxcli v0.26.0, 2026-10-12) —
 # 7 own edges, 6 crossing on the four-way cut; found the Orders<->Billing call tangle as the
 # blocker and the Reporting->Billing retrieve+aggregate from the catalog.
+# Field run: public field-service template app (Mendix Marketplace, 9.24.2, MPR v1; mxcli v0.26.0,
+# 2026-10-12) — 42 own modules, 312 own edges, 4,508 refs; app-facts 25 s, each cut-score run <= 1 s.
+# Seven cuts scored, all `blocked`: one-app-per-level 312/4,508 crossing (meaningless on its
+# 36-module tangle); best web | mobile landscape found 132 edges / 1,442 refs, 2 bidirectional pairs.
+# Six blocker rows spot-checked with `describe`: all six real references, two of them mis-laned.
+# Known from that run, not fixed here: `call` mixes client-side nanoflow/JavaScript calls (lane: copy)
+# with server-side ones (~30 % of the main seam's blocker mass); the catalog kinds sync, widget,
+# schedule, event and publish never reach dependencies.json (a synced foreign entity is a blocker this
+# cannot see); nanoflows aggregating the device store are false aggregate hits. The run also caused
+# the per-partition blocker cap (one cell was 10 KB) and app-facts' sqlite3-CLI fallback.
 #
 # portability-ok: bash 3.2, Python 3 resolved through portable.sh
 
@@ -126,7 +136,7 @@ if not edges_raw:
     gaps.append("dependencies.json carries no edges array: nothing can cross a boundary that nothing crosses")
 own = sorted(set(x for x in (dep.get("scope", {}).get("own_modules") or []) if x))
 if not own:
-    own = sorted({e.get("from") for e in edges_raw} | {e.get("to") for e in edges_raw} - {None})
+    own = sorted(({e.get("from") for e in edges_raw} | {e.get("to") for e in edges_raw}) - {None})
     gaps.append("scope.own_modules is absent, so the module set was derived from the edges; "
                 "a module with no edge at all is missing from this page")
 
@@ -277,6 +287,7 @@ for r in rows:
 # ---- aggregate detection from the catalog -----------------------------------------------------
 aggregate = {"status": "NOT DETECTED", "reason": "", "catalog": CATALOG, "hits": []}
 if not os.path.exists(CATALOG):
+    aggregate["short"] = 'no catalog'
     aggregate["reason"] = ("no catalog at %s; app-facts.sh leaves one beside the .mpr after graph-report, "
                            "pass --catalog to point at it" % CATALOG)
 else:
@@ -284,11 +295,13 @@ else:
         db = sqlite3.connect("file:%s?mode=ro" % CATALOG, uri=True)
         names = {r[0] for r in db.execute("select name from sqlite_master where type='table'")}
         if "activities_data" not in names:
+            aggregate["short"] = 'catalog has no activities_data table'
             aggregate["reason"] = "catalog has no activities_data table; this mxcli wrote a catalog this script cannot read"
         else:
             cols = {r[1] for r in db.execute("pragma table_info(activities_data)")}
             need = {"MicroflowQualifiedName", "ModuleName", "ActionType", "EntityRef"}
             if not need <= cols:
+                aggregate["short"] = 'catalog activities_data lacks columns'
                 aggregate["reason"] = "activities_data lacks columns %s" % ", ".join(sorted(need - cols))
             else:
                 # The build_mode LABEL is recorded, never tested (master #259): mxcli v0.24+ labels a
@@ -299,6 +312,7 @@ else:
                 aggregate["build_mode"] = mode[0] if mode else None
                 n_acts = db.execute("select count(*) from activities_data").fetchone()[0]
                 if n_acts == 0:
+                    aggregate["short"] = 'catalog activities_data is empty'
                     aggregate["reason"] = ("catalog activities_data is empty (build_mode %r); an empty table is not a "
                                            "clean app. Rerun app-facts.sh" % (mode[0] if mode else None))
                 else:
@@ -339,13 +353,14 @@ else:
                                             % h["microflow"])
         db.close()
     except sqlite3.Error as e:
+        aggregate["short"] = 'catalog unreadable'
         aggregate["reason"] = "catalog could not be read: %s" % e
 if aggregate["status"] == "NOT DETECTED":
     gaps.append("aggregate detection: NOT DETECTED — %s" % aggregate["reason"])
 for r in rows:
     if r["aggregate"] == "NOT DETECTED":
         if aggregate["status"] == "NOT DETECTED":
-            r["aggregate"] = "NOT DETECTED (no catalog)"
+            r["aggregate"] = "NOT DETECTED (%s)" % aggregate.get("short", "see gaps")
         elif r["kind"] in ("retrieve", "datasource"):
             r["aggregate"] = "no" if r["kind"] == "retrieve" else "n/a (page)"
         else:

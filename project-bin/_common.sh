@@ -711,11 +711,13 @@ mxtk_promote_recover() {
   if [ ! -f "$t.manifest" ]; then
     for f in "$t".*; do
       [ -e "$f" ] || continue
-      case "$f" in "$t.fsprobe"|"$t.trash") ;; *)
+      # .committed alone: a kill between the committed cleanup's two last rms (manifest first) —
+      # the promotion was complete, only its marker is left.
+      case "$f" in "$t.fsprobe"|"$t.trash"|"$t.committed") ;; *)
         echo "✗ promotion $p: $f exists but its manifest does not — cannot tell what it is. Nothing touched."
         return 2 ;; esac
     done
-    rm -rf "${t:?}.fsprobe" "${t:?}.trash"; return 0
+    rm -rf "${t:?}.fsprobe" "${t:?}.trash" "${t:?}.committed"; return 0
   fi
   if [ -f "$t.committed" ]; then
     rm -rf "${t:?}.old.mprcontents" "${t:?}.old.mpr" "${t:?}.trash" || return 1

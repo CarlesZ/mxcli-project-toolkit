@@ -251,6 +251,26 @@ for LAYOUT in root app; do
   has "and says why" "$OUT" "cannot tell what it is"
   [ -d "$M/.mxtk-promote.999.mprcontents" ] && [ -f "$M/.mxtk-promote.999.mpr" ] && ok "nothing touched" || bad "ambiguous leftovers were touched"
 
+  echo "-- a lone .committed (kill between the cleanup's last two rms) is recovered, then exec runs"
+  P="$WORK/$LAYOUT-lonecommit"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  : > "$M/.mxtk-promote.998.committed"
+  OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 1 ] && ok "exec refuses over it first" || bad "rc $RC"
+  OUT="$(run "$P" --recover-promote)"; RC=$?
+  [ "$RC" -eq 0 ] && [ ! -e "$M/.mxtk-promote.998.committed" ] && ok "recovery removes it (rc 0)" || bad "rc $RC: $(printf '%s' "$OUT" | tail -2)"
+  OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 0 ] && ok "the next exec runs" || bad "next exec rc $RC: $(printf '%s' "$OUT" | tail -2)"
+
+  echo "-- --recover-promote refuses while Studio Pro holds the model, FORCE_EXEC or not"
+  P="$WORK/$LAYOUT-recsp"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  : > "$M/.mxtk-promote.997.committed"
+  sleep 60 & SPP=$!; BG="$BG $SPP"; printf '{"ProcessId":%s}\n' "$SPP" > "$M/Fixture.mpr.lock"
+  OUT="$(FORCE_EXEC=1 run "$P" --recover-promote)"; RC=$?
+  [ "$RC" -eq 1 ] && ok "refused (rc 1)" || bad "rc $RC"
+  has "says FORCE_EXEC does not override" "$OUT" "FORCE_EXEC does not override"
+  [ -e "$M/.mxtk-promote.997.committed" ] && ok "nothing touched" || bad "recovery ran while SP held the model"
+  kill "$SPP" 2>/dev/null; rm -f "$M/Fixture.mpr.lock"
+
   echo "-- a side file written with an archive mtime is still promoted (by checksum)"
   P="$WORK/$LAYOUT-archmtime"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
   OUT="$(STUB_OLDMTIME=1 run "$P" --on-copy mdlsource/test.mdl)"; RC=$?

@@ -548,8 +548,8 @@ if sp_holds_model; then
   SP_OPEN=1
   echo "✗ Studio Pro has $NAME open (lock PID $SP_PID alive) — refusing exec (split-brain corruption risk)."
   echo "  → Close the project in Studio Pro (or quit SP), then re-run."
-  if [ "$ON_COPY" = 1 ]; then
-    echo "    --on-copy: FORCE_EXEC does not override this — a promotion is refused while Studio Pro holds the model."
+  if [ "$ON_COPY" = 1 ] || [ "$RECOVER" = 1 ]; then
+    echo "    --on-copy / --recover-promote: FORCE_EXEC does not override this — a promotion is refused while Studio Pro holds the model."
     exit 1
   fi
   echo "    Override (NOT recommended): FORCE_EXEC=1 ./bin/exec.sh $SCRIPT"

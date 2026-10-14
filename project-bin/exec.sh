@@ -17,7 +17,25 @@
 #        ./bin/exec.sh --watch-compat <script.mdl>   (advisory: can `run --local --watch` apply
 #                                                     this, or does the app need a restart; writes nothing)
 #        ./bin/exec.sh --cr CR-07 <script.mdl>        (any mode: tag the run with its change request)
-#        Leading flags (--cr, --commit-first, then --patch) may come in any order.
+#        ./bin/exec.sh --on-copy <script.mdl>         (opt-in, or EXEC_ON_COPY=1: write a scratch
+#                                                     copy, promote it only on a clean gate)
+#        Leading flags (--cr, --commit-first, --on-copy, then --patch) may come in any order.
+#
+# --on-copy (opt-in, 2026-10-14, #350): `mxcli exec` and the mxbuild gate run on a scratch COPY
+# of the model (.mpr-snapshots/.on-copy/<stamp>/, the tree mxtk_copy_model_tree copies), and the
+# live model is written only by a promotion after a verified pass with exit 0. Without it, the
+# live model holds the script's changes from the first statement until the gate ends or the
+# snapshot is restored: 22-65 s per apply in the field, and forever if exec.sh is killed meanwhile.
+# Promotion refuses (live untouched, copy kept) when Studio Pro holds the model, even under
+# FORCE_EXEC, or when the live .mpr/mprcontents changed since the copy was taken (cksum manifest),
+# or when the copy is not on the model's filesystem (a rename would become a copy). The swap is
+# renames only: .mpr is replaced by one rename (atomic); mprcontents/ by two (live -> aside, new ->
+# live), so for the microseconds between them there is no mprcontents/ (rename(2) cannot exchange
+# two directories portably). Files `mxcli exec` wrote outside the model (javasource/ for a Java
+# action) are promoted the same way, one rename each; a file it DELETED there is not mirrored
+# (follow-up). A swap that fails half-way renames back, else restores the pre-exec snapshot. On any
+# other outcome the live model is never written and the copy is kept with a resume hint; the
+# newest MXTK_ON_COPY_KEEP (default 3) kept copies survive. Not with --patch (follow-up).
 #
 # --cr (2026-10-13): names the PROJECT.md "## Change log" row this run applies
 # (skills/change-intake.md). It lands in the BUILD-LOG detail cell as "cr: CR-07", the same way
@@ -171,6 +189,7 @@ mxtk_change_class() {  # $1 = MDL script; prints "<class>\t<why>"
 # `[--commit-first] [--cr CR-NN]`; in that order commit-first committed the model and the run
 # went on with "--cr" as its script path.
 CR_ID=""; COMMIT_FIRST="${MXTK_COMMIT_FIRST:-0}"; PATCH_MODE=0; ADVISORY=""
+ON_COPY="${EXEC_ON_COPY:-0}"; [ "$ON_COPY" = 1 ] || ON_COPY=0; ON_COPY_FLAG=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --cr)
@@ -185,6 +204,7 @@ while [ $# -gt 0 ]; do
       fi
       shift 2 ;;
     --commit-first) COMMIT_FIRST=1; shift ;;
+    --on-copy) ON_COPY=1; ON_COPY_FLAG=1; shift ;;
     --patch) PATCH_MODE=1; shift; break ;;
     --change-class|--watch-compat) ADVISORY="$1"; shift; break ;;
     *) break ;;
@@ -193,7 +213,7 @@ done
 case "${1:-}" in
   --*)
     echo "✗ Unknown option or misplaced flag '$1' — nothing was committed, snapshotted or executed." >&2
-    echo "  Usage: ./bin/exec.sh [--commit-first] [--cr CR-NN] <script.mdl>" >&2
+    echo "  Usage: ./bin/exec.sh [--commit-first] [--cr CR-NN] [--on-copy] <script.mdl>" >&2
     echo "         ./bin/exec.sh [--commit-first] [--cr CR-NN] --patch <script> [args...]" >&2
     exit 2 ;;
 esac
@@ -334,9 +354,17 @@ LOG_NAME="$(basename "$SCRIPT")"
 [ "$PATCH_MODE" = "1" ] && LOG_NAME="patch: $LOG_NAME"
 
 if [ -z "$SCRIPT" ]; then
-  echo "Usage: ./bin/exec.sh [--commit-first] [--cr CR-NN] <script.mdl>"
+  echo "Usage: ./bin/exec.sh [--commit-first] [--cr CR-NN] [--on-copy] <script.mdl>"
   echo "       ./bin/exec.sh [--commit-first] [--cr CR-NN] --patch <script> [args...]"
   exit 1
+fi
+if [ "$PATCH_MODE" = "1" ] && [ "$ON_COPY" = 1 ]; then
+  if [ "$ON_COPY_FLAG" = 1 ]; then
+    echo "✗ --on-copy does not take --patch yet (a patch already keeps only a verified write). Nothing was run." >&2
+    exit 2
+  fi
+  echo "  note: EXEC_ON_COPY=1 does not apply to --patch yet — this patch runs on the live model, as before."
+  ON_COPY=0
 fi
 if [ "$PATCH_MODE" = "1" ]; then
   # Resolve the path BEFORE the cd below, so a path relative to the caller's cwd keeps working.
@@ -383,6 +411,11 @@ BUILD_LOG="$PROJECT_ROOT/docs/BUILD-LOG.md"
 GATE_STATE="not-run"   # not-run | skipped | unverified | pass | fail
 GATE_ERRORS="?"        # mxbuild error count behind a pass (0 = clean); recorded in the stamp
 MXB_WHY=""             # mxbuild's errors[] reason when it exited without checking the model
+# --on-copy state (header): OC_PHASE pre | gate (exec + mxbuild on the copy) | done. While it is
+# `gate`, an "applied" row is held back (OC_PENDING_*) until the promotion has happened, so no row
+# says "applied" for a write the live model never received. OC_NOTE rides on every row.
+OC_PHASE="pre"; OC_NOTE=""; OC_PENDING_STATUS=""; OC_PENDING_DETAIL=""; OC_PENDING_APPLIED=""; OC_ROWS=0
+[ "$ON_COPY" = 1 ] && OC_NOTE="on-copy"
 
 # ── Exec approval (auto records itself) ──────────────────────────────────────
 # bin/exec-approval.sh decides ask vs auto; the ASKING happens before exec.sh ever runs (in
@@ -405,6 +438,10 @@ for _ea in "${MXTK_ROOT:-}/bin/exec-approval.sh" \
 done
 
 log_build() {   # $1=status  $2=detail
+  if [ "$ON_COPY" = 1 ] && [ "$OC_PHASE" = gate ]; then
+    case "$1" in *applied*) OC_PENDING_STATUS="$1"; OC_PENDING_DETAIL="$2"; return 0 ;; esac
+  fi
+  OC_ROWS=$((OC_ROWS + 1))
   mkdir -p "$(dirname "$BUILD_LOG")"
   [ -f "$BUILD_LOG" ] || cat > "$BUILD_LOG" <<'HDR'
 # Build log — auto-appended by bin/exec.sh
@@ -436,7 +473,7 @@ HDR2
   # The gate cell is read from GATE_STATE rather than passed in, so no caller
   # can omit it — a blank cell in this table reads as "fine", which is the exact
   # false-green the gate exists to prevent.
-  _detail="$2${CHANGE_CLASS:+ · change: $CHANGE_CLASS}${CR_ID:+ · cr: $CR_ID}$_EXEC_APPROVAL_SUFFIX"
+  _detail="$2${CHANGE_CLASS:+ · change: $CHANGE_CLASS}${CR_ID:+ · cr: $CR_ID}$_EXEC_APPROVAL_SUFFIX${OC_NOTE:+ · $OC_NOTE}"
   printf '| %s | `%s` | %s | %s | %s |\n' \
     "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$LOG_NAME" \
     "${GATE_STATE:-not-run}" "$1" "$_detail" >> "$BUILD_LOG"
@@ -490,19 +527,23 @@ FORCE="${FORCE_EXEC:-0}"
 
 # 1. Studio Pro must not hold the project open (SP's in-memory model vs a direct
 #    file write = split-brain).
-SP_OPEN=0
-if [ -f "$MPR.lock" ]; then
+#    One test, used here and again by the --on-copy promotion right before it swaps.
+sp_holds_model() {  # 0 iff Studio Pro's <model>.mpr.lock names a live pid; sets SP_PID
+  SP_PID=""
+  [ -f "$MPR.lock" ] || return 1
   SP_PID=$(grep -oE '"ProcessId":[0-9]+' "$MPR.lock" 2>/dev/null | grep -oE '[0-9]+' || true)
-  if [ -n "$SP_PID" ] && kill -0 "$SP_PID" 2>/dev/null; then
-    SP_OPEN=1
-    echo "✗ Studio Pro has $NAME open (lock PID $SP_PID alive) — refusing exec (split-brain corruption risk)."
-    echo "  → Close the project in Studio Pro (or quit SP), then re-run."
-    echo "    Override (NOT recommended): FORCE_EXEC=1 ./bin/exec.sh $SCRIPT"
-    [ "$FORCE" = "1" ] || exit 1
-    echo "  (FORCE_EXEC set — proceeding despite open SP)"
-  elif [ -n "$SP_PID" ]; then
-    echo "  (stale $MPR_BASE.lock from dead PID $SP_PID — SP not actually open, proceeding)"
-  fi
+  [ -n "$SP_PID" ] && kill -0 "$SP_PID" 2>/dev/null
+}
+SP_OPEN=0
+if sp_holds_model; then
+  SP_OPEN=1
+  echo "✗ Studio Pro has $NAME open (lock PID $SP_PID alive) — refusing exec (split-brain corruption risk)."
+  echo "  → Close the project in Studio Pro (or quit SP), then re-run."
+  echo "    Override (NOT recommended): FORCE_EXEC=1 ./bin/exec.sh $SCRIPT"
+  [ "$FORCE" = "1" ] || exit 1
+  echo "  (FORCE_EXEC set — proceeding despite open SP)"
+elif [ -n "$SP_PID" ]; then
+  echo "  (stale $MPR_BASE.lock from dead PID $SP_PID — SP not actually open, proceeding)"
 fi
 
 # 2. One exec.sh at a time on THIS project (e.g. a second agent session on the same model).
@@ -869,6 +910,9 @@ run_lint_gate() {
 }
 # One place decides the applied-row wording, so both mxbuild-clean branches agree.
 log_applied() {  # $1 = mxbuild detail
+  # --on-copy: lint and score read the LIVE model, which does not hold the write yet. Held until
+  # the promotion, then called again by the promotion block below the gate.
+  if [ "$ON_COPY" = 1 ] && [ "$OC_PHASE" = gate ]; then OC_PENDING_APPLIED="$1"; return 0; fi
   run_lint_gate
   LINT_RC_FOR_LEDGER="$LINT_RC"
   take_score
@@ -949,8 +993,174 @@ if [ ! -x "$MXBUILD" ] || [ ! -x "$JAVA_EXE" ]; then
   fi
 fi
 
+# ── --on-copy: helpers (opt-in; header "--on-copy") ──────────────────────────
+# Defined for every run, used only when ON_COPY=1: the default path calls none of them.
+OC_ROOT="$PROJECT_ROOT/.mpr-snapshots/.on-copy"   # hidden: snapshot rotation (ls */) never sees it
+OC_KEEP="${MXTK_ON_COPY_KEEP:-3}"
+case "$OC_KEEP" in ''|*[!0-9]*|0) OC_KEEP=3 ;; esac
+OC_SCR=""; OC_COPY=""; OC_MPR=""; OC_FP0=""; OC_SIDE=""; OC_WHY=""; OC_LIVE_WRITTEN=0
+OC_COPY_MS=0; OC_SWAP_MS=0; OC_UNITS=0
+TARGET_MPR="$MPR"
+oc_ms() {  # wall clock in ms (GNU date); whole seconds x1000 where %N is not supported (BSD)
+  _n="$(date +%s%N 2>/dev/null)"
+  case "$_n" in ''|*[!0-9]*) echo $(( $(date +%s) * 1000 )) ;; *) echo $(( _n / 1000000 )) ;; esac
+}
+oc_fingerprint() {  # $1 = model dir. One cksum over the .mpr and every mprcontents/ file (name + bytes)
+  ( cd "$1" && { cksum "$MPR_BASE"
+      if [ -d mprcontents ]; then find mprcontents -type f | LC_ALL=C sort | tr '\n' '\0' | xargs -0 cksum; fi; } ) 2>/dev/null | cksum
+}
+oc_prune() {  # keep the newest $OC_KEEP kept copies
+  ls -dt "$OC_ROOT"/*/ 2>/dev/null | tail -n +$((OC_KEEP + 1)) | while read -r _d; do rm -rf "$_d"; done
+}
+oc_keep_hint() {
+  echo "  The copy is kept: $OC_COPY"
+  echo "    It holds what the script did. Look at it: ./mxcli -p $OC_MPR -c \"SHOW STRUCTURE\""
+  echo "  Resume: fix the script and re-run ./bin/exec.sh --on-copy $SCRIPT — it starts from a fresh copy"
+  echo "    of the live model. Resuming THIS copy with only the statements that did not land is not built"
+  echo "    yet (toolkit #350 follow-up)."
+  oc_prune
+  echo "  The newest $OC_KEEP kept copies stay under .mpr-snapshots/.on-copy/ (MXTK_ON_COPY_KEEP); older ones were removed."
+}
+oc_unstage() {  # put staged files back into the copy (nothing in the live model was replaced yet)
+  _t="$1"
+  [ -f "$MODEL_DIR/$_t.mpr" ] && mv "$MODEL_DIR/$_t.mpr" "$OC_COPY/$MPR_BASE" 2>/dev/null
+  [ -d "$MODEL_DIR/$_t.mprcontents" ] && mv "$MODEL_DIR/$_t.mprcontents" "$OC_COPY/mprcontents" 2>/dev/null
+  printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do
+    [ -n "$_r" ] && [ -f "$MODEL_DIR/$_r.$_t" ] && mv "$MODEL_DIR/$_r.$_t" "$OC_COPY/$_r" 2>/dev/null
+  done
+  return 0
+}
+# oc_promote — 0 promoted · 1 refused, the live model untouched · 2 the swap failed part-way
+# (rolled back by rename, else restored from the pre-exec snapshot; OC_WHY says which).
+oc_promote() {
+  _md="$MODEL_DIR"; _t=".mxtk-promote.$$"; _step=""
+  OC_WHY=""
+  if sp_holds_model; then
+    OC_WHY="Studio Pro holds $NAME (lock PID $SP_PID); its in-memory model would overwrite the promotion on its next save"; return 1
+  fi
+  # A rename across filesystems is a copy. ln (a hard link) fails across filesystems, on every platform.
+  : > "$OC_SCR/.fsprobe"
+  if ! ln "$OC_SCR/.fsprobe" "$_md/$_t.fsprobe" 2>/dev/null; then
+    rm -f "$OC_SCR/.fsprobe"
+    OC_WHY="the copy is not on the model's filesystem, so the swap could not be a rename"; return 1
+  fi
+  rm -f "$OC_SCR/.fsprobe" "$_md/$_t.fsprobe"
+  # Stage beside the live files (renames). Nothing live is replaced yet.
+  OC_UNITS=0
+  [ -d "$OC_COPY/mprcontents" ] && OC_UNITS=$(find "$OC_COPY/mprcontents" -type f | wc -l | tr -d ' ')
+  if ! mv "$OC_COPY/$MPR_BASE" "$_md/$_t.mpr" \
+     || { [ -d "$OC_COPY/mprcontents" ] && ! mv "$OC_COPY/mprcontents" "$_md/$_t.mprcontents"; }; then
+    oc_unstage "$_t"; OC_WHY="staging the copy beside the live model failed"; return 1
+  fi
+  _sidefail=0
+  while IFS= read -r _r; do
+    [ -n "$_r" ] || continue
+    mkdir -p "$_md/$(dirname "$_r")" && mv "$OC_COPY/$_r" "$_md/$_r.$_t" || { _sidefail=1; break; }
+  done <<OCSIDE
+$OC_SIDE
+OCSIDE
+  if [ "$_sidefail" = 1 ]; then oc_unstage "$_t"; OC_WHY="staging a file mxcli exec wrote outside the model failed"; return 1; fi
+  # Last checks, right before the swap: the live model is what was copied, and SP is still closed.
+  if [ "$(oc_fingerprint "$_md")" != "$OC_FP0" ]; then
+    oc_unstage "$_t"
+    OC_WHY="the live model changed since the copy was taken (Studio Pro save, git checkout, another writer); promoting would drop that change"; return 1
+  fi
+  if sp_holds_model; then
+    oc_unstage "$_t"; OC_WHY="Studio Pro opened $NAME (lock PID $SP_PID) during the exec"; return 1
+  fi
+  # The swap: renames only. Old files stay beside the new ones until the swap is verified.
+  _s0=$(oc_ms); OC_LIVE_WRITTEN=1
+  { ln "$_md/$MPR_BASE" "$_md/$_t.old.mpr" 2>/dev/null || cp -p "$_md/$MPR_BASE" "$_md/$_t.old.mpr"; } || { oc_unstage "$_t"; OC_LIVE_WRITTEN=0; OC_WHY="could not keep the old .mpr aside"; return 1; }
+  _ok=1
+  if [ -d "$_md/mprcontents" ]; then
+    if mv "$_md/mprcontents" "$_md/$_t.old.mprcontents"; then _step="aside"; else _ok=0; fi
+  fi
+  if [ "$_ok" = 1 ] && [ -d "$_md/$_t.mprcontents" ]; then
+    if mv "$_md/$_t.mprcontents" "$_md/mprcontents"; then _step="$_step in"; else _ok=0; fi
+  fi
+  [ "${_MXTK_TEST_SWAP_FAIL:-}" = mpr ] && _ok=0   # fixture hook: fail between the two halves
+  if [ "$_ok" = 1 ]; then
+    if mv -f "$_md/$_t.mpr" "$_md/$MPR_BASE"; then _step="$_step mpr"; else _ok=0; fi
+  fi
+  _sides=""
+  if [ "$_ok" = 1 ]; then
+    while IFS= read -r _r; do
+      [ -n "$_r" ] || continue
+      [ -f "$_md/$_r" ] && { ln "$_md/$_r" "$_md/$_r.$_t.old" 2>/dev/null || cp -p "$_md/$_r" "$_md/$_r.$_t.old"; }
+      if mv -f "$_md/$_r.$_t" "$_md/$_r"; then _sides="$_sides
+$_r"; else _ok=0; break; fi
+    done <<OCSIDE
+$OC_SIDE
+OCSIDE
+  fi
+  _s1=$(oc_ms)   # the renames are done: this is the end of the window the live model is mixed
+  if [ "$_ok" = 1 ] && [ "$OC_UNITS" -gt 0 ] \
+     && [ "$(find "$_md/mprcontents" -type f 2>/dev/null | wc -l | tr -d ' ')" -ne "$OC_UNITS" ]; then
+    _ok=0
+  fi
+  if [ "$_ok" = 1 ]; then
+    OC_SWAP_MS=$(( _s1 - _s0 ))
+    # Old files out of the model dir, into the scratch dir, then the scratch dir goes.
+    [ -d "$_md/$_t.old.mprcontents" ] && mv "$_md/$_t.old.mprcontents" "$OC_SCR/old-mprcontents"
+    rm -f "$_md/$_t.old.mpr"
+    printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do [ -n "$_r" ] && rm -f "$_md/$_r.$_t.old"; done
+    return 0
+  fi
+  # Part-way failure: undo by rename, newest step first; anything that fails -> the snapshot.
+  _back=1
+  printf '%s\n' "$_sides" | while IFS= read -r _r; do
+    [ -n "$_r" ] || continue
+    if [ -f "$_md/$_r.$_t.old" ]; then mv -f "$_md/$_r.$_t.old" "$_md/$_r"; else rm -f "$_md/$_r"; fi
+  done
+  case "$_step" in *mpr*) mv -f "$_md/$_t.old.mpr" "$_md/$MPR_BASE" || _back=0 ;; *) rm -f "$_md/$_t.old.mpr" ;; esac
+  case "$_step" in *in*) mv "$_md/mprcontents" "$OC_SCR/failed-mprcontents" || _back=0 ;; esac
+  case "$_step" in *aside*) mv "$_md/$_t.old.mprcontents" "$_md/mprcontents" || _back=0 ;; esac
+  rm -rf "$_md/$_t.mprcontents" "$_md/$_t.mpr"
+  printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do [ -n "$_r" ] && rm -f "$_md/$_r.$_t" "$_md/$_r.$_t.old"; done
+  if [ "$_back" = 1 ] && [ "$(oc_fingerprint "$_md")" = "$OC_FP0" ]; then
+    OC_WHY="the swap failed part-way (after: ${_step# }); renamed back — the live model is byte-identical to before"
+  else
+    restore_snapshot
+    OC_WHY="the swap failed part-way and could not be renamed back; $([ "$RESTORED" = 1 ] && echo 'restored from the pre-exec snapshot' || echo 'the RESTORE FAILED too — see above')"
+  fi
+  return 2
+}
+
+if [ "$ON_COPY" = 1 ]; then
+  # A promotion killed between its renames leaves .mxtk-promote.* beside the model: refuse, name the fix.
+  _left="$(ls -d "$MODEL_DIR"/.mxtk-promote.* 2>/dev/null | head -3 | tr '\n' ' ')"
+  if [ -n "$_left" ]; then
+    echo "✗ --on-copy: an earlier promotion was interrupted — left behind: $_left"
+    echo "  → ./bin/restore-mpr.sh (newest snapshot = the model before that exec), then remove those paths, then re-run."
+    log_build "🚫 blocked" "on-copy: interrupted promotion left .mxtk-promote.* beside the model"
+    exit 1
+  fi
+  if ! type mxtk_copy_model_tree >/dev/null 2>&1; then
+    echo "✗ --on-copy: bin/_common.sh predates mxtk_copy_model_tree — run the toolkit's bin/sync-project.sh. Nothing was written."
+    exit 1
+  fi
+  OC_FP0="$(oc_fingerprint "$MODEL_DIR")"   # taken BEFORE the snapshot and the copy
+fi
+
 echo "→ Snapshotting model..."
 ./bin/snapshot-mpr.sh
+
+if [ "$ON_COPY" = 1 ]; then
+  mkdir -p "$OC_ROOT"
+  OC_SCR="$OC_ROOT/$(date +%Y%m%d-%H%M%S)-$$"; OC_COPY="$OC_SCR/model"; OC_MPR="$OC_COPY/$MPR_BASE"
+  mkdir -p "$OC_COPY"
+  _c0=$(oc_ms)
+  if ! mxtk_copy_model_tree "$MODEL_DIR" "$OC_COPY" || [ ! -f "$OC_MPR" ]; then
+    rm -rf "$OC_SCR"
+    echo "✗ --on-copy: copying the model to $OC_SCR failed — nothing was written."
+    log_build "🚫 blocked" "on-copy: copying the model failed — nothing written"
+    exit 1
+  fi
+  OC_COPY_MS=$(( $(oc_ms) - _c0 ))
+  TARGET_MPR="$OC_MPR"
+  echo "→ on-copy: model copied in ${OC_COPY_MS} ms to $OC_COPY"
+  echo "  mxcli exec and the mxbuild gate run there; the live model is written only by a promotion after a clean gate."
+fi
 
 # ── Restore (one implementation) ─────────────────────────────────────────────
 # Rolls the model back to the snapshot just taken, through restore-mpr.sh. exec.sh used to
@@ -962,6 +1172,11 @@ RESTORED=0
 RESTORE_TRIED=0
 restore_snapshot() {
   RESTORE_TRIED=1
+  if [ "$ON_COPY" = 1 ] && [ "$OC_LIVE_WRITTEN" != 1 ]; then
+    RESTORED=1
+    echo "  → on-copy: the live model was never written — nothing to restore (the copy holds the script's changes)."
+    return 0
+  fi
   NEWEST_SNAP=$(ls -dt "$PROJECT_ROOT/.mpr-snapshots"/[0-9]*/ 2>/dev/null | head -1)
   RESTORER="$(dirname "$0")/restore-mpr.sh"
   if [ -z "$NEWEST_SNAP" ] || [ ! -f "$NEWEST_SNAP/$MPR_BASE" ]; then
@@ -1264,14 +1479,28 @@ if [ "$PATCH_MODE" = "1" ]; then
     exit "$EXEC_STATUS"
   fi
 else
-  "${PMXCLI:-./mxcli}" exec "$SCRIPT" -p "$MPR" || EXEC_STATUS=$?
+  if [ "$ON_COPY" = 1 ]; then
+    OC_PHASE="gate"; OC_NOTE="on-copy: live model not written, copy kept at $OC_SCR"
+    : > "$OC_SCR/.exec-start"   # tar kept the copied files' mtimes: anything newer, exec wrote
+  fi
+  "${PMXCLI:-./mxcli}" exec "$SCRIPT" -p "$TARGET_MPR" || EXEC_STATUS=$?
+  if [ "$ON_COPY" = 1 ]; then
+    # Files exec wrote OUTSIDE the model (javasource/ for a Java action): promoted with the model.
+    # Listed now, before mxbuild writes its own output into the copy.
+    OC_SIDE="$(cd "$OC_COPY" && find . \( -path ./mprcontents -o -path ./deployment -o -path ./.mxcli \
+                 -o -path ./.git -o -path ./node_modules \) -prune -o -type f -newer "$OC_SCR/.exec-start" -print \
+               2>/dev/null | sed 's|^\./||' | while IFS= read -r _r; do
+                 case "$_r" in "$MPR_BASE"|"$MPR_BASE".*) ;; *) printf '%s\n' "$_r" ;; esac
+               done)"
+    [ -n "$OC_SIDE" ] && echo "  on-copy: mxcli exec also wrote $(printf '%s\n' "$OC_SIDE" | grep -c .) file(s) outside the model; they are promoted with it: $(printf '%s' "$OC_SIDE" | head -3 | tr '\n' ' ')"
+  fi
 fi
 
 if [ "$EXEC_STATUS" -ne 0 ]; then
   echo ""
   echo "  ✗ mxcli exec exited $EXEC_STATUS — PARTIAL APPLICATION LIKELY."
   echo "    mxcli is not transactional across statements: everything before the"
-  echo "    failing statement is already in the model. Running the gate anyway."
+  echo "    failing statement is already in the $([ "$ON_COPY" = 1 ] && echo 'COPY (not the live model)' || echo model). Running the gate anyway."
 fi
 
 echo ""
@@ -1300,7 +1529,7 @@ if [ -x "$MXBUILD" ] && [ -x "$JAVA_EXE" ]; then
   # discarded here: this call site keeps its own file-presence/exit-code
   # branching below unchanged, computing CE_COUNT via err_count once it knows
   # which branch applies.
-  mxtk_mxbuild_error_count "$MPR" "${MXTK_GATE_TIMEOUT:-0}" "$ERRORS_FILE" >/dev/null || true
+  mxtk_mxbuild_error_count "$TARGET_MPR" "${MXTK_GATE_TIMEOUT:-0}" "$ERRORS_FILE" >/dev/null || true
   MXBUILD_EXIT="$MXTK_MXBUILD_EXIT"
   MXBUILD_OUT="$MXTK_MXBUILD_OUT"
   MXB_WHY="${MXTK_MXBUILD_WHY:-}"
@@ -1484,6 +1713,49 @@ else
   echo "    JAVA_EXE=$JAVA_EXE (exists+exec: $([ -x "$JAVA_EXE" ] && echo YES || echo NO))"
   echo "  → Override with MXBUILD_PATH=/path/to/mxbuild, or MENDIX_APP=/Applications/....app"
   echo "  → Verify manually in SP before proceeding."
+fi
+
+# ── --on-copy: promote, or leave the live model alone ────────────────────────
+# Promotes only a verified pass of a fully applied script. Every other outcome — a failed or
+# unverifiable gate, a non-zero mxcli exec (a PARTIAL application, on the copy only) — leaves the
+# live model as it was and keeps the copy. Rows held back during the gate are written after it.
+if [ "$ON_COPY" = 1 ]; then
+  OC_PHASE="decide"
+  if [ "$GATE_STATE" = pass ] && [ "$EXEC_STATUS" -eq 0 ]; then
+    echo ""
+    echo "→ on-copy: the gate passed on the copy — promoting it to the live model..."
+    _oc_rc=0; oc_promote || _oc_rc=$?
+    OC_PHASE="done"
+    if [ "$_oc_rc" -eq 0 ]; then
+      OC_NOTE="on-copy: promoted (copy ${OC_COPY_MS} ms, swap ${OC_SWAP_MS} ms)"
+      echo "  ✓ promoted by rename in ${OC_SWAP_MS} ms (copy took ${OC_COPY_MS} ms); scratch copy removed."
+      rm -rf "$OC_SCR"
+      if [ -n "$OC_PENDING_APPLIED" ]; then log_applied "$OC_PENDING_APPLIED"
+      elif [ -n "$OC_PENDING_STATUS" ]; then log_build "$OC_PENDING_STATUS" "$OC_PENDING_DETAIL"; fi
+    elif [ "$_oc_rc" -eq 1 ]; then
+      OC_NOTE="on-copy: NOT promoted, live model untouched, copy kept at $OC_SCR"
+      echo "✗ on-copy: promotion REFUSED — $OC_WHY."
+      echo "  The live model was not written. The gate passed on the copy, so the script itself is fine."
+      oc_keep_hint
+      log_build "🚫 not promoted" "gate passed on the copy; promotion refused: $OC_WHY"
+      exit 1
+    else
+      OC_NOTE="on-copy: promotion failed part-way"
+      echo "✗ on-copy: $OC_WHY."
+      oc_keep_hint
+      if [ -x ./bin/model-stamp.sh ]; then ./bin/model-stamp.sh clear >/dev/null 2>&1 || true; fi
+      log_build "❌ promotion failed" "$OC_WHY"
+      exit 1
+    fi
+  else
+    OC_PHASE="done"
+    echo ""
+    echo "✗ on-copy: NOT promoted (gate $GATE_STATE, mxcli exec exit $EXEC_STATUS) — the live model was never written."
+    oc_keep_hint
+    [ "$OC_ROWS" -eq 0 ] && log_build "❌ not promoted" "gate $GATE_STATE, mxcli exec exit $EXEC_STATUS on the copy; live model not written"
+    [ "$EXEC_STATUS" -ne 0 ] && exit "$EXEC_STATUS"
+    exit 1
+  fi
 fi
 
 # ── --patch: keep only a verified write ──────────────────────────────────────

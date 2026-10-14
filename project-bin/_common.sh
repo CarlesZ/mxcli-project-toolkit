@@ -642,6 +642,18 @@ mxtk_mxbuild_why() {
   "$_py" -c "import json;d=json.load(open('$(native_path "$1")'));print('; '.join((e.get('message','') if isinstance(e,dict) else str(e)) for e in d.get('errors',[]) or [])[:300])" 2>/dev/null || true
 }
 
+# mxtk_copy_model_tree <model-dir> <dest-dir> — copy the model tree (the .mpr, mprcontents/ and
+# everything mxbuild reads beside them: widgets/, javasource/, theme/, userlib/ ...) into an
+# existing <dest-dir>. Leaves out .git, .mpr-snapshots, deployment, .mxcli (the LIVE app's
+# run --local record — a copy carrying it points app-restart.sh at the live app) and node_modules.
+# One routine for both scratch-copy users: bin/test-scratch.sh (mxcli test, #278) and
+# bin/exec.sh --on-copy (#350). tar preserves mtimes, which --on-copy relies on to tell the
+# files `mxcli exec` wrote from the files it copied. Returns tar's status.
+mxtk_copy_model_tree() {
+  tar -C "$1" --exclude=./.git --exclude=./.mpr-snapshots --exclude=./deployment \
+      --exclude=./.mxcli --exclude=./node_modules -cf - . | tar -C "$2" -xf -
+}
+
 # project_name — the .mpr basename without extension, for user-facing messages.
 project_name() {
   local mpr

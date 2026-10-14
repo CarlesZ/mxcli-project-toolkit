@@ -250,8 +250,7 @@ take_lock "$EXEC_LOCK" "this project's model (an exec.sh is writing it)" || exit
 # 2. The copy.
 SCRATCH="$(mktemp -d "${MXTK_SCRATCH_DIR:-${TMPDIR:-/tmp}}/$(basename "$MPR_NAME" .mpr)-test.XXXXXX")" || exit 3
 echo "→ test-scratch: copying $(basename "$MODEL_DIR")/ → $SCRATCH (no .git, .mpr-snapshots, deployment, .mxcli)"
-if ! tar -C "$MODEL_DIR" --exclude=./.git --exclude=./.mpr-snapshots --exclude=./deployment \
-       --exclude=./.mxcli --exclude=./node_modules -cf - . | tar -C "$SCRATCH" -xf -; then
+if ! mxtk_copy_model_tree "$MODEL_DIR" "$SCRATCH"; then
   echo "✗ test-scratch: copy failed." >&2; exit 3
 fi
 release "$EXEC_LOCK"

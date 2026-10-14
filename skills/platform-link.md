@@ -205,17 +205,23 @@ project root they call `./mxcli git note -p App.mpr --write <commit>` (mendixlab
 better engine: it also notes the root commit and `Moved` units). An older pin falls back to
 `bin/mx-metadata-note.py write <commit>`; on 160 field commits both produced the same 3,594 entries.
 The fallback keeps every key an existing note has, reads `ModelerVersion` from the commit's own `.mpr`,
-and computes `ModelChanges` from the commit's changed `.mxunit` files. The installer also adds the notes ref to the Team Server remote's push
-refspecs, so a plain `git push teamserver` carries the notes.
+and computes `ModelChanges` from the commit's changed `.mxunit` files. A note that already lists
+changes (Studio Pro's) is left alone unless you pass `--force`. The installer also adds the notes ref
+to the Team Server remote's push refspecs, so a plain `git push teamserver` carries the notes, but only
+once a local notes ref exists. A push refspec with no source ref fails the whole push, branch
+included. So the installer first fetches the remote's notes, and the post-commit hook wires the
+refspec with the first note. `HEAD` goes in beside it, because a configured push refspec replaces
+`push.default`.
 
 ```bash
 ./bin/install-project-hooks.sh                 # once; init-project.sh / sync-project.sh run it too
-./bin/mx-metadata-note.py backfill --dry-run   # history from before the hook: what it would write
-./bin/mx-metadata-note.py backfill             # fill it (adds note commits; code history untouched)
+PY="$(PROJECT_ROOT=. bash -c '. bin/_common.sh >/dev/null 2>&1 && resolve_py')"   # never the shebang (Windows)
+"$PY" bin/mx-metadata-note.py backfill --dry-run   # history from before the hook: what it would write
+"$PY" bin/mx-metadata-note.py backfill             # fill it; skips notes that already list changes
                                                # mxcli v0.26+: ./mxcli git note -p App.mpr --write <commits>
 git push teamserver                            # branch + notes (refspecs set by the installer)
-./bin/mx-metadata-note.py sync teamserver      # only if the notes push was rejected: a colleague's
-                                               # Studio Pro noted commits too; 3-way merge, no force
+"$PY" bin/mx-metadata-note.py sync teamserver  # only if the notes push was rejected: 3-way merge, no
+                                               # force; a colleague's non-empty note always wins
 ```
 
 Field proof (2026-10-12, Mendix 11.15.0): 158 notes backfilled and pushed on a 357-commit app, and

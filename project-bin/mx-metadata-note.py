@@ -3,10 +3,15 @@
 # made outside Studio Pro, WITH the list of changed documents.
 #
 #   bin/mx-metadata-note.py changes  [<commit>]          # print the ModelChanges JSON array
-#   bin/mx-metadata-note.py write    [<commit>]          # write/refresh that commit's note
-#   bin/mx-metadata-note.py backfill [<rev-range>] [--dry-run]
+#   bin/mx-metadata-note.py write    [<commit>] [--force] # write that commit's note
+#   bin/mx-metadata-note.py backfill [<rev-range>] [--dry-run] [--force]
 #   bin/mx-metadata-note.py sync     <remote>            # fetch + merge the remote's notes, then push
 #   (all take --mpr <path-from-git-top> when there is more than one candidate .mpr)
+#   Run it as "$PY" bin/mx-metadata-note.py, PY from _common.sh's resolve_py -- never through the
+#   shebang: on Windows "python3" is often the Microsoft Store stub.
+#
+# A note whose ModelChanges is already non-empty is Studio Pro's (or an earlier run's) and is left
+# alone; --force recomputes it. sync never lets our note replace a colleague's non-empty one.
 #
 # WHY (2026-10-12, field project). Studio Pro's History pane does not read the changed documents
 # from the commit. It reads the "ModelChanges" array of the commit's git note in
@@ -187,9 +192,10 @@ def touches_model(commit, mpr):
     return bool(git("diff-tree", "--no-commit-id", "--name-only", "-r", "--root", commit, "--", mpr, contents).strip())
 
 
-def write_note(commit, mpr, dry=False):
-    """Keep every key an existing note has (Studio Pro reads ModelerVersion from it); replace
-    ModelChanges. A commit with no note gets one only if it touches the model -- a docs commit
+def write_note(commit, mpr, dry=False, force=False):
+    """Keep every key an existing note has (Studio Pro reads ModelerVersion from it); fill
+    ModelChanges. A note that already lists changes is left alone unless force: Studio Pro diffs
+    against its own last state, not the git parent, so its list is the authoritative one. A commit with no note gets one only if it touches the model -- a docs commit
     then shows in History exactly as Studio Pro would show it (Studio Pro falls back to the
     newest note for the version, platform-link.md trap 6c)."""
     commit = git("rev-parse", commit).strip()
@@ -199,6 +205,8 @@ def write_note(commit, mpr, dry=False):
             note = json.loads(r.stdout)
         except ValueError:
             return f"{commit[:7]} existing note is not JSON -- left alone"
+        if note.get("ModelChanges") and not force:
+            return None
     elif touches_model(commit, mpr):
         branch = git("rev-parse", "--abbrev-ref", "HEAD", check=False).strip()
         note = {"BranchName": "" if branch == "HEAD" else branch,
@@ -216,23 +224,63 @@ def write_note(commit, mpr, dry=False):
     return f"{commit[:7]} {len(changes):4} model changes"
 
 
+def _ref_ok(ref):
+    return subprocess.run(["git", "rev-parse", "-q", "--verify", ref], capture_output=True).returncode == 0
+
+
+def _show(ref, commit):
+    r = subprocess.run(["git", "notes", f"--ref={ref}", "show", commit], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def _changes(raw):
+    try:
+        return bool(json.loads(raw).get("ModelChanges"))
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 def sync(remote):
     """Merge the remote's notes before pushing ours -- a 3-way merge of the notes history, never a
-    force push. A note only one side changed takes that side's version; a note BOTH sides changed
-    since they last agreed keeps ours (-s ours), because ours carries the computed ModelChanges."""
+    force push. A note only one side changed takes that side's version. A note BOTH sides changed
+    since they last agreed keeps ours (-s ours) -- unless theirs lists model changes: then theirs
+    wins, so our computed notes are never pushed over a colleague's (Studio Pro's) non-empty one."""
     git("fetch", remote, f"+refs/notes/{REF}:refs/notes/{REF}-remote")
-    have_remote = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/notes/{REF}-remote"],
-                                 capture_output=True).returncode == 0
-    if have_remote:
+    if not _ref_ok(f"refs/notes/{REF}-remote"):
+        subprocess.run(["git", "push", remote, f"refs/notes/{REF}:refs/notes/{REF}"], check=True)
+        return 0
+    base = None
+    if _ref_ok(f"refs/notes/{REF}"):
+        base = git("merge-base", f"refs/notes/{REF}", f"refs/notes/{REF}-remote", check=False).strip() or None
+    if base:
+        git("update-ref", f"refs/notes/{REF}-base", base)
+    try:
         subprocess.run(["git", "notes", f"--ref={REF}", "merge", "-q", "-s", "ours",
                         f"refs/notes/{REF}-remote"], check=True)
+        kept = 0
+        for line in git("notes", f"--ref={REF}-remote", "list").splitlines():
+            blob, commit = line.split()
+            theirs = git("cat-file", "blob", blob, binary=True)
+            if not _changes(theirs) or _show(REF, commit) == theirs:
+                continue
+            if base and _show(f"{REF}-base", commit) == theirs:
+                continue                                 # only we changed it (write --force): ours stands
+            subprocess.run(["git", "notes", f"--ref={REF}", "add", "-f", "-C", blob, commit],
+                           check=True, capture_output=True)
+            kept += 1
+        if kept:
+            print(f"mx_metadata sync: kept {kept} colleague note(s) that list model changes over ours")
+    finally:
+        if base:
+            git("update-ref", "-d", f"refs/notes/{REF}-base", check=False)
     subprocess.run(["git", "push", remote, f"refs/notes/{REF}:refs/notes/{REF}"], check=True)
+    return 0
 
 
 def main(argv):
     args = list(argv)
-    dry = "--dry-run" in args
-    args = [a for a in args if a != "--dry-run"]
+    dry, force = "--dry-run" in args, "--force" in args
+    args = [a for a in args if a not in ("--dry-run", "--force")]
     mpr_arg = None
     if "--mpr" in args:
         i = args.index("--mpr"); mpr_arg = args[i + 1]; del args[i:i + 2]
@@ -242,19 +290,19 @@ def main(argv):
             raise SystemExit("usage: mx-metadata-note.py sync <remote>")
         return sync(args[0])
     if cmd not in ("changes", "write", "backfill"):
-        print("usage: mx-metadata-note.py changes|write [<commit>] | backfill [<range>] [--dry-run] | sync <remote>  [--mpr <path>]")
+        print("usage: mx-metadata-note.py changes|write [<commit>] [--force] | backfill [<range>] [--dry-run] [--force] | sync <remote>  [--mpr <path>]")
         return 2
     mpr = find_mpr(mpr_arg)
     if cmd == "changes":
         print(json.dumps(model_changes(git("rev-parse", args[0] if args else "HEAD").strip(), mpr), indent=1))
     elif cmd == "write":
-        msg = write_note(args[0] if args else "HEAD", mpr, dry)
+        msg = write_note(args[0] if args else "HEAD", mpr, dry, force)
         if msg:
             print(f"mx_metadata note: {msg}")
     else:
         n = 0
         for c in git("rev-list", "--reverse", args[0] if args else "HEAD").split():
-            msg = write_note(c, mpr, dry)
+            msg = write_note(c, mpr, dry, force)
             if msg:
                 n += 1; print(msg)
         print(f"{'would update' if dry else 'updated'} {n} notes")

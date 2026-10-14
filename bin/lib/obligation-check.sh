@@ -253,7 +253,7 @@ _ob_find() {
 # Deliberately loose — the wording belongs to the skill, only the shape is mechanical.
 _ob_has_denominator() {
   grep -qiE -- '[0-9]+[[:space:]]+of[[:space:]]+[0-9]+|[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' \
-    <<<"$(head -c 4000 "$1" 2>/dev/null | tr -d '\r')"
+    <<<"$(head -c 4000 "$1" 2>/dev/null | tr -d '\r\0')"
 }
 
 # _ob_stale <project-root> <artifact>  → prints "<hash>+<n>" and returns 0 if the mark has

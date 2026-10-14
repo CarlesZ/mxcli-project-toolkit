@@ -1479,9 +1479,9 @@ if [ "$WIRED" -eq 1 ] && [ -x "$SCRIPT_DIR/doctor.sh" ] \
     # rc 3 (an mxcli before v0.26 cannot check) and rc 4 (the check itself failed) are not
     # findings about the model, so doctor's WARN line for them is relabelled, not shown as one.
     if [ "$_ps_rc" -eq 3 ] || [ "$_ps_rc" -eq 4 ]; then
-      printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed -e 's/^  WARN  /  info  /' -e 's/^/   /'
+      printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed -e 's/^  WARN  /  info  /' -e 's/^/   /' || true
     else
-      printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed 's/^/   /'
+      printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed 's/^/   /' || true
     fi
     case "$_ps_rc" in
       0|2) ;;

@@ -55,14 +55,17 @@ source (the read works; the native slice moved into Mendix 11 by MPK, not by reg
 ## The MPK route — `export-module-mpk.py` (moving a module without regenerating it)
 
 ```
-python3 -I pipelines/mendix-mpr/export-module-mpk.py <source.mpr> <Module> <out.mpk> [--no-widgets] [--keep-constant-defaults] [--json]
+python3 -I pipelines/mendix-mpr/export-module-mpk.py <source.mpr> <Module> <out.mpk> [--no-widgets] [--scrub-constant-defaults] [--json]
 mxcli marketplace install --file <out.mpk> -p <target.mpr>      # new modules only; no PAT
 ```
 
 The exporter writes a module package in Mendix's own format: a zip with `package.xml` and a
 `project.mpr`. That `project.mpr` holds the source schema and `_MetaData` verbatim, the module's
-unit subtree byte for byte (constants excepted, below), the project root, the conversion unit and
+unit subtree byte for byte, the project root, the conversion unit and
 four project documents.
+
+**Module constant defaults travel in the MPK** unless you pass `--scrub-constant-defaults`. A key
+or password kept as a constant's default value is in the package as plain text by default.
 
 **What is scrubbed, exactly** (each scrubbed unit gets a recomputed ContentsHash):
 
@@ -71,12 +74,13 @@ four project documents.
 | Project security | demo users, user roles, admin password, admin and guest role; demo users and guest access switched off; security level set to `CheckNothing` (off) | everything else in the document |
 | Project settings | per-configuration constant values, custom settings, database URL / user / password; certificates; after-startup, before-shutdown and health-check microflow names | other settings |
 | Navigation | every navigation profile | the document shell |
-| The module's own constants | `DefaultValue` of every constant, by default; the run prints how many (`constant defaults emptied: N`). `--keep-constant-defaults` copies them unchanged | every other field |
+| The module's own constants | **nothing by default** (the field-proven path). With `--scrub-constant-defaults`: `DefaultValue` of every constant; the run prints how many (`constant defaults emptied: N`). **Unverified in Studio Pro: not yet installed and checked** | everything by default; with the flag, every field but `DefaultValue` |
 
-**Not scrubbed:** string literals inside microflows, pages, Java/JavaScript code, `resources/`
+**Not scrubbed:** module constant defaults (without the flag), string literals inside microflows, pages, Java/JavaScript code, `resources/`
 files and REST/OData locations: a secret written there travels in the package. Read the module
-before handing the `.mpk` on. An emptied non-String constant (Integer, Boolean …) needs a value in
-the target before `mx check` passes.
+before handing the `.mpk` on. With `--scrub-constant-defaults`, an emptied non-String
+constant (Integer, Boolean …) will need a value in the target; how `mx check` reports an empty one
+is not yet measured.
 
 The script refuses (exit 2) when the output path is the source `.mpr`, before writing anything.
 The zip also carries the module's `javasource/`,

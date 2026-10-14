@@ -86,7 +86,8 @@ git clone https://github.com/MendixMau/mxcli-project-toolkit.git ~/Mendix/mxcli-
    the kickoff interview. In later sessions, `bin/status.sh` is the first command.
 5. **Upgrade** with `git -C ~/Mendix/mxcli-project-toolkit pull`, then
    `bin/sync-project.sh <project-root>` for each project. Skills update with the pull; sync
-   refreshes what was copied into the project and prints the `Toolkit release:` you are on.
+   refreshes what was copied into the project and prints the `Toolkit release:` you are on once
+   release tags are published (from 1.0 on), or `none tagged yet` before that.
 
 Everything a project produces lives inside its own folder; this clone stays clean
 ([Consuming this toolkit](#consuming-this-toolkit)).
@@ -103,7 +104,7 @@ drift a fork gets.
 | **Project-specific instructions** | Add your own sections to the project's `CLAUDE.local.md`. Sync rewrites only its generated blocks (baseline routing, session ritual) and keeps the rest | `<project>/CLAUDE.local.md` |
 | **A lint rule tuned or off** | Rule options and `enabled: false` under `rules:` in the project's lint config; for a toolkit rule you never want installed, a line in `.claude/lint-rules-disabled.txt` with a `# reason:`. Either is your decision, recorded in `PROJECT.md`; never delete the `.star` file (sync reinstalls it) | `<project>/.claude/lint-config.yaml`, `lint-rules/README.md` |
 | **Skip a stage or pass on purpose** | Record it instead of leaving it red: `bin/gate-check.sh <project> --adopt <stage> --reason "..."` for a project that joined mid-flight, `--waive <stage>` or `--waive look/<Module>` for one deliberate skip. Each lands as a register line | `PROJECT.md`; `skills/conversion-runbook.md` §2 |
-| **Fewer questions, or more** | Interview mode `steering` (default: every consequential question is asked), `assist` (batched at gates, low-stakes ones assumed and reported) or `auto` (nothing blocks, every position recorded). Set an `Interview mode:` line in `PROJECT.md`, or `bin/interview-mode.sh <project> --set <mode>` for a session | `skills/interview-protocol.md` |
+| **Fewer questions, or more** | Interview mode `steering` (default: every consequential question is asked), `assist` (batched at gates, low-stakes ones assumed and reported) or `auto` (alias: unattended; nothing blocks, every position recorded). Set an `Interview mode:` line in `PROJECT.md`, or `bin/interview-mode.sh <project> --set <mode>` (kept in `.claude/.interview-mode` until `--clear`); `$CLAUDE_INTERVIEW_MODE` overrides for one session | `skills/interview-protocol.md` |
 | **No prompt before every model write** | `bin/exec-approval.sh` decides whether the agent asks before an exec; `bin/permission-profile.sh` (`wrappers` / `project` / `full`, picked at intake) decides what the harness allows without prompting | intake Q12; `bin/doctor.sh` shows the current profile |
 | **Your own team roles** | The six agent stubs (ba, architect, mdl, gate, test, review) are yours to complete and edit; sync refreshes only stubs you never touched | `<project>/.claude/agents/`, `skills/agent-roles.md` |
 | **A different agent** | Claude Code is the primary harness. `bin/wire-agents.sh` writes pointer files for Copilot, Cursor, Continue, Windsurf and Aider (and Kiro with `--with-kiro`) so every agent starts from the same wiring; `bin/install-harness-permissions.sh` sets each one's command allow-list where it has one | `toolkit-guide.html` → section 9 |
@@ -167,8 +168,9 @@ release notes name contributors too.
 
 ## Releases
 
-Merged changes ship on a release train tagged `vYYYY.MM.DD` every few days (the cycle is defined
-at the top of `CHANGELOG.md`). On top of the train, named milestones get curated notes: start
+Merged changes ship on a release train tagged `vYYYY.MM.DD` (the cycle is defined at the top of
+`CHANGELOG.md`). Tags are published from 1.0 on; earlier dated CHANGELOG sections were never
+pushed as tags. On top of the train, named milestones get curated notes: start
 with [**1.0**](docs/releases/v1.0.md). What a milestone promises, major versus minor, deprecation,
 and how to check, upgrade or pin the version a project uses: `docs/RELEASE-PROCESS.md` §8.
 

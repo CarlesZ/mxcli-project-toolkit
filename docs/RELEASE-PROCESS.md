@@ -162,7 +162,8 @@ implemented by `bin/cut-release.sh` (§6); nothing here changes either.
 
 **The train stays.** Every cut is tagged `vYYYY.MM.DD`. `bin/sync-project.sh` prints that tag as
 `Toolkit release:`, bug reports name it, and projects pin to it, so the tag format and the script
-do not change for milestones.
+do not change for milestones. Tags start at 1.0: earlier dated CHANGELOG sections were never
+pushed, and until the first tag is published sync prints `Toolkit release: none tagged yet`.
 
 **A milestone is a train release the maintainer also names.** Milestones are `1.0`, `1.1`, `2.0`.
 Naming one adds three things to an ordinary cut, and no new tag scheme:
@@ -186,8 +187,8 @@ migrates the project itself (then it no longer breaks anyone and counts as minor
 line that changes an exit code or output format a project may parse is named in the notes even
 when it is minor (`CHANGELOG.md` already marks these as "Upgrade notes" or "Behaviour change").
 
-**Cadence.** The train runs every few days. A milestone is named when a theme has landed, roughly
-monthly; there is no fixed date and no milestone without notes.
+**Cadence.** The train's cadence is defined at the top of `CHANGELOG.md`. A milestone is named
+when a theme has landed, roughly monthly; there is no fixed date and no milestone without notes.
 
 **Deprecation.** Announce it in one milestone's notes (what goes, what replaces it, the sync
 behaviour in the meantime). Remove it no earlier than the next **major** milestone. Until removal,
@@ -200,15 +201,17 @@ the recommended pin: its notes say what to check.
 
 ### For consumers: which version am I on, how to upgrade, how to pin
 
-- **Which version:** `bin/sync-project.sh <project>` prints `Toolkit release: v2026.10.14`, or
-  `v2026.10.14-3-g<sha>` when the clone is three commits past it. `git -C <toolkit> describe
+- **Which version:** `bin/sync-project.sh <project>` prints `Toolkit release: vYYYY.MM.DD`, or
+  `vYYYY.MM.DD-3-g<sha>` when the clone is three commits past it. `git -C <toolkit> describe
   --tags` gives the same. Map a train tag to a milestone through the GitHub Releases page or
   `docs/releases/`.
 - **Upgrade:** `git -C <toolkit> pull`, then `bin/sync-project.sh <project-root>` for each project.
   Read the milestone notes first when you cross one; for a major, follow its Migration section.
-- **Pin:** `git -C <toolkit> checkout v2026.10.14` (a detached checkout of the tag; sync's
+- **Pin:** `git -C <toolkit> checkout vYYYY.MM.DD` (a detached checkout of the tag; sync's
   stale-clone check stays quiet for a detached tag and warns only on a named non-`master` branch
-  or a `master` behind `origin/master`). To unpin:
+  or a `master` behind `origin/master`). The session-start ritual in `CLAUDE.local.md` runs
+  `git pull --ff-only` and warns that the clone is not on `master`; while pinned, that warning is
+  expected and the clone stays on the tag. To unpin:
   `git -C <toolkit> checkout master && git -C <toolkit> pull`.
 
 ## Not yet built (follow-ups, not implemented in this change)

@@ -1,7 +1,8 @@
 CURATED (split from #293, 6/6). The template states no licence in this repo, so only our own
 measurements and findings about it are shipped: CAPTURE.txt and FINDINGS.md summaries, the cut
-ledgers, the slice-nativenote inputs that reproduce its ledger (refs, slice list and our cut rules,
-all names only), and three repros written from scratch (native-bughunt/D1-D3). Not shipped: any
+ledgers (names only), and three repros written from scratch (native-bughunt/D1-D3). A captured
+subset of the slice-nativenote ledger inputs is the cut-ledger fixture (tests/wave2/fixtures/
+cut-ledger/, its own split). Not shipped: the remaining ledger inputs, any
 .mdl derived from the template, its OData metadata, the per-round captures/, tools/, screenshots,
 list-modules.md, graph-report.md, dependencies.json and app-layer-map.json. A path named below
 that is missing here was one of those.

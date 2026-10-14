@@ -48,7 +48,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `project-bin/test-stack-up.sh` | Before any runtime test |
 | `skills/e2e-harness-base.md` | Standing up or extending the Playwright e2e harness |
 | `skills/learned-db-assertions.md` | Writing DB assertion tests that cross-check UI state against the database |
-| `skills/fixture-seeding.md` | Establishing the data and identities a journey run needs |
+| `skills/fixture-seeding.md` | Seed data, test data, demo data or fixtures are needed, or pages come up empty |
 | `skills/journey-proof.md` | Proving a module's user journey end-to-end |
 | `skills/unhappy-path-testing.md` | Writing or running e2e cases beyond the happy journeys (blank/whitespace required fields, over-length, duplicates, cancel, double submit, wrong state, wrong role, backend down, stale write, empty search) |
 | `skills/monkey-test.md` | Running the fuzz/crash net on a module whose journeys are already green |

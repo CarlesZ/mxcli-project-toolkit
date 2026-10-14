@@ -1,0 +1,77 @@
+Captured 2026-10-12. Increment 6 (web track) of process/decompose-and-rehost-plan-2026-10-12.md: the FSM monolith
+(10.24 converted copy) PUBLISHES its core (Technician, Customer, Contract, ContactPerson, SLA, Ticket, Priority,
+TicketType, WorkOrder, Appointment, Roster, plus its Asset mirror) as OData CoreSeam.CoreAPI and REST
+CoreSeam.CoreActions. The Assets & Parts slice (AssetsApp, Mendix 11.13, from increment 5) consumes them. Its CUT STUB
+entities are replaced by external entities, the roster writes by REST calls, and the Administration.Account_Technician
+stub by a local owner entity.
+Playbook: skills/decompose-app.md, Stage 2 ("monolith publishes first") and Stage 5.
+mxcli v0.26.0, Linux cloud container, no Studio Pro. Paths: <lab> = the lab directory, <toolkit> = this repo, <home> = home.
+Not shipped: .mpr / mprcontents, deployment folders, HSQLDB data, any password (machine-local mxcli constant stores only).
+
+Versions
+  monolith   <lab>/web-assets/mono/fsm.mpr, FSM 9.24.2 -> mx convert 10.24.0.73019, with increment 4 fixes and increment 5
+             AssetsSeam; runtime 10.24 on JDK 21, app 8580 / admin 8590 / mxbuild serve 6643
+  slice      <lab>/web-assets/AssetsApp/AssetsApp.mpr (MPR v2), Mendix 11.13.0; runtime on JDK 21, app 8480 / admin 8490
+  browser    Playwright 1.56.1, headless Chromium (PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers)
+
+Inputs
+  slice.txt, crossing-refs.tsv      unchanged from slice-assets/ (same golden input: 811 crossing refs of the 9.24 catalog)
+  cut-rules.tsv                     increment 5 rules with the OUT stub block replaced (59 lines; specific 'Src -> Far'
+                                    rules first); IN block unchanged except the Technician.* evidence
+  cut-extra.tsv                     increment 5's 5 rows + 6 increment 6 hand-off rows (auth, asset mirror, lost delete
+                                    cascade, availability, NumberOfWorkOrders column, journey seed)
+  captures/00                       increment 5's mx check after install (the --check-log input, unchanged)
+  core-metadata.xml                 $metadata of CoreSeam.CoreAPI fetched from the running monolith with the machine account
+                                    (the consumed service's MetadataUrl)
+
+Scripts executed (mdl/), in this order
+  mono-core-publish.mdl     monolith: PublicID AutoNumber on 10 core entities, unique SystemID on Asset, CoreAPI module
+                            roles + grants, published OData CoreSeam.CoreAPI, user role CoreAPIClient
+  mono-core-actions.mdl     monolith: REST CoreSeam.CoreActions (rosters create / delete / delete-for-asset), asset mirror
+                            upsert, slice API account at startup (sentinel-guarded)
+  slice-core-consume.mdl    slice: CoreSeam module, constants, headers microflow, consumed service, drop stub-owned
+                            associations (incl. Administration.Account_Technician)
+  slice-core-external.mdl   slice: drop stub entities, create external entities (same names), re-create slice-owned associations
+  slice-core-regroup.mdl    slice: all navigating external entities into TicketManagement (navigations are only created
+                            within one module; a second entity per set is CE6609)
+  slice-core-rewire.mdl     slice: TechnicianLink, "My" access rules, roster REST flows + draft page, read-only views,
+                            asset/warehouse tab grids, SLA lookup, selectable tools, role mapping
+                            (3 runs: refused mid-script twice, see captures/07; final run captures/10)
+  slice-core-fix.mdl        slice: Asset access rules (dangling SLA_Asset, lost Asset_Customer/_Contract members), moved-page
+                            combo boxes, dropped local->external grid columns
+  slice-core-fix2.mdl       slice: dangling MemberAccess workaround (create + drop of an association of that name)
+  slice-core-fix3.mdl       slice: consumed service re-created with HeadersMicroflow only (CE6808; earlier forms in the header)
+  slice-core-fix4.mdl       slice: Part.ViewMy members restored (CE2729)
+  mono-core-journey.mdl     monolith: startup seed of one 'Journey Technician' (remove before real use)
+  slice-core-fix5.mdl       slice: Standard-SLA fallback, contacts grid Customer(s)/Contract(s) columns over external navigations
+  (all corrections are folded back into slice-core-rewire.mdl as well, except fix2/fix3, which repair mxcli state)
+
+Output
+  cut-ledger.tsv      709 rows, 0 unresolved, exit 0 (captures/22): out 167 = resolved 109 + platform 6 + handoff 20 + stub 32
+                      (stub = 31 Mobile + 1 AppSettings native keep-until date)
+  journey/            core-seam.journey.js + run-output.txt (9/9 PASS) + 2 screenshots;
+                      inc5-assets-seam-rerun-output.txt (increment 5 journey: 2 instrument-fault runs, then 4/4 PASS)
+
+Captures (verbatim, cleaned: lab paths -> <lab>/, ANSI removed, session ids removed; superseded attempts kept in the same file)
+  01  exec mono-core-publish + mono-core-actions                                     15.4 + 22.8 s
+  02  mx check 10.24 after the publish                                               The app contains: 0 errors.
+  03  monolith first boot FAILED (API password without a symbol: password policy), second boot ok
+  04  exec slice-core-consume
+  05  exec slice-core-external
+  06  mx check 11.13 after the swap                                                  29 errors, all CE1613
+  07  exec slice-core-rewire, runs 1-3 (1: MDL-V1-REBUILD after check passed; 2: combo box Attribute: on an association)
+  08  mx check 11.13 after the first full rewire                                     7 errors (CE6593, CE6808, CE6609, CE0161, CE0066, CE0007)
+  09  exec slice-core-regroup                                                        "Created 8 navigation associations"
+  10  exec slice-core-rewire, final run                                              exit=0
+  11  mx check 11.13 after regroup + rewire                                          19 errors (stale CustomerManagement names)
+  12  exec slice-core-fix, fix2 (2 forms), fix3 (3 forms), fix4, fix5
+  13  mx check 11.13 final                                                           The app contains: 0 errors.
+  14  exec mono-core-journey
+  15  mx check 10.24 + mxbuild 10.24 monolith                                        0 errors; BUILD SUCCEEDED 51 s
+  16  mxbuild 11.13 slice, final model                                               BUILD SUCCEEDED 20 s
+  17  monolith restart                                                               running :8580, 68 s
+  18  slice start + restart                                                          running :8480, 42 / 39 s
+  19  curl: CoreAPI and CoreActions (200 / 401 / 404; created / deleted)
+  20  runtime ERROR lines after both journeys (slice: theme 404s only)
+  21  outage probe: monolith stopped -> slice asset page error dialogs (Connection refused); trial session cap
+  22  cut-ledger                                                                     709 rows, exit=0

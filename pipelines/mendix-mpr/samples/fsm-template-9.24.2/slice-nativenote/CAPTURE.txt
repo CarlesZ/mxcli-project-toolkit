@@ -1,0 +1,42 @@
+Captured 2026-10-12 — increment 3 of process/decompose-and-rehost-plan-2026-10-12.md: NativeNote (+ its
+Synchronization_Note flows) out of the FSM template 9.24.2 into a fresh Mendix 11.13.0 app. Hybrid
+route: MPK as the mover (export-module-mpk.py + mxcli marketplace install --file), MDL for the edges.
+mxcli v0.26.0, Linux cloud container, no Studio Pro. Paths: <lab> = the lab directory, <toolkit> = this repo.
+Not shipped: .mpr / .mpk files (FSM is Marketplace 204718; the starter is Marketplace 109511).
+
+Inputs
+  slice.txt          what moves: NativeNote + 26 Synchronization documents (closure of the 3 entry nanoflows)
+  cut-rules.tsv      one decision per crossing-edge pattern (resolved / stub / handoff / retire + evidence)
+  cut-extra.tsv      13 rows no catalog holds (Utils' own edges, Java hand-offs, app settings, security)
+  crossing-refs.tsv  verbatim dump of the 346 crossing refs from the 9.24 copy's mxcli catalog (golden input
+                     of bin/cut-ledger.sh --refs; reproduces cut-ledger.tsv byte for byte)
+  mdl/edges-A-icons.mdl, edges-B.mdl, edges-C-app.mdl   the MDL actually executed, in that order
+
+Output
+  cut-ledger.tsv     308 rows, 0 UNRESOLVED: out 70 (resolved 37, stub 26, handoff 4, platform 3),
+                     in 238 (resolved-by-copy 129, handoff 94, retire 15)
+
+Captures (verbatim; superseded attempts on a web-only `mxcli new` target not kept)
+  01  exporter on the 9.24 copy (--json)                         0.33 s
+  03  mx convert -p to 10.24                                     35 s, "6 errors, 241 warnings"
+  04  exporter on the 10.24 copy                                 crossing list identical to 01
+  05  mx 9.24 check on the package's project.mpr                 186 CE1613, all crossing edges
+  08  exporter: Utils from the 10.24 copy
+  11  marketplace download 109511 (Blank Native Mobile App) 11.13.0
+  13  mx create-project with a relative --output-dir             System.UriFormatException
+  14  mx create-project NoteSlice from the starter               12 s
+  15  marketplace install CommunityCommons 170, ValidationFeedback 110282
+  16  marketplace install --file Utils.mpk, NativeNote.mpk
+  17  mx check after installs                                    112 errors (CE1613)
+  18  exec edges A, B, C
+  19  mx check after edges                                       1 error (CE0115, JS type parameter)
+  20  exec edges B again (JS parameter narrowed)
+  21  mx check final                                             The app contains: 0 errors.
+  22  mxbuild 11.13.0, first                                     BUILD FAILED (3 Java hand-offs in Utils)
+  23  the Java hand-off edits
+  24  mxbuild 11.13.0, final                                     BUILD SUCCEEDED, 18.7 s
+  25  compare-mdl: NativeNote `with all` 10.24 source vs 11.13 target    31/31 emitted-identical
+  26  compare-mdl: the 35 NativeNote nanoflows                            35/35 emitted-identical
+  27  exporter after the name-boundary fix (Note x54, Technician x2 gone; Utils unchanged)
+  27a the fixed exporter JSON fed to cut-ledger
+  28  bin/cut-ledger.sh run                                      0.15 s, exit 0

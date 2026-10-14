@@ -1,0 +1,13 @@
+$ ~/.mxcli/mxbuild/11.13.0/modeler/mx check targets/r-UtilsGreen-T1113/T1113.mpr
+Checking your app for issues...
+Checking the version of the mpr file.
+The mpr file version is '11.13.0'.
+Loading the mpr file.
+The mpr file version is '11.13.0'.
+Checking app for errors...
+The app contains: 0 errors.
+
+real	0m11.115s
+user	0m13.324s
+sys	0m0.819s
+exit=0

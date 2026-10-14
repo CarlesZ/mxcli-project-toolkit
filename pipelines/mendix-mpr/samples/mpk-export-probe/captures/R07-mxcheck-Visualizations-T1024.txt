@@ -1,0 +1,143 @@
+$ mx(10.24) check T1024.mpr
+Checking your app for issues...
+Checking the version of the mpr file.
+The mpr file version is '10.24.0.73019'.
+Loading the mpr file.
+The mpr file version is '10.24.0.73019'.
+Checking app for errors...
+[error] [CE1613] "The selected page parameter 'TicketManagement.WorkOrder_View.WorkOrder' no longer exists." at Show page activity 'Show page 'WorkOrder_View''
+[error] [CE1613] "The selected page 'TicketManagement.WorkOrder_View' no longer exists." at Show page activity 'Show page 'WorkOrder_View''
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'Reason.RejectReason' no longer exists." at Parameter 'RejectReason'
+[error] [CE1613] "The selected attribute 'TicketManagement.Ticket.SLAViolationHours' no longer exists." at Grid column "SLA violation hours" [SLAViolationHours]
+[error] [CE1613] "The selected entity 'AssetManagement.Asset' no longer exists." at Grid column "Asset" [Ticket_Asset/Asset/Description]
+[error] [CE1613] "The selected association 'TicketManagement.Ticket_Asset' no longer exists." at Grid column "Asset" [Ticket_Asset/Asset/Description]
+[error] [CE1613] "The selected attribute 'AssetManagement.Asset.Description' no longer exists." at Grid column "Asset" [Ticket_Asset/Asset/Description]
+[error] [CE1613] "The selected attribute 'TicketManagement.Ticket.Description' no longer exists." at Grid column "Description" [Description]
+[error] [CE1613] "The selected entity 'TicketManagement.Ticket' no longer exists." at Data grid 'grid1'
+[error] [CE1613] "The selected attribute 'Reason.SelectedReason.FreeText' no longer exists." at Grid column "Explanation" [FreeText]
+[error] [CE1613] "The selected entity 'Reason.Reason' no longer exists." at Grid column "Unresolved reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected association 'Reason.SelectedReason_Reason' no longer exists." at Grid column "Unresolved reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected attribute 'Reason.Reason.Reason' no longer exists." at Grid column "Unresolved reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected entity 'Technician.Technician' no longer exists." at Grid column "Technician" [NotResolvedReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Technician' no longer exists." at Grid column "Technician" [NotResolvedReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected attribute 'Technician.Technician.TechnicianName' no longer exists." at Grid column "Technician" [NotResolvedReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Grid column "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected association 'TicketManagement.Appointment_WorkOrder' no longer exists." at Grid column "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Grid column "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Grid column "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.DueDate' no longer exists." at Grid column "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Grid column "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected association 'TicketManagement.Appointment_WorkOrder' no longer exists." at Grid column "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Grid column "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Grid column "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.WorkOrderID' no longer exists." at Grid column "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Grid column "Appointment ID" [NotResolvedReason_Appointment/Appointment/AppointmentID]
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Grid column "Appointment ID" [NotResolvedReason_Appointment/Appointment/AppointmentID]
+[error] [CE1613] "The selected attribute 'TicketManagement.Appointment.AppointmentID' no longer exists." at Grid column "Appointment ID" [NotResolvedReason_Appointment/Appointment/AppointmentID]
+[error] [CE1613] "The selected entity 'Reason.Reason' no longer exists." at Comparison search field "Reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected association 'Reason.SelectedReason_Reason' no longer exists." at Comparison search field "Reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected attribute 'Reason.Reason.Reason' no longer exists." at Comparison search field "Reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected entity 'Technician.Technician' no longer exists." at Comparison search field "Technician" [NotResolvedReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Technician' no longer exists." at Comparison search field "Technician" [NotResolvedReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected attribute 'Technician.Technician.TechnicianName' no longer exists." at Comparison search field "Technician" [NotResolvedReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Comparison search field "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected association 'TicketManagement.Appointment_WorkOrder' no longer exists." at Comparison search field "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Comparison search field "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Comparison search field "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.DueDate' no longer exists." at Comparison search field "Due date" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Comparison search field "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected association 'TicketManagement.Appointment_WorkOrder' no longer exists." at Comparison search field "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Comparison search field "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Comparison search field "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.WorkOrderID' no longer exists." at Comparison search field "Work order ID" [NotResolvedReason_Appointment/Appointment/Appointment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Comparison search field "Appointment ID" [NotResolvedReason_Appointment/Appointment/AppointmentID]
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Comparison search field "Appointment ID" [NotResolvedReason_Appointment/Appointment/AppointmentID]
+[error] [CE1613] "The selected attribute 'TicketManagement.Appointment.AppointmentID' no longer exists." at Comparison search field "Appointment ID" [NotResolvedReason_Appointment/Appointment/AppointmentID]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Sort bar of data grid 'grid3'
+[error] [CE1613] "The selected association 'TicketManagement.Appointment_WorkOrder' no longer exists." at Sort bar of data grid 'grid3'
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Sort bar of data grid 'grid3'
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Sort bar of data grid 'grid3'
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.DueDate' no longer exists." at Sort bar of data grid 'grid3'
+[error] [CE1613] "The selected entity 'Reason.NotResolvedReason' no longer exists." at Data grid 'grid3'
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Data grid 'grid3'
+[error] [CE1613] "The selected association 'TicketManagement.Appointment_WorkOrder' no longer exists." at Data grid 'grid3'
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Data grid 'grid3'
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Data grid 'grid3'
+[error] [CE1613] "The selected attribute 'Reason.SelectedReason.FreeText' no longer exists." at Grid column "Explanation" [FreeText]
+[error] [CE1613] "The selected entity 'Reason.Reason' no longer exists." at Grid column "Reject reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected association 'Reason.SelectedReason_Reason' no longer exists." at Grid column "Reject reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected attribute 'Reason.Reason.Reason' no longer exists." at Grid column "Reject reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected entity 'Technician.Technician' no longer exists." at Grid column "Technician" [RejectReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected association 'Reason.RejectReason_Technician' no longer exists." at Grid column "Technician" [RejectReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected attribute 'Technician.Technician.TechnicianName' no longer exists." at Grid column "Technician" [RejectReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Grid column "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Grid column "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Grid column "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Grid column "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.DueDate' no longer exists." at Grid column "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Grid column "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Grid column "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Grid column "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Grid column "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.ShortDescription' no longer exists." at Grid column "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Grid column "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Grid column "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Grid column "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Grid column "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.WorkOrderID' no longer exists." at Grid column "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected entity 'Reason.Reason' no longer exists." at Comparison search field "Reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected association 'Reason.SelectedReason_Reason' no longer exists." at Comparison search field "Reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected attribute 'Reason.Reason.Reason' no longer exists." at Comparison search field "Reason" [SelectedReason_Reason/Reason/Reason]
+[error] [CE1613] "The selected entity 'Technician.Technician' no longer exists." at Comparison search field "Technician" [RejectReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected association 'Reason.RejectReason_Technician' no longer exists." at Comparison search field "Technician" [RejectReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected attribute 'Technician.Technician.TechnicianName' no longer exists." at Comparison search field "Technician" [RejectReason_Technician/Technician/TechnicianName]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Comparison search field "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Comparison search field "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Comparison search field "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Comparison search field "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.DueDate' no longer exists." at Comparison search field "Due date" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/DueDate]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Comparison search field "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Comparison search field "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Comparison search field "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Comparison search field "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.ShortDescription' no longer exists." at Comparison search field "Workorder description" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/ShortDescription]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Comparison search field "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Comparison search field "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Comparison search field "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Comparison search field "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.WorkOrderID' no longer exists." at Comparison search field "Work order ID" [RejectReason_WorkOrderAssignment/WorkOrderAssignment/WorkOrderAssignment_WorkOrder/WorkOrder/WorkOrderID]
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Sort bar of data grid 'grid4'
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Sort bar of data grid 'grid4'
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Sort bar of data grid 'grid4'
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Sort bar of data grid 'grid4'
+[error] [CE1613] "The selected attribute 'TicketManagement.WorkOrder.DueDate' no longer exists." at Sort bar of data grid 'grid4'
+[error] [CE1613] "The selected entity 'Reason.RejectReason' no longer exists." at Data grid 'grid4'
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Data grid 'grid4'
+[error] [CE1613] "The selected association 'Reason.RejectReason_WorkOrderAssignment' no longer exists." at Data grid 'grid4'
+[error] [CE1613] "The selected placeholder 'FSM_Specific.LeftMenuLayout.Main' no longer exists." at Content for placeholder 'Main'
+[error] [CE1613] "The selected layout 'FSM_Specific.LeftMenuLayout' no longer exists." at Page 'Visualizations.Ticket_Overview_NeedsAction'
+[error] [CE1613] "The selected entity 'TicketManagement.Ticket' no longer exists." at Parameter 'Ticket'
+[error] [CE1613] "The selected page parameter 'TicketManagement.Ticket_View.Ticket' no longer exists." at Show page activity 'Show page 'Ticket_View''
+[error] [CE1613] "The selected page 'TicketManagement.Ticket_View' no longer exists." at Show page activity 'Show page 'Ticket_View''
+[error] [CE1613] "The selected page parameter 'TicketManagement.Appointment_View.Appointment' no longer exists." at Show page activity 'Show page 'Appointment_View''
+[error] [CE1613] "The selected page 'TicketManagement.Appointment_View' no longer exists." at Show page activity 'Show page 'Appointment_View''
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'Reason.NotResolvedReason' no longer exists." at Parameter 'NotResolvedReason'
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrderAssignment' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected association 'TicketManagement.WorkOrderAssignment_WorkOrder' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'TicketManagement.Ticket' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'TicketManagement.WorkOrder' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected association 'TicketManagement.Appointment_WorkOrder' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'Reason.NotResolvedReason' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected association 'Reason.NotResolvedReason_Appointment' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected entity 'TicketManagement.Appointment' no longer exists." at Retrieve activity 'Retrieve from database'
+[error] [CE1613] "The selected Java action parameter 'CommunityCommons.refreshClass.objectType' no longer exists." at Call Java action activity 'refreshClass'
+[error] [CE1613] "The selected Java action 'CommunityCommons.refreshClass' no longer exists." at Call Java action activity 'refreshClass'
+The app contains: 134 errors.
+exit=1

@@ -1,0 +1,11 @@
+$ mx(11.13) check T1113.mpr
+Checking your app for issues...
+Checking the version of the mpr file.
+The mpr file version is '11.13.0'.
+Loading the mpr file.
+The mpr file version is '11.13.0'.
+Checking app for errors...
+[error] [CE1613] "The selected layout 'FSM_Specific.LeftMenuLayout' no longer exists." at Page 'FeatureToggle.FeatureToggle_Overview'
+[error] [CE1613] "The selected placeholder 'FSM_Specific.LeftMenuLayout.Main' no longer exists." at Content for placeholder 'Main'
+The app contains: 2 errors.
+exit=1

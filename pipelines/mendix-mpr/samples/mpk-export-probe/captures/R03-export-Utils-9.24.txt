@@ -1,0 +1,39 @@
+{
+  "module": "Utils",
+  "product_version": "9.24.2.6130",
+  "units_module_subtree": 32,
+  "units_shell": 6,
+  "project_docs_scrubbed": [
+    "Settings$ProjectSettings",
+    "Navigation$NavigationDocument",
+    "Security$ProjectSecurity"
+  ],
+  "unit_types": {
+    "DomainModels$DomainModel": 1,
+    "JavaActions$JavaAction": 1,
+    "JavaScriptActions$JavaScriptAction": 4,
+    "Microflows$Microflow": 9,
+    "Microflows$Nanoflow": 7,
+    "Projects$Folder": 6,
+    "Projects$ModuleImpl": 1,
+    "Projects$ModuleSettings": 1,
+    "ScheduledEvents$ScheduledEvent": 1,
+    "Security$ModuleSecurity": 1
+  },
+  "from_app_store": null,
+  "files": 18,
+  "java_files": 4,
+  "js_files": 5,
+  "widgets_referenced": [],
+  "widgets_shipped": [],
+  "widgets_unresolved": [],
+  "crossing_refs_by_module": {
+    "Administration": 3,
+    "AppSettings": 1,
+    "CommunityCommons": 3,
+    "NanoflowCommons": 1,
+    "NativeMobileResources": 2,
+    "ValidationFeedback": 4
+  },
+  "out": "out/Utils.mpk"
+}

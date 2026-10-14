@@ -1,0 +1,16 @@
+$ mx(11.13) check T1113.mpr
+Checking your app for issues...
+Checking the version of the mpr file.
+The mpr file version is '11.13.0'.
+Loading the mpr file.
+The mpr file version is '11.13.0'.
+Checking app for errors...
+[error] [CE1613] "The selected JavaScript action 'NativeMobileResources.IsConnected' no longer exists." at Call JavaScript action activity 'IsConnected'
+[error] [CE1613] "The selected enumeration value 'CommunityCommons.LogLevel.Error' no longer exists." at Call microflow activity 'LogToServer'
+[error] [CE1613] "The selected enumeration 'CommunityCommons.LogLevel' no longer exists." at Parameter 'LogLevel'
+[error] [CE1613] "The selected JavaScript action 'NativeMobileResources.IsConnected' no longer exists." at Call JavaScript action activity 'IsConnected'
+[error] [CE1613] "The selected enumeration value 'CommunityCommons.LogLevel.Trace' no longer exists." at Call microflow activity 'LogToServer'
+[error] [CE1613] "The selected Java action 'ValidationFeedback.JA_RetrieveErrors' no longer exists." at Call Java action activity 'JA_RetrieveErrors'
+[error] [CE1613] "The selected Java action parameter 'ValidationFeedback.JA_RetrieveErrors.RemoveFeedback' no longer exists." at Call Java action activity 'JA_RetrieveErrors'
+The app contains: 7 errors.
+exit=1

@@ -1,0 +1,72 @@
+Dispatch & Workforce slice — increment 8 of the Decompose plan (process/decompose-and-rehost-plan-2026-10-12.md)
+Captured 2026-10-13 04:00–05:56 UTC, one Linux container, both apps local. Source: a public Marketplace template (FSM) v1.1.1.
+Playbook: skills/decompose-app.md (Stage 0–7, 1b, 5b), skills/mendix-service-seam.md, security-is-not-a-later-script.md,
+learned-constants-and-secrets.md. Stage 1b gate run unattended (user opt-in); ASSUMED lines in target-architecture.md.
+
+Versions
+  mxcli            v0.26.0
+  monolith         <lab>/dispatch/mono/fsm.mpr — FRESH copy of <lab>/fsm/app (9.24.2.6130) -> mx convert 10.24.0.73019 + the
+                   increment 4 one-time fixes (captures/01-03); MPR v1; runtime 10.24, JDK 21, HSQLDB; ports 8680/8690, serve 6743
+  slice            <lab>/dispatch/DispatchApp/DispatchApp.mpr — mxcli new 11.13.0 (MPR v2); JDK 21, HSQLDB; ports 8780/8790, serve 6843
+  journey          Playwright (NODE_PATH=/opt/node-tools/node_modules, PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers), node 22
+
+Files
+  target-architecture.md       Stage 1b artifact: register (8 CONFIRMED, 13 ASSUMED), 8 sections, 42/42 modules, three-app relocation
+  cut-score.json               bin/cut-score.sh, 8-partition cut (verdict blocked, like every cut on this model)
+  slice.txt                    the 5 modules
+  crossing-refs.tsv            --dump-refs from the 10.24 copy's catalog: 1081 crossing refs -> 871 ledger rows (425 out, 446 in)
+  cut-rules.tsv                build-green decisions (every rule carries evidence)
+  cut-rules-seam.tsv           seam overrides + cut-rules.tsv (the final ledger's rules)
+  cut-extra.tsv                rows no catalog holds: seam lanes, dual owner, availability, orphans, Java edits, second order
+  cut-ledger.tsv               final ledger (875 + 9 extra rows; 0 unresolved; stub 4)
+  second-order.txt             entity only a stub signature names (gen-stubs.py argument)
+  dispatchcore-metadata.xml    $metadata of odata/dispatchcore/v1 as consumed (13 entity types)
+  tools/gen-stubs.py           increment 5's stub generator, paths from env; pages without parameters; describe failures skipped
+  tools/react-widgets.py       legacy DataGrid/ReferenceSelector/DropDown/ReferenceSetSelector -> React widgets, signatures from
+                               describe (generalises increment 5's legacy-extract.py + gen-widgets.py); replaces a whole Forms$Table
+  tools/seam-rebind.py         recipe A step 6 / recipe B as text rules R1–R13 over describe output (drop + create per flow)
+  tools/bson-rebind-v2.py      the same rules inside page/snippet BSON of an MPR v2 project + entity-path steps to the MONO mirror
+  journey/dispatch-seam.journey.js   read (OData), write (REST, behaviour), auth; data checked in both databases; run-unique IDs
+  journey/run-output.txt       final state, two consecutive runs, both exit 0
+  journey/run-output-lane.txt  first seam state (lane alongside stubs), two runs, both exit 0
+  journey/run-output-failed-after-probe.txt   two FAILs after a side-effecting REST probe deleted the seeded appointment (kept on purpose)
+
+MDL (executed in this order; each exec preceded by a backup of .mpr AND mprcontents/ / the v1 .mpr)
+  monolith  mono-dispatch-publish.mdl (keys, roles, OData DispatchCore v1, REST DispatchActions, machine role, accounts),
+            mono-dispatch-publicid-grants.mdl, mono-dispatch-journey.mdl, -publish-sortable, -actions-2, -publish-filterable,
+            -actions-3, -publish-data, -publicid-grants-2
+  slice     edges-A-layout, edges-A2-copied, edges-B-stubs, edges-A3-java, edges-C-widgets, edges-C2-urlredirector,
+            edges-A4-bizzomate  (build-green)
+            slice-seam-lane, slice-seam-security-stubs, slice-seam-lane-2  (first seam state, journeys pass; superseded)
+            slice-seam-consume, slice-seam-rewire-asset, slice-seam-rebind, slice-seam-fix, slice-seam-rebind-2,
+            slice-seam-rebind-3, tools/bson-rebind-v2.py (captures/49), slice-seam-pages, slice-seam-live,
+            slice-seam-live-security-stubs, slice-seam-stubs-replace(+-2), slice-seam-stubs-copy(+-2), slice-seam-data(+-2)
+            (final state, run on the build-green copy)
+            slice-seam-refresh.mdl: the refresh that answered "9 skipped" (first attempt; not part of the final chain)
+
+Captures (verbatim; <lab>/, <repo>/, <home>/ substituted; ANSI removed)
+  01-03  monolith 10.24 fixes: marketplace updates (--force), update-widgets (absolute path), JavaVersion 21, index.html,
+         Java edits, Scheduler grid2 byte patch; mx check 0
+  04     cut-score tally (two-app view)              05  graph-report (catalog)         06  crossing entities / far modules
+  07     mxcli new DispatchApp 11.13.0 (87 s)        08  exporter JSON per module       09  installs (CommunityCommons retry)
+  10     mx check after install: 1301 x CE1613       11  gen-stubs stderr               12  exec edges A, A2, B
+  13     mx check after edges: 9 x CE1613 (Java actions)   14  exec edges A3 (Java actions; describe defects)
+  15     mx check: 68 errors (CE0582 x26, CE0463, CE0572, CE6083, CE0117)   16  exec edges C (widgets; 4 runs)
+  17-18  fix widgets, FSM theme, fix design-properties; mx check 2 -> 0 after 19 (Bizzomate enums)
+  20     mx check build-green 0 errors               21  slice Java edits for the Mendix 11 API (diff)
+  22     cut-ledger at build-green (stub 271)        23  mxbuild 11.13 BUILD SUCCEEDED (30 s, after one BUILD FAILED)
+  24     compare-mdl 10.24 vs 11.13: 338 identical, 4 drift, 22 not-expressible
+  25-26  monolith publish exec (3 runs) + mx check 0      27  endpoint matrix 200/401/404 both services
+  28-34  recipe A, first attempt (consume, asset rewire, rebind): 71 CE1613 -> 71 errors -> 45; abandoned for the lane
+  35-41  the lane alongside the stubs: exec, stub security, mx check 0, startups, ledger
+  42-48  recipe A v2/v3 (Sortable, Filterable metadata; R7 reverse; R13 rule split): 59 -> 50 -> 29 -> 21 errors
+  45     (in 44-48 text) XPath probes on external entities: the failing bracket was a non-Filterable attribute
+  49     bson-rebind-v2 on 4 units (17 changes, 3 hand-off brackets) + the AppointmentID literal
+  50-53  pages, seam-live security, stub roles; mx check 0 at Production
+  54     REST probes: plan-for-technician (new appointment + Auto_accepted assignment), remove-technician
+  55-57  stub replacement (REST, Utils copy, monolith bodies copied through the rebind; CE0644 fix)
+  58     cut-ledger final (stub 4)                   59-60  last data stubs external; mx check 0
+  61     outage probe: monolith stopped -> error dialog on the OData page   62  ledger counts web / mobile
+
+Not committed: .mpr files, mprcontents/, deployment folders, HSQLDB data, .mxcli/constants.json (machine-local secrets),
+the MPKs, the mxcli binary.

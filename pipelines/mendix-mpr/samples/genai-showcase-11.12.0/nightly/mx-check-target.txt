@@ -1,0 +1,66 @@
+# mx check (Mendix 11.12.0 modeler, ~/.mxcli/mxbuild/11.12.0/modeler/mx check <lab>/target-nightly/GenAITarget.mpr)
+# 1) target exactly as the nightly run left it — mx cannot load the model (verbatim, .NET stack truncated after 12 lines)
+Checking your app for issues...
+Checking the version of the mpr file.
+The mpr file version is '11.12.0'.
+Loading the mpr file.
+ERROR: System.AggregateException: One or more errors occurred. (An error occurred when trying to set the 'Attribute' property of a Attribute in a Snippet with ID 7215e844-3181-4f24-ae77-1c1b323206f0.)
+ ---> System.InvalidOperationException: An error occurred when trying to set the 'Attribute' property of a Attribute in a Snippet with ID 7215e844-3181-4f24-ae77-1c1b323206f0.
+ ---> System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation.
+ ---> System.ArgumentNullException: Value cannot be null. (Parameter 'value')
+   at Mendix.Modeler.DomainModels.Refs.AttributeRef.set_AttributeId(AttributeIdentifier value) in Mendix.Modeler.Core\DomainModels\Refs\AttributeRef.Generated.cs:line 40
+   at InvokeStub_AttributeRef.set_AttributeId(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.InvokePropertySetter(Object obj, BindingFlags invokeAttr, Binder binder, Object parameter, CultureInfo culture)
+   --- End of inner exception stack trace ---
+   [... stack truncated; 122 lines total ...]
+
+# 2) copy of the target with ONE snippet re-executed (AgentCommons.Snippet_Output_List, ContentParams {1} replaced by a literal 'HANDOFF variable key') — measurement only, not a fix; verbatim
+Checking your app for issues...
+Checking the version of the mpr file.
+The mpr file version is '11.12.0'.
+Loading the mpr file.
+The mpr file version is '11.12.0'.
+Checking app for errors...
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObject'
+[error] [CE1613] "The selected export mapping 'GenAICommons.EM_Reference' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected export mapping 'MCPServer_ExposeToolsPrompts.EM_MCPServer_Ticket' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected export mapping 'MCPServer_ExposeToolsPrompts.EM_MCPServer_Ticket' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObject'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObjectList'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'OptionalContextObject'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'ContextObject'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'OptionalContextObject'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'ContextObject'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'ContextObject'
+[error] [CE1613] "The selected page 'AgentCommons.Version_Overview' no longer exists." at Show page activity 'Show page 'Version_Overview''
+[error] [CE1613] "The selected page parameter 'AgentCommons.Version_Overview.Agent' no longer exists." at Show page activity 'Show page 'Version_Overview''
+[error] [CE1613] "The selected page parameter 'AgentCommons.Version_Overview.PageHelper' no longer exists." at Show page activity 'Show page 'Version_Overview''
+[error] [CE1613] "The selected page parameter 'AgentCommons.Version_Overview.Version_InUse_Current' no longer exists." at Show page activity 'Show page 'Version_Overview''
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObject'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'OptionalContextObject'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObject'
+[error] [CE1613] "The selected attribute 'ConversationalUI.CopyHelper.SystemPrompt' no longer exists." at Markdown viewer 'markdownViewer3'
+[error] [CE1613] "The selected attribute 'ConversationalUI.CopyHelper.Input' no longer exists." at Markdown viewer 'markdownViewer2'
+[error] [CE1613] "The selected attribute 'ConversationalUI.CopyHelper.Output' no longer exists." at Markdown viewer 'markdownViewer1'
+[error] [CE1613] "The selected entity 'ExampleMicroflows.Ticket' no longer exists." at Object mapping element 'JsonObject'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Identifier' no longer exists." at Value mapping element 'Identifier'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Subject' no longer exists." at Value mapping element 'Subject'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Description' no longer exists." at Value mapping element 'Description'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.ReproductionSteps' no longer exists." at Value mapping element 'ReproductionSteps'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Solution' no longer exists." at Value mapping element 'Solution'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Status' no longer exists." at Value mapping element 'Status'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Category' no longer exists." at Value mapping element 'Category'
+[error] [CE1613] "The selected entity 'ExampleMicroflows.Ticket' no longer exists." at Object mapping element 'JsonObject'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Identifier' no longer exists." at Value mapping element 'Identifier'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Subject' no longer exists." at Value mapping element 'Subject'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Description' no longer exists." at Value mapping element 'Description'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.ReproductionSteps' no longer exists." at Value mapping element 'ReproductionSteps'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Solution' no longer exists." at Value mapping element 'Solution'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Status' no longer exists." at Value mapping element 'Status'
+[error] [CE1613] "The selected attribute 'ExampleMicroflows.Ticket.Category' no longer exists." at Value mapping element 'Category'
+[error] [CE1613] "The selected export mapping 'ChatCompletions_FunctionCalling.EM_FunctionCalling_Ticket' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected export mapping 'ChatCompletions_FunctionCalling.EM_FunctionCalling_Ticket' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObjectList'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'OptionalContextObject'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObject'
+The app contains: 42 errors.

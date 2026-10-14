@@ -1,0 +1,38 @@
+# cut-rules.tsv — decisions for the Assets & Parts slice (increment 5, web). direction<TAB>pattern<TAB>resolution<TAB>evidence
+# pattern: fnmatch on the far-side doc, or 'SliceDoc -> FarDoc'. First match wins. Scripts: mdl/edges-*.mdl, mdl/seam-*.mdl
+# ---- OUT: the slice uses something that stays in the monolith
+out	Atlas_Core.*	resolved:starter	Atlas_Core 4.1.3 ships in the `mxcli new` 11.13.0 app (captures/05); mx check 0 (captures/15)
+out	CommunityCommons.*	resolved:marketplace	marketplace install 170 -> CommunityCommons 11.5.1 (captures/06)
+out	Administration.Account	resolved:starter	Administration 4.3.2 ships in the `mxcli new` app
+out	Administration.Account_Technician	stub	CUT STUB association added to the starter's Administration 4.3.2 (FSM modified its Administration module) — edges-B-stubs.mdl; a local edit to a Marketplace module, lost on any Administration update; XPath access rules of Part/Tool/Warehouse over it see no technician
+out	FSM_Specific.LeftMenuLayout	resolved:copy-drift	layout copied from describe (edges-A-layout.mdl): brand image, Visualizations.Snippet_Alerts and the SidebarToggleButton (not authorable by mxcli) dropped; FSM design-properties.json + scss copied into themesource/fsm_specific (CE6083 x38)
+out	Technician.*	stub	CUT STUB entity/association (attributes verbatim, no behaviour, empty table) — edges-B-stubs.mdl; technician master data stays in the monolith: needs the monolith to publish Technician over OData; a local->external association passes mx check on 10.24 (captures/35), so Asset_Technician_Preferred/Technician_Warehouse are not a platform blocker — unmeasured on 11.13 and at runtime
+out	CustomerManagement.ContactPerson_View	stub	CUT STUB page (parameter only, text 'served by the FSM monolith') — the Open button on the asset's contact-person tab shows nothing useful: needs a deep link to the monolith
+out	CustomerManagement.*	stub	CUT STUB entities Customer/Contract/ContactPerson/SLA + associations (attributes verbatim, empty tables) — edges-B-stubs.mdl; customer master stays in the monolith: Asset_Customer/Asset_Contract pickers list nothing, SLA lookup (DS_Asset_GetRelevantSLA path) returns empty
+out	RosterManagement.Roster_NewEdit	stub	CUT STUB page (parameter only) — roster editing on the asset tab does not work: deep link or move RosterManagement
+out	RosterManagement.*	stub	CUT STUB entity Roster + Roster_Asset + ACT_Roster_Delete/RosterList_Delete (signature only, do nothing) — asset rosters created here are never seen by the monolith planner; ACT_Asset_Delete leaves rosters behind
+out	TicketManagement.Ticket_View	stub	CUT STUB page (parameter only) — the asset's ticket tab Open button: deep link to the monolith
+out	TicketManagement.*	stub	CUT STUB entities Ticket/WorkOrder/Appointment/Priority/TicketType/WorkOrderAssignment + associations (empty tables) — the asset's ticket tab is empty; used/suggested parts and tools of a work order (Part/Tool access XPath over WorkOrderAssignment) are invisible: the work-order side of parts stays in the monolith
+out	NativeMobile*.*	stub	CUT STUB microflow/entity (signature only): the slice's push into the device copies (NativeAsset/NativePart/NativeInventory/NativeWarehouse) does nothing — HANDOFF to the Mobile partition (cut-score: co-locate NativeMobile* in the Mobile app)
+out	Synchronization.*	stub	CUT STUB microflow (signature only): server-side update of native copies after an asset/part/warehouse change is not carried — HANDOFF with the Mobile partition (REST push slice->monolith or slice-owned sync)
+out	AppSettings.ApplicationSettings_CalculateNativeKeepUntilDate	stub	CUT STUB microflow returns empty: used part keep-until date for the device is not computed
+# ---- IN: the monolith uses something that moves (strangler work on the monolith side)
+# seam-live rewires (mdl/seam-mono.mdl, mdl/seam-mono-rewire.mdl on the 10.24 copy) come first
+in	Dashboard.DS_CountAssets	resolved:odata	rewired to the external entity AssetsSeam.Assets (consumed OData AssetsSeam.AssetsAPI, basic auth via headers microflow) — seam-mono-rewire.mdl; mx check 0 (captures/31); runtime: the OData service answered the monolith in the journey (captures/journey), this flow itself not opened
+in	MasterData.ACT_Part_Save_MxAdmin	handoff	DUAL WRITE: a REST upsert into the slice (Part.SeamPartAPI, basic auth, on error without rollback + log) was added after the local Part.Part_Save; the local save and the Part.Part parameter stay until the module is strangled — endpoint proven by curl (captures/33), the monolith-side call not exercised (empty monolith DB, the MxAdmin page has Edit only)
+in	NativeModelCheck.*	retire	NativeModelCheck is a model-check helper module (cut-score: retire)
+in	LoadTest.*	retire	LoadTest helper module (cut-score: retire)
+in	Navigation.*	handoff	menu items of the monolith's Responsive profile to slice pages: the slice has its own navigation; the monolith needs a deep link per item
+in	Synchronization.*	handoff	native sync of asset/part/warehouse/inventory copies (device direction) — rewired with the Mobile partition, not this slice: needs a REST feed from the slice
+in	NativeMobile*.*	handoff	device-side (native) consumers of slice entities — co-locate in the Mobile app (cut-score)
+in	MasterData.*	handoff	MxAdmin pages/flows over slice entities: admin of slice data belongs in the slice (retire in the monolith) or reads over OData
+in	FSMPublishedAPI.*	handoff	published ticket API reads assets (Asset_GetAssetsForQuery, TicketRequest_GetAsset): rewire to the slice's OData (external entity) or have API consumers call the slice
+in	TicketManagement.*	handoff	ticket/work-order reads of assets, parts, tools (Ticket_Asset, UsedPart/SuggestedPart/SelectedTool of a work order): rewire to the external entities AssetsSeam.* (a local->external association passes mx check 10.24, captures/35) — per consumer page/flow, not done here
+in	CustomerManagement.*	handoff	contact person/SLA ↔ asset associations owned by the monolith — OData read + reference by key
+in	Dashboard.*	handoff	dashboard counts/top-5 affected assets — OData read of the slice's assets
+in	Technician.*	handoff	technician ↔ warehouse assignment (Technician_Warehouse) — OData read of warehouses + reference by key
+in	Scheduler.*	handoff	planner shows asset of a work order — OData read
+in	RosterManagement.*	handoff	Roster_Asset association owned by the monolith — OData read + reference by key
+in	Visualizations.*	handoff	ticket overview shows asset member — OData read
+in	AppSettings.*	handoff	data-removal jobs delete used/suggested/selected parts — a REST delete action on the slice
+in	General.*	handoff	ASU_General calls a Part startup flow — scheduled/startup event in the slice

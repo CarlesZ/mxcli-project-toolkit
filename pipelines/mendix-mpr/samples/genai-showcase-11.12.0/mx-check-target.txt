@@ -1,0 +1,42 @@
+# mx check (Mendix 11.12.0 modeler, ~/.mxcli/mxbuild/11.12.0/modeler/mx check <lab>/target/GenAITarget.mpr)
+# 1) target exactly as run 4 left it — mx cannot load the model (verbatim, .NET stack truncated after 8 lines; 78 lines total)
+Checking your app for issues...
+Checking the version of the mpr file.
+The mpr file version is '11.12.0'.
+Loading the mpr file.
+ERROR: System.AggregateException: One or more errors occurred. (An error occurred when trying to set the 'Entity' property of a Object type in a Microflow with ID 8f7b7ca6-1133-4f91-8c3c-79a381598f4a.)
+ ---> System.InvalidOperationException: An error occurred when trying to set the 'Entity' property of a Object type in a Microflow with ID 8f7b7ca6-1133-4f91-8c3c-79a381598f4a.
+ ---> System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation.
+ ---> System.ArgumentNullException: Value cannot be null. (Parameter 'value')
+   at Mendix.Modeler.DataTypes.EntityType.set_EntityId(EntityIdentifier value) in Mendix.Modeler.Core\DataTypes\EntityType.Generated.cs:line 36
+   at InvokeStub_EntityType.set_EntityId(Object, Span`1)
+   at System.Reflection.RuntimeMethodInfo.InvokePropertySetter(Object obj, BindingFlags invokeAttr, Binder binder, Object parameter, CultureInfo culture)
+   --- End of inner exception stack trace ---
+   [... stack truncated ...]
+
+# 2) after re-executing the 3 microflows written with a null result entity (drop + create in one script, see FINDINGS.md) — verbatim
+Checking your app for issues...
+Checking the version of the mpr file.
+The mpr file version is '11.12.0'.
+Loading the mpr file.
+The mpr file version is '11.12.0'.
+Checking app for errors...
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'OptionalContextObject'
+[error] [CE1613] "The selected entity 'ConversationalUI.ChatContext' no longer exists." at Java action 'AgentEditorCommons.ChatContext_Create_ForAgentDocument'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'ContextObject'
+[error] [CE1613] "The selected attribute 'Embeddings_SemanticSearch.BookChunk.Similarity' no longer exists." at List operation activity 'Sort'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObject'
+[error] [CE1613] "The selected export mapping 'MCPServer_ExposeToolsPrompts.EM_MCPServer_Ticket' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObjectList'
+[error] [CE1613] "The selected entity '.ContextObject' no longer exists." at Java action parameter 'OptionalContextObject'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObject'
+[error] [CE1613] "The selected export mapping 'MCPServer_ExposeToolsPrompts.EM_MCPServer_Ticket' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected export mapping 'ChatCompletions_FunctionCalling.EM_FunctionCalling_Ticket' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected entity '.Entity' no longer exists." at Java action parameter 'MxObject'
+[error] [CE1613] "The selected export mapping 'ChatCompletions_FunctionCalling.EM_FunctionCalling_Ticket' no longer exists." at Export with mapping activity 'Export'
+[error] [CE1613] "The selected attribute 'Embeddings_SemanticSearchMultiColumn.TicketChunk.Similarity' no longer exists." at List operation activity 'Sort'
+The app contains: 14 errors.
+
+real	0m7.706s
+user	0m8.972s
+sys	0m0.729s

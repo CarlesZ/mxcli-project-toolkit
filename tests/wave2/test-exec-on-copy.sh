@@ -70,7 +70,8 @@ mkproj() {  # $1 = project dir, $2 = "" (root layout) or "app"
   printf 'class Old {}\n' > "$M/javasource/m/Old.java"
   printf 'CREATE MODULE "Nope";\n' > "$P/mdlsource/test.mdl"
   printf 'print("patched")\n' > "$P/mdlsource/p.sh"
-  cp "$TOOLKIT/project-bin/_common.sh" "$TOOLKIT/project-bin/restore-mpr.sh" "$TOOLKIT/project-bin/snapshot-mpr.sh" "$P/bin/"
+  cp "$TOOLKIT/project-bin/_common.sh" "$TOOLKIT/project-bin/restore-mpr.sh" "$TOOLKIT/project-bin/snapshot-mpr.sh" \
+     "$TOOLKIT/project-bin/test-scratch.sh" "$P/bin/"
   cp "$SUBJECT" "$P/bin/exec.sh"
   # mxcli: `exec <script> -p <mpr>` writes into the model it is given. STUB_EXEC_RC=1 writes half
   # and fails; STUB_SIDE=1 also writes a Java file beside the model.
@@ -84,7 +85,9 @@ echo "changed by exec" >> "$m"
 echo "changed by exec" >> "$d/mprcontents/ab/a.mxunit"
 [ "${STUB_EXEC_RC:-0}" = 1 ] && { echo "fake mxcli exec: statement 2 failed"; exit 1; }
 mkdir -p "$d/mprcontents/cd"; echo "new unit" > "$d/mprcontents/cd/new.mxunit"
-[ "${STUB_SIDE:-0}" = 1 ] && echo "class New {}" > "$d/javasource/m/New.java"
+[ "${STUB_SIDE:-0}" = 1 ] && { echo "class New {}" > "$d/javasource/m/New.java"; echo "// edited" >> "$d/javasource/m/Old.java"; }
+[ "${STUB_OTHER:-0}" = 1 ] && { mkdir -p "$d/other"; echo x > "$d/other/x.txt"; }
+[ "${STUB_JOURNAL:-0}" = 1 ] && echo j > "$m-journal"
 echo "fake mxcli exec ok"; exit 0
 MXCLI
   chmod +x "$P/bin/"*.sh "$P/mxcli"
@@ -129,7 +132,7 @@ for LAYOUT in root app; do
   grep -q 'changed by exec' "$M/mprcontents/ab/a.mxunit" && ok "live unit holds the change" || bad "live unit unchanged"
   [ -f "$M/mprcontents/cd/new.mxunit" ] && ok "new unit promoted" || bad "new unit missing"
   [ -f "$M/javasource/m/New.java" ] && ok "file exec wrote outside the model promoted" || bad "javasource/m/New.java not promoted"
-  [ -f "$M/javasource/m/Old.java" ] && ok "untouched file outside the model still there" || bad "Old.java lost"
+  grep -q '// edited' "$M/javasource/m/Old.java" && ok "edited file beside the model promoted" || bad "Old.java edit not promoted"
   [ -z "$(ls -d "$M"/.mxtk-promote.* 2>/dev/null)" ] && ok "no promotion leftovers" || bad "leftovers: $(ls -d "$M"/.mxtk-promote.*)"
   [ -z "$(ls -A "$P/.mpr-snapshots/.on-copy" 2>/dev/null)" ] && ok "scratch copy removed after promotion" || bad "scratch copy left: $(ls "$P/.mpr-snapshots/.on-copy")"
   [ "$(rows "$P")" = 1 ] && ok "exactly one BUILD-LOG row" || bad "BUILD-LOG rows: $(rows "$P")"
@@ -193,7 +196,90 @@ for LAYOUT in root app; do
   [ "$(fp "$M")" = "$B" ] && ok "live model byte-identical after the failed swap" || bad "live model differs after a failed swap"
   [ -z "$(ls -d "$M"/.mxtk-promote.* 2>/dev/null)" ] && ok "no leftovers" || bad "leftovers: $(ls -d "$M"/.mxtk-promote.*)"
   has "row says promotion failed" "$(cat "$P/docs/BUILD-LOG.md")" "promotion failed"
+  K="$(ls -d "$P/.mpr-snapshots/.on-copy/"*/ 2>/dev/null | head -1)"
+  [ -n "$K" ] && grep -q 'changed by exec' "$K/model/Fixture.mpr" && [ -f "$K/model/mprcontents/cd/new.mxunit" ] \
+    && ok "L1: the kept copy is whole after the rollback" || bad "L1: kept copy incomplete after rollback"
+  hasnt "L1: no 'incomplete' note when the copy is whole" "$OUT" "is incomplete"
+
+  echo "-- M1/M2: killed between the two mprcontents renames"
+  P="$WORK/$LAYOUT-killed"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  B="$(fp "$M")"
+  _MXTK_TEST_SWAP_KILL=mprcontents run "$P" --on-copy mdlsource/test.mdl >/dev/null
+  [ ! -d "$M/mprcontents" ] && ok "[setup] the kill left the live model with no mprcontents/" || bad "[setup] kill did not land between the renames"
+  OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 1 ] && ok "M1: the DEFAULT exec refuses (rc 1)" || bad "M1: default exec rc $RC"
+  [ ! -f "$WORK/log/exec-targets" ] && ok "M1: nothing executed" || bad "M1: exec ran over a half-swapped model"
+  has "M2: says half-swapped" "$OUT" "interrupted part-way"
+  has "M2: prints the rename back" "$OUT" "mv '$M/.mxtk-promote."
+  has "M2: restore-mpr only as last resort" "$OUT" "Last resort only"
+  has "M2: says what restore-mpr drops" "$OUT" "DROPS every model change"
+  OUT2="$(cd "$P" && STUB_LOG="$WORK/log" bash ./bin/test-scratch.sh -- x 2>&1)"; RC=$?
+  [ "$RC" -eq 3 ] && ok "M1: test-scratch refuses the copy (rc 3)" || bad "M1: test-scratch rc $RC: $(printf '%s' "$OUT2" | tail -3)"
+  has "M1: test-scratch names the interrupted promotion" "$OUT2" "interrupted part-way"
+  printf '%s\n' "$OUT" | sed -n 's/^ *\(mv .*\|rm .*\)$/\1/p' > "$WORK/fix.sh"
+  bash "$WORK/fix.sh" 2>"$WORK/fix.err"
+  [ ! -s "$WORK/fix.err" ] && ok "M2: every printed command ran without an error" || bad "M2: printed commands erred: $(cat "$WORK/fix.err")"
+  [ "$(fp "$M")" = "$B" ] && ok "M2: the printed commands put the live model back byte-identical" || bad "M2: live differs after the printed commands"
+  OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 0 ] && ok "M1: default exec runs again after the fix" || bad "M1: rc $RC after fix: $(printf '%s' "$OUT" | tail -3)"
+
+  echo "-- M2: killed after a side file was promoted"
+  P="$WORK/$LAYOUT-killside"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  B="$(fp "$M")"
+  STUB_SIDE=1 _MXTK_TEST_SWAP_KILL=side run "$P" --on-copy mdlsource/test.mdl >/dev/null
+  OUT="$(run "$P" --on-copy mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 1 ] && ok "refused (rc 1)" || bad "rc $RC"
+  has "M2: names the side-file original to rename back" "$OUT" ".mxtk-promote."
+  printf '%s\n' "$OUT" | sed -n 's/^ *\(mv .*\|rm .*\)$/\1/p' > "$WORK/fix.sh"
+  bash "$WORK/fix.sh" 2>"$WORK/fix.err"
+  [ ! -s "$WORK/fix.err" ] && ok "M2: every printed command ran without an error" || bad "M2: printed commands erred: $(cat "$WORK/fix.err")"
+  [ "$(fp "$M")" = "$B" ] && ok "M2: model AND side files back byte-identical" || bad "M2: live differs after the side-file commands"
+  [ ! -f "$M/javasource/m/New.java" ] && ok "M2: the file the promotion created is removed" || bad "M2: New.java left behind"
+
+  echo "-- M2: only staged leftovers — live intact, delete them"
+  P="$WORK/$LAYOUT-staged"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  mkdir "$M/.mxtk-promote.999.mprcontents"; printf 'x\n' > "$M/.mxtk-promote.999.mpr"
+  OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 1 ] && ok "refused (rc 1)" || bad "rc $RC"
+  has "M2: says the live model is intact" "$OUT" "the live model is intact"
+  hasnt "M2: no rename-back for staged-only" "$OUT" "mv '"
+
+  echo "-- M3: a side file changed live during the exec"
+  P="$WORK/$LAYOUT-sidechg"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  OUT="$(STUB_SIDE=1 STUB_MXB_TOUCH="$M/javasource/m/Old.java" run "$P" --on-copy mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 1 ] && ok "M3: refused (rc 1)" || bad "M3: rc $RC: $(printf '%s' "$OUT" | tail -3)"
+  has "M3: names the file" "$OUT" "changed live since the copy was taken: javasource/m/Old.java"
+  grep -q 'changed by exec' "$M/Fixture.mpr" && bad "M3: model promoted anyway" || ok "M3: model not promoted"
+  grep -q 'edited by someone else' "$M/javasource/m/Old.java" && ok "M3: the live edit survives" || bad "M3: live edit lost"
+
+  echo "-- a write outside the model and the side dirs refuses; -journal is never a side file"
+  P="$WORK/$LAYOUT-other"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  OUT="$(STUB_OTHER=1 STUB_JOURNAL=1 run "$P" --on-copy mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 1 ] && ok "refused (rc 1)" || bad "rc $RC"
+  has "names the stray write" "$OUT" "other/x.txt"
+  hasnt "-journal not listed as a write" "$OUT" "Fixture.mpr-journal"
+  P="$WORK/$LAYOUT-journal"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  OUT="$(STUB_JOURNAL=1 run "$P" --on-copy mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 0 ] && [ ! -f "$M/Fixture.mpr-journal" ] && ok "L2: -journal never promoted" || bad "L2: rc $RC, journal promoted?"
+
+  echo "-- nit: FORCE_EXEC with Studio Pro open refuses --on-copy up front"
+  P="$WORK/$LAYOUT-force"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  sleep 60 & SPP=$!; BG="$BG $SPP"; printf '{"ProcessId":%s}\n' "$SPP" > "$M/Fixture.mpr.lock"
+  OUT="$(FORCE_EXEC=1 run "$P" --on-copy mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 1 ] && ok "refused (rc 1)" || bad "rc $RC"
+  has "says FORCE_EXEC does not override" "$OUT" "FORCE_EXEC does not override"
+  [ ! -f "$WORK/log/exec-targets" ] && ok "nothing executed" || bad "exec ran"
+  kill "$SPP" 2>/dev/null
 done
+
+echo "== L4: single-tree copy is the allow-list"
+P="$WORK/allow"; mkproj "$P" ""
+mkdir -p "$P/analysis" "$P/sources"; echo big > "$P/analysis/a.txt"; echo src > "$P/sources/s.txt"
+STUB_MXB_ERR=1 run "$P" --on-copy mdlsource/test.mdl >/dev/null
+K="$(ls -d "$P/.mpr-snapshots/.on-copy/"*/ 2>/dev/null | head -1)"
+[ -n "$K" ] && [ -f "$K/model/Fixture.mpr" ] && [ -d "$K/model/mprcontents" ] && [ -d "$K/model/javasource" ] && ok "model + app dirs copied" || bad "copy lacks the model"
+[ -n "$K" ] && [ ! -e "$K/model/analysis" ] && [ ! -e "$K/model/sources" ] && [ ! -e "$K/model/mxcli" ] && [ ! -e "$K/model/mdlsource" ] \
+  && ok "analysis/, sources/, mdlsource/ and the mxcli binary not copied" || bad "copy holds non-app paths: $(ls "$K/model")"
 
 echo "== env and options"
 echo "-- EXEC_ON_COPY=1 is the same as --on-copy"

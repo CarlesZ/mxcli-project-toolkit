@@ -642,17 +642,96 @@ mxtk_mxbuild_why() {
   "$_py" -c "import json;d=json.load(open('$(native_path "$1")'));print('; '.join((e.get('message','') if isinstance(e,dict) else str(e)) for e in d.get('errors',[]) or [])[:300])" 2>/dev/null || true
 }
 
-# mxtk_copy_model_tree <model-dir> <dest-dir> — copy the model tree (the .mpr, mprcontents/ and
-# everything mxbuild reads beside them: widgets/, javasource/, theme/, userlib/ ...) into an
-# existing <dest-dir>. Leaves out .git, .mpr-snapshots, deployment, .mxcli (the LIVE app's
-# run --local record — a copy carrying it points app-restart.sh at the live app) and node_modules.
-# One routine for both scratch-copy users: bin/test-scratch.sh (mxcli test, #278) and
-# bin/exec.sh --on-copy (#350). tar preserves mtimes, which --on-copy relies on to tell the
-# files `mxcli exec` wrote from the files it copied. Returns tar's status.
+# mxtk_copy_model_tree <model-dir> <dest-dir> [<mpr-basename>] — copy the model tree into an
+# existing <dest-dir>, for a scratch copy.
+#   Two args: the whole <model-dir> (the .mpr, mprcontents/ and everything mxbuild reads beside
+#   them), leaving out .git, .mpr-snapshots, deployment, .mxcli (the LIVE app's run --local record
+#   — a copy carrying it points app-restart.sh at the live app) and node_modules.
+#   Three args: an ALLOW-LIST — <mpr-basename> with its -wal/-shm if present, plus the app
+#   directories in $MXTK_APP_DIRS that exist. For a single-tree checkout, where <model-dir> is the
+#   repo root and also holds sources/, analysis/, docs/ and binaries nobody's build reads. A
+#   directory mxbuild needs and the list lacks makes the gate fail ON THE COPY — never the live
+#   model — and MXTK_APP_DIRS adds it.
+# Used by bin/test-scratch.sh (mxcli test, #278; two args) and bin/exec.sh --on-copy (#350). tar
+# preserves mtimes, which --on-copy relies on to tell the files `mxcli exec` wrote from the files
+# it copied. Returns tar's status.
+MXTK_APP_DIRS="${MXTK_APP_DIRS:-mprcontents widgets javasource javascriptsource theme themesource userlib vendorlib resources nativemobile}"
 mxtk_copy_model_tree() {
-  tar -C "$1" --exclude=./.git --exclude=./.mpr-snapshots --exclude=./deployment \
-      --exclude=./.mxcli --exclude=./node_modules -cf - . | tar -C "$2" -xf -
+  if [ -z "${3:-}" ]; then
+    tar -C "$1" --exclude=./.git --exclude=./.mpr-snapshots --exclude=./deployment \
+        --exclude=./.mxcli --exclude=./node_modules -cf - . | tar -C "$2" -xf -
+    return
+  fi
+  local _src="$1" _dst="$2" _mb="$3" _e
+  set --
+  for _e in "$_mb" "$_mb-wal" "$_mb-shm" $MXTK_APP_DIRS; do [ -e "$_src/$_e" ] && set -- "$@" "./$_e"; done
+  tar -C "$_src" --exclude=node_modules -cf - "$@" | tar -C "$_dst" -xf -
 }
+
+# mxtk_promote_leftovers <model-dir> <mpr-basename> — 0 (and a diagnosis on stdout) iff an
+# exec.sh --on-copy promotion was killed part-way and left its files beside the model. Every
+# model writer and copier calls this first (exec.sh on every path, test-scratch.sh): a kill
+# between the two mprcontents/ renames leaves NO mprcontents/, and a default exec would then
+# snapshot and write that (#384 review). Names, all under <model-dir>, for promotion PID N:
+#   .mxtk-promote.N.manifest        side files of that promotion, "E <rel>" (existed live) / "N <rel>"
+#   .mxtk-promote.N.mpr / .mprcontents   staged new model — never live yet
+#   .mxtk-promote.N.old.mpr / .old.mprcontents   the live model, moved aside by the swap
+#   <rel>.mxtk-promote.N            a staged side file;  <rel>.mxtk-promote.N.old  its live original
+# The printed commands put the pre-promotion live model back by rename — every rename the swap
+# did, undone — then remove the rest. Only the glob runs when there is nothing: cheap per exec.
+mxtk_promote_leftovers() {
+  local md="$1" mb="$2" f n pids="" p t cmds k rel any_old
+  for f in "$md"/.mxtk-promote.*; do
+    [ -e "$f" ] || continue
+    n="${f##*/.mxtk-promote.}"; n="${n%%.*}"
+    case " $pids " in *" $n "*) ;; *) pids="$pids $n" ;; esac
+  done
+  [ -n "$pids" ] || return 1
+  for p in $pids; do
+    t="$md/.mxtk-promote.$p"; cmds=""; any_old=0
+    if [ -d "$t.old.mprcontents" ]; then
+      any_old=1
+      [ -d "$md/mprcontents" ] && cmds="$cmds
+mv '$md/mprcontents' '$t.new.mprcontents'"
+      cmds="$cmds
+mv '$t.old.mprcontents' '$md/mprcontents'"
+    fi
+    # .old.mpr is a hard link taken before the swap; while it is still the live file (-ef), the
+    # .mpr was not replaced and the rm at the end is enough.
+    if [ -f "$t.old.mpr" ] && ! [ "$t.old.mpr" -ef "$md/$mb" ]; then
+      any_old=1; cmds="$cmds
+mv -f '$t.old.mpr' '$md/$mb'"
+    fi
+    if [ -f "$t.manifest" ]; then
+      while read -r k rel; do
+        [ -n "$rel" ] || continue
+        if [ -f "$md/$rel.mxtk-promote.$p.old" ]; then
+          any_old=1; cmds="$cmds
+mv -f '$md/$rel.mxtk-promote.$p.old' '$md/$rel'"
+        elif [ "$k" = N ] && [ ! -f "$md/$rel.mxtk-promote.$p" ] && [ -f "$md/$rel" ]; then
+          any_old=1; cmds="$cmds
+rm -f '$md/$rel'"   # created by the promotion; did not exist before it
+        fi
+        [ -f "$md/$rel.mxtk-promote.$p" ] && cmds="$cmds
+rm -f '$md/$rel.mxtk-promote.$p'"
+      done < "$t.manifest"
+    fi
+    cmds="$cmds
+rm -rf '$t'.*"
+    if [ "$any_old" = 1 ]; then
+      echo "✗ An exec.sh --on-copy promotion (PID $p) was interrupted part-way: the live model may be half-swapped."
+      echo "  Put the live model back as it was before that promotion, by rename (run these in order):"
+    else
+      echo "✗ An exec.sh --on-copy promotion (PID $p) was interrupted before it replaced anything: the live model is intact."
+      echo "  Only staged files are left. Remove them:"
+    fi
+    printf '%s\n' "$cmds" | grep . | sed 's/^/      /'
+  done
+  echo "  Then re-run. Last resort only: ./bin/restore-mpr.sh restores the newest snapshot (the model before"
+  echo "  that exec) and DROPS every model change made after that snapshot was taken."
+  return 0
+}
+
 
 # project_name — the .mpr basename without extension, for user-facing messages.
 project_name() {

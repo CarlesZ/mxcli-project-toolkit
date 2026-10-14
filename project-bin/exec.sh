@@ -31,11 +31,16 @@
 # or when the copy is not on the model's filesystem (a rename would become a copy). The swap is
 # renames only: .mpr is replaced by one rename (atomic); mprcontents/ by two (live -> aside, new ->
 # live), so for the microseconds between them there is no mprcontents/ (rename(2) cannot exchange
-# two directories portably). Files `mxcli exec` wrote outside the model (javasource/ for a Java
-# action) are promoted the same way, one rename each; a file it DELETED there is not mirrored
-# (follow-up). A swap that fails half-way renames back, else restores the pre-exec snapshot. On any
-# other outcome the live model is never written and the copy is kept with a resume hint; the
-# newest MXTK_ON_COPY_KEEP (default 3) kept copies survive. Not with --patch (follow-up).
+# two directories portably). Files `mxcli exec` wrote beside the model under OC_SIDE_DIRS
+# (javasource/ for a Java action) are promoted the same way, one rename each, and only if the live
+# file still matches its pre-copy checksum; a write anywhere else refuses the promotion, and a file
+# exec DELETED is not mirrored (follow-up). A swap that fails half-way renames back (the copy is
+# handed back whole), else restores the pre-exec snapshot. A promotion KILLED half-way leaves
+# .mxtk-promote.* names that every exec.sh path and test-scratch.sh refuse on, printing the exact
+# renames that put the live model back (mxtk_promote_leftovers, _common.sh). On a single-tree
+# checkout only the .mpr and the app directories (MXTK_APP_DIRS) are copied, never sources/,
+# analysis/, docs/ or binaries. On any other outcome the live model is never written and the copy is
+# kept with a resume hint; the newest MXTK_ON_COPY_KEEP (default 3) survive. Not with --patch.
 #
 # --cr (2026-10-13): names the PROJECT.md "## Change log" row this run applies
 # (skills/change-intake.md). It lands in the BUILD-LOG detail cell as "cr: CR-07", the same way
@@ -539,6 +544,10 @@ if sp_holds_model; then
   SP_OPEN=1
   echo "✗ Studio Pro has $NAME open (lock PID $SP_PID alive) — refusing exec (split-brain corruption risk)."
   echo "  → Close the project in Studio Pro (or quit SP), then re-run."
+  if [ "$ON_COPY" = 1 ]; then
+    echo "    --on-copy: FORCE_EXEC does not override this — a promotion is refused while Studio Pro holds the model."
+    exit 1
+  fi
   echo "    Override (NOT recommended): FORCE_EXEC=1 ./bin/exec.sh $SCRIPT"
   [ "$FORCE" = "1" ] || exit 1
   echo "  (FORCE_EXEC set — proceeding despite open SP)"
@@ -650,6 +659,17 @@ trap 'exec_lock_release' EXIT
 if command -v pgrep >/dev/null 2>&1; then
   _raw="$(pgrep -f "mxcli exec" 2>/dev/null | grep -vx "$$" | head -3 | tr '\n' ' ' || true)"
   [ -n "$_raw" ] && echo "  note: an 'mxcli exec' is running elsewhere on this machine (PID ${_raw% }) — not blocking; only another exec.sh on this project is."
+fi
+
+# 3b. An exec.sh --on-copy promotion killed part-way (#350, #384 review) leaves .mxtk-promote.*
+#    beside the model, and between its two renames NO mprcontents/. Every path refuses until it is
+#    put back, so a default exec never snapshots and writes a half-swapped model. The diagnosis and
+#    the exact rename commands come from mxtk_promote_leftovers (_common.sh); the check is one glob.
+if type mxtk_promote_leftovers >/dev/null 2>&1 && _oc_left="$(mxtk_promote_leftovers "$MODEL_DIR" "$MPR_BASE")"; then
+  printf '%s\n' "$_oc_left"
+  echo "  Nothing was snapshotted or executed."
+  log_build "🚫 blocked" "interrupted --on-copy promotion left .mxtk-promote.* beside the model"
+  exit 1
 fi
 
 # 4. Uncommitted model changes. The snapshot taken below would not cover them,
@@ -998,23 +1018,40 @@ fi
 OC_ROOT="$PROJECT_ROOT/.mpr-snapshots/.on-copy"   # hidden: snapshot rotation (ls */) never sees it
 OC_KEEP="${MXTK_ON_COPY_KEEP:-3}"
 case "$OC_KEEP" in ''|*[!0-9]*|0) OC_KEEP=3 ;; esac
-OC_SCR=""; OC_COPY=""; OC_MPR=""; OC_FP0=""; OC_SIDE=""; OC_WHY=""; OC_LIVE_WRITTEN=0
-OC_COPY_MS=0; OC_SWAP_MS=0; OC_UNITS=0
+# Directories where a file `mxcli exec` writes beside the model is promoted with it (a Java or
+# JavaScript action, a theme file). A write anywhere else outside the model refuses the promotion.
+OC_SIDE_DIRS="javasource javascriptsource theme themesource resources nativemobile"
+OC_SCR=""; OC_COPY=""; OC_MPR=""; OC_FP0=""; OC_SIDE0=""; OC_SIDE=""; OC_SIDE_OTHER=""; OC_WHY=""
+OC_LIVE_WRITTEN=0; OC_COPY_MS=0; OC_SWAP_MS=0; OC_UNITS=0
 TARGET_MPR="$MPR"
 oc_ms() {  # wall clock in ms (GNU date); whole seconds x1000 where %N is not supported (BSD)
   _n="$(date +%s%N 2>/dev/null)"
   case "$_n" in ''|*[!0-9]*) echo $(( $(date +%s) * 1000 )) ;; *) echo $(( _n / 1000000 )) ;; esac
 }
-oc_fingerprint() {  # $1 = model dir. One cksum over the .mpr and every mprcontents/ file (name + bytes)
-  ( cd "$1" && { cksum "$MPR_BASE"
+oc_fingerprint() {  # $1 = model dir. One cksum over the .mpr, its -wal, and every mprcontents/ file
+  ( cd "$1" && { cksum "$MPR_BASE"; [ -f "$MPR_BASE-wal" ] && cksum "$MPR_BASE-wal"
       if [ -d mprcontents ]; then find mprcontents -type f | LC_ALL=C sort | tr '\n' '\0' | xargs -0 cksum; fi; } ) 2>/dev/null | cksum
 }
+oc_side_manifest() {  # $1 = model dir: "crc size path" per file under $OC_SIDE_DIRS
+  ( cd "$1" && for _d in $OC_SIDE_DIRS; do [ -d "$_d" ] && find "$_d" -type f; done | LC_ALL=C sort \
+      | while IFS= read -r _f; do cksum "$_f"; done ) 2>/dev/null
+}
+oc_side_sum() {  # $1 = file: "crc size", or "-" when it does not exist
+  if [ -f "$1" ]; then cksum < "$1" | awk '{print $1, $2}'; else echo "-"; fi
+}
+oc_side_sum0() {  # $1 = rel path: its "crc size" in OC_SIDE0 (taken before the copy), or "-"
+  printf '%s\n' "$OC_SIDE0" | awk -v r="$1" '{ c = $1; s = $2; p = $0; sub(/^[^ ]+ [^ ]+ /, "", p); if (p == r) { print c, s; f = 1; exit } } END { if (!f) print "-" }'
+}
 oc_prune() {  # keep the newest $OC_KEEP kept copies
-  ls -dt "$OC_ROOT"/*/ 2>/dev/null | tail -n +$((OC_KEEP + 1)) | while read -r _d; do rm -rf "$_d"; done
+  ls -dt "$OC_ROOT"/*/ 2>/dev/null | tail -n +$((OC_KEEP + 1)) | while read -r _d; do rm -rf "${_d:?}"; done
 }
 oc_keep_hint() {
-  echo "  The copy is kept: $OC_COPY"
-  echo "    It holds what the script did. Look at it: ./mxcli -p $OC_MPR -c \"SHOW STRUCTURE\""
+  if [ -f "$OC_MPR" ]; then
+    echo "  The copy is kept: $OC_COPY"
+    echo "    It holds what the script did. Look at it: ./mxcli -p $OC_MPR -c \"SHOW STRUCTURE\""
+  else
+    echo "  The copy at $OC_COPY is incomplete (the failed swap could not hand all of it back); it is kept for inspection only."
+  fi
   echo "  Resume: fix the script and re-run ./bin/exec.sh --on-copy $SCRIPT — it starts from a fresh copy"
   echo "    of the live model. Resuming THIS copy with only the statements that did not land is not built"
   echo "    yet (toolkit #350 follow-up)."
@@ -1022,63 +1059,91 @@ oc_keep_hint() {
   echo "  The newest $OC_KEEP kept copies stay under .mpr-snapshots/.on-copy/ (MXTK_ON_COPY_KEEP); older ones were removed."
 }
 oc_unstage() {  # put staged files back into the copy (nothing in the live model was replaced yet)
-  _t="$1"
   [ -f "$MODEL_DIR/$_t.mpr" ] && mv "$MODEL_DIR/$_t.mpr" "$OC_COPY/$MPR_BASE" 2>/dev/null
   [ -d "$MODEL_DIR/$_t.mprcontents" ] && mv "$MODEL_DIR/$_t.mprcontents" "$OC_COPY/mprcontents" 2>/dev/null
   printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do
-    [ -n "$_r" ] && [ -f "$MODEL_DIR/$_r.$_t" ] && mv "$MODEL_DIR/$_r.$_t" "$OC_COPY/$_r" 2>/dev/null
+    [ -n "$_r" ] && [ -f "$MODEL_DIR/$_r.$_st" ] && mv "$MODEL_DIR/$_r.$_st" "$OC_COPY/$_r" 2>/dev/null
   done
+  rm -f "${MODEL_DIR:?}/${_t:?}.manifest" "${MODEL_DIR:?}/${_t:?}.old.mpr"
   return 0
 }
 # oc_promote — 0 promoted · 1 refused, the live model untouched · 2 the swap failed part-way
 # (rolled back by rename, else restored from the pre-exec snapshot; OC_WHY says which).
+# Every name it leaves beside the model is one mxtk_promote_leftovers (_common.sh) can read back,
+# so a promotion killed at any point is recoverable by rename on the next run.
 oc_promote() {
-  _md="$MODEL_DIR"; _t=".mxtk-promote.$$"; _step=""
+  _md="$MODEL_DIR"; _t=".mxtk-promote.$$"; _st="mxtk-promote.$$"; _step=""
   OC_WHY=""
   if sp_holds_model; then
     OC_WHY="Studio Pro holds $NAME (lock PID $SP_PID); its in-memory model would overwrite the promotion on its next save"; return 1
   fi
+  if [ -n "$OC_SIDE_OTHER" ]; then
+    OC_WHY="mxcli exec also wrote outside the model and outside $OC_SIDE_DIRS: $(printf '%s' "$OC_SIDE_OTHER" | head -3 | tr '\n' ' ')— not promoted blind"; return 1
+  fi
+  if [ -s "$OC_COPY/$MPR_BASE-wal" ]; then
+    OC_WHY="the copy's $MPR_BASE-wal is not empty (SQLite did not checkpoint it); the .mpr alone is not the whole model"; return 1
+  fi
+  if [ -s "$_md/$MPR_BASE-wal" ]; then
+    OC_WHY="the live $MPR_BASE-wal is not empty — something holds the model open, or it was not closed cleanly"; return 1
+  fi
   # A rename across filesystems is a copy. ln (a hard link) fails across filesystems, on every platform.
   : > "$OC_SCR/.fsprobe"
   if ! ln "$OC_SCR/.fsprobe" "$_md/$_t.fsprobe" 2>/dev/null; then
-    rm -f "$OC_SCR/.fsprobe"
+    rm -f "${OC_SCR:?}/.fsprobe"
     OC_WHY="the copy is not on the model's filesystem, so the swap could not be a rename"; return 1
   fi
-  rm -f "$OC_SCR/.fsprobe" "$_md/$_t.fsprobe"
+  rm -f "${OC_SCR:?}/.fsprobe" "${_md:?}/${_t:?}.fsprobe"
+  # Side files exec will promote that exist live must still be what was copied (#384 M3).
+  _changed=""
+  while IFS= read -r _r; do
+    [ -n "$_r" ] || continue
+    [ "$(oc_side_sum "$_md/$_r")" = "$(oc_side_sum0 "$_r")" ] || _changed="$_changed $_r"
+  done <<OCSIDE
+$OC_SIDE
+OCSIDE
+  if [ -n "$_changed" ]; then
+    OC_WHY="a file the promotion would replace changed live since the copy was taken:$_changed"; return 1
+  fi
+  # The manifest first, so a kill from here on leaves something mxtk_promote_leftovers can read.
+  printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do
+    [ -n "$_r" ] || continue
+    if [ -f "$_md/$_r" ]; then echo "E $_r"; else echo "N $_r"; fi
+  done > "$_md/$_t.manifest"
   # Stage beside the live files (renames). Nothing live is replaced yet.
   OC_UNITS=0
   [ -d "$OC_COPY/mprcontents" ] && OC_UNITS=$(find "$OC_COPY/mprcontents" -type f | wc -l | tr -d ' ')
   if ! mv "$OC_COPY/$MPR_BASE" "$_md/$_t.mpr" \
      || { [ -d "$OC_COPY/mprcontents" ] && ! mv "$OC_COPY/mprcontents" "$_md/$_t.mprcontents"; }; then
-    oc_unstage "$_t"; OC_WHY="staging the copy beside the live model failed"; return 1
+    oc_unstage; OC_WHY="staging the copy beside the live model failed"; return 1
   fi
   _sidefail=0
   while IFS= read -r _r; do
     [ -n "$_r" ] || continue
-    mkdir -p "$_md/$(dirname "$_r")" && mv "$OC_COPY/$_r" "$_md/$_r.$_t" || { _sidefail=1; break; }
+    mkdir -p "$_md/$(dirname "$_r")" && mv "$OC_COPY/$_r" "$_md/$_r.$_st" || { _sidefail=1; break; }
   done <<OCSIDE
 $OC_SIDE
 OCSIDE
-  if [ "$_sidefail" = 1 ]; then oc_unstage "$_t"; OC_WHY="staging a file mxcli exec wrote outside the model failed"; return 1; fi
+  if [ "$_sidefail" = 1 ]; then oc_unstage; OC_WHY="staging a file mxcli exec wrote outside the model failed"; return 1; fi
   # Last checks, right before the swap: the live model is what was copied, and SP is still closed.
   if [ "$(oc_fingerprint "$_md")" != "$OC_FP0" ]; then
-    oc_unstage "$_t"
+    oc_unstage
     OC_WHY="the live model changed since the copy was taken (Studio Pro save, git checkout, another writer); promoting would drop that change"; return 1
   fi
   if sp_holds_model; then
-    oc_unstage "$_t"; OC_WHY="Studio Pro opened $NAME (lock PID $SP_PID) during the exec"; return 1
+    oc_unstage; OC_WHY="Studio Pro opened $NAME (lock PID $SP_PID) during the exec"; return 1
   fi
   # The swap: renames only. Old files stay beside the new ones until the swap is verified.
   _s0=$(oc_ms); OC_LIVE_WRITTEN=1
-  { ln "$_md/$MPR_BASE" "$_md/$_t.old.mpr" 2>/dev/null || cp -p "$_md/$MPR_BASE" "$_md/$_t.old.mpr"; } || { oc_unstage "$_t"; OC_LIVE_WRITTEN=0; OC_WHY="could not keep the old .mpr aside"; return 1; }
+  { ln "$_md/$MPR_BASE" "$_md/$_t.old.mpr" 2>/dev/null || cp -p "$_md/$MPR_BASE" "$_md/$_t.old.mpr"; } || { oc_unstage; OC_LIVE_WRITTEN=0; OC_WHY="could not keep the old .mpr aside"; return 1; }
   _ok=1
   if [ -d "$_md/mprcontents" ]; then
     if mv "$_md/mprcontents" "$_md/$_t.old.mprcontents"; then _step="aside"; else _ok=0; fi
   fi
+  if [ "${_MXTK_TEST_SWAP_KILL:-}" = mprcontents ]; then kill -KILL $$; fi   # fixture hook: killed between the two renames
   if [ "$_ok" = 1 ] && [ -d "$_md/$_t.mprcontents" ]; then
     if mv "$_md/$_t.mprcontents" "$_md/mprcontents"; then _step="$_step in"; else _ok=0; fi
   fi
-  [ "${_MXTK_TEST_SWAP_FAIL:-}" = mpr ] && _ok=0   # fixture hook: fail between the two halves
+  [ "${_MXTK_TEST_SWAP_FAIL:-}" = mpr ] && _ok=0   # fixture hook: fail before the .mpr rename
   if [ "$_ok" = 1 ]; then
     if mv -f "$_md/$_t.mpr" "$_md/$MPR_BASE"; then _step="$_step mpr"; else _ok=0; fi
   fi
@@ -1086,9 +1151,10 @@ OCSIDE
   if [ "$_ok" = 1 ]; then
     while IFS= read -r _r; do
       [ -n "$_r" ] || continue
-      [ -f "$_md/$_r" ] && { ln "$_md/$_r" "$_md/$_r.$_t.old" 2>/dev/null || cp -p "$_md/$_r" "$_md/$_r.$_t.old"; }
-      if mv -f "$_md/$_r.$_t" "$_md/$_r"; then _sides="$_sides
+      [ -f "$_md/$_r" ] && { ln "$_md/$_r" "$_md/$_r.$_st.old" 2>/dev/null || cp -p "$_md/$_r" "$_md/$_r.$_st.old"; }
+      if mv -f "$_md/$_r.$_st" "$_md/$_r"; then _sides="$_sides
 $_r"; else _ok=0; break; fi
+      if [ "${_MXTK_TEST_SWAP_KILL:-}" = side ]; then kill -KILL $$; fi   # fixture hook: killed after a side file
     done <<OCSIDE
 $OC_SIDE
 OCSIDE
@@ -1102,44 +1168,53 @@ OCSIDE
     OC_SWAP_MS=$(( _s1 - _s0 ))
     # Old files out of the model dir, into the scratch dir, then the scratch dir goes.
     [ -d "$_md/$_t.old.mprcontents" ] && mv "$_md/$_t.old.mprcontents" "$OC_SCR/old-mprcontents"
-    rm -f "$_md/$_t.old.mpr"
-    printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do [ -n "$_r" ] && rm -f "$_md/$_r.$_t.old"; done
+    rm -f "${_md:?}/${_t:?}.old.mpr"
+    printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do [ -n "$_r" ] && rm -f "${_md:?}/${_r:?}.${_st:?}.old"; done
+    rm -f "${_md:?}/${_t:?}.manifest"
     return 0
   fi
-  # Part-way failure: undo by rename, newest step first; anything that fails -> the snapshot.
+  # Part-way failure: undo by rename, newest step first, handing every new file back to the copy
+  # so the kept copy stays whole (#384 L1); anything that fails -> the snapshot.
   _back=1
   printf '%s\n' "$_sides" | while IFS= read -r _r; do
     [ -n "$_r" ] || continue
-    if [ -f "$_md/$_r.$_t.old" ]; then mv -f "$_md/$_r.$_t.old" "$_md/$_r"; else rm -f "$_md/$_r"; fi
+    mkdir -p "$OC_COPY/$(dirname "$_r")"; mv -f "$_md/$_r" "$OC_COPY/$_r"
+    [ -f "$_md/$_r.$_st.old" ] && mv -f "$_md/$_r.$_st.old" "$_md/$_r"
   done
-  case "$_step" in *mpr*) mv -f "$_md/$_t.old.mpr" "$_md/$MPR_BASE" || _back=0 ;; *) rm -f "$_md/$_t.old.mpr" ;; esac
-  case "$_step" in *in*) mv "$_md/mprcontents" "$OC_SCR/failed-mprcontents" || _back=0 ;; esac
+  printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do
+    [ -n "$_r" ] || continue
+    [ -f "$_md/$_r.$_st" ] && mv -f "$_md/$_r.$_st" "$OC_COPY/$_r"
+    rm -f "${_md:?}/${_r:?}.${_st:?}.old"
+  done
+  case "$_step" in
+    *mpr*) { ln "$_md/$MPR_BASE" "$OC_COPY/$MPR_BASE" 2>/dev/null || cp -p "$_md/$MPR_BASE" "$OC_COPY/$MPR_BASE"; }
+           mv -f "$_md/$_t.old.mpr" "$_md/$MPR_BASE" || _back=0 ;;
+    *) mv -f "$_md/$_t.mpr" "$OC_COPY/$MPR_BASE" 2>/dev/null; rm -f "${_md:?}/${_t:?}.old.mpr" ;;
+  esac
+  case "$_step" in
+    *in*) mv "$_md/mprcontents" "$OC_COPY/mprcontents" || _back=0 ;;
+    *) [ -d "$_md/$_t.mprcontents" ] && mv "$_md/$_t.mprcontents" "$OC_COPY/mprcontents" ;;
+  esac
   case "$_step" in *aside*) mv "$_md/$_t.old.mprcontents" "$_md/mprcontents" || _back=0 ;; esac
-  rm -rf "$_md/$_t.mprcontents" "$_md/$_t.mpr"
-  printf '%s\n' "$OC_SIDE" | while IFS= read -r _r; do [ -n "$_r" ] && rm -f "$_md/$_r.$_t" "$_md/$_r.$_t.old"; done
   if [ "$_back" = 1 ] && [ "$(oc_fingerprint "$_md")" = "$OC_FP0" ]; then
+    rm -f "${_md:?}/${_t:?}.manifest"
     OC_WHY="the swap failed part-way (after: ${_step# }); renamed back — the live model is byte-identical to before"
   else
     restore_snapshot
+    rm -rf "${_md:?}/${_t:?}".*
     OC_WHY="the swap failed part-way and could not be renamed back; $([ "$RESTORED" = 1 ] && echo 'restored from the pre-exec snapshot' || echo 'the RESTORE FAILED too — see above')"
   fi
   return 2
 }
 
 if [ "$ON_COPY" = 1 ]; then
-  # A promotion killed between its renames leaves .mxtk-promote.* beside the model: refuse, name the fix.
-  _left="$(ls -d "$MODEL_DIR"/.mxtk-promote.* 2>/dev/null | head -3 | tr '\n' ' ')"
-  if [ -n "$_left" ]; then
-    echo "✗ --on-copy: an earlier promotion was interrupted — left behind: $_left"
-    echo "  → ./bin/restore-mpr.sh (newest snapshot = the model before that exec), then remove those paths, then re-run."
-    log_build "🚫 blocked" "on-copy: interrupted promotion left .mxtk-promote.* beside the model"
-    exit 1
-  fi
-  if ! type mxtk_copy_model_tree >/dev/null 2>&1; then
-    echo "✗ --on-copy: bin/_common.sh predates mxtk_copy_model_tree — run the toolkit's bin/sync-project.sh. Nothing was written."
+  if ! type mxtk_copy_model_tree >/dev/null 2>&1 || ! type mxtk_promote_leftovers >/dev/null 2>&1; then
+    echo "✗ --on-copy: bin/_common.sh predates mxtk_copy_model_tree / mxtk_promote_leftovers. Update it: <toolkit>/bin/sync-project.sh <project-root>"
+    echo "  (a locally edited _common.sh is held back by sync: --upgrade-bin _common.sh). Nothing was written."
     exit 1
   fi
   OC_FP0="$(oc_fingerprint "$MODEL_DIR")"   # taken BEFORE the snapshot and the copy
+  OC_SIDE0="$(oc_side_manifest "$MODEL_DIR")"
 fi
 
 echo "→ Snapshotting model..."
@@ -1150,8 +1225,14 @@ if [ "$ON_COPY" = 1 ]; then
   OC_SCR="$OC_ROOT/$(date +%Y%m%d-%H%M%S)-$$"; OC_COPY="$OC_SCR/model"; OC_MPR="$OC_COPY/$MPR_BASE"
   mkdir -p "$OC_COPY"
   _c0=$(oc_ms)
-  if ! mxtk_copy_model_tree "$MODEL_DIR" "$OC_COPY" || [ ! -f "$OC_MPR" ]; then
-    rm -rf "$OC_SCR"
+  # Single-tree checkout (the model dir is the repo root): copy the allow-list only — the .mpr and
+  # the app directories (_common.sh MXTK_APP_DIRS), never sources/, analysis/, docs/ or binaries.
+  # A two-tree app/ is all app, and is copied whole.
+  _oc_rc=0
+  if [ "$MODEL_DIR" = "$(cd "$PROJECT_ROOT" && pwd)" ]; then mxtk_copy_model_tree "$MODEL_DIR" "$OC_COPY" "$MPR_BASE" || _oc_rc=$?
+  else mxtk_copy_model_tree "$MODEL_DIR" "$OC_COPY" || _oc_rc=$?; fi
+  if [ "$_oc_rc" -ne 0 ] || [ ! -f "$OC_MPR" ]; then
+    rm -rf "${OC_SCR:?}"
     echo "✗ --on-copy: copying the model to $OC_SCR failed — nothing was written."
     log_build "🚫 blocked" "on-copy: copying the model failed — nothing written"
     exit 1
@@ -1485,14 +1566,26 @@ else
   fi
   "${PMXCLI:-./mxcli}" exec "$SCRIPT" -p "$TARGET_MPR" || EXEC_STATUS=$?
   if [ "$ON_COPY" = 1 ]; then
-    # Files exec wrote OUTSIDE the model (javasource/ for a Java action): promoted with the model.
-    # Listed now, before mxbuild writes its own output into the copy.
-    OC_SIDE="$(cd "$OC_COPY" && find . \( -path ./mprcontents -o -path ./deployment -o -path ./.mxcli \
+    # Files exec wrote OUTSIDE the model, listed now, before mxbuild writes its own output into the
+    # copy. Under $OC_SIDE_DIRS (javasource/ for a Java action) they are promoted with the model;
+    # anywhere else they refuse the promotion. The .mpr's own -wal/-shm/-journal/.lock never count.
+    _oc_all="$(cd "$OC_COPY" && find . \( -path ./mprcontents -o -path ./deployment -o -path ./.mxcli \
                  -o -path ./.git -o -path ./node_modules \) -prune -o -type f -newer "$OC_SCR/.exec-start" -print \
                2>/dev/null | sed 's|^\./||' | while IFS= read -r _r; do
-                 case "$_r" in "$MPR_BASE"|"$MPR_BASE".*) ;; *) printf '%s\n' "$_r" ;; esac
+                 case "$_r" in "$MPR_BASE"|"$MPR_BASE".*|"$MPR_BASE"-*) ;; *) printf '%s\n' "$_r" ;; esac
                done)"
-    [ -n "$OC_SIDE" ] && echo "  on-copy: mxcli exec also wrote $(printf '%s\n' "$OC_SIDE" | grep -c .) file(s) outside the model; they are promoted with it: $(printf '%s' "$OC_SIDE" | head -3 | tr '\n' ' ')"
+    OC_SIDE=""; OC_SIDE_OTHER=""
+    while IFS= read -r _r; do
+      [ -n "$_r" ] || continue
+      _in=0; for _d in $OC_SIDE_DIRS; do case "$_r" in "$_d"/*) _in=1 ;; esac; done
+      if [ "$_in" = 1 ]; then OC_SIDE="$OC_SIDE${OC_SIDE:+
+}$_r"; else OC_SIDE_OTHER="$OC_SIDE_OTHER${OC_SIDE_OTHER:+
+}$_r"; fi
+    done <<OCALL
+$_oc_all
+OCALL
+    [ -n "$OC_SIDE" ] && echo "  on-copy: mxcli exec also wrote $(printf '%s\n' "$OC_SIDE" | grep -c .) file(s) beside the model; they are promoted with it: $(printf '%s' "$OC_SIDE" | head -3 | tr '\n' ' ')"
+    [ -n "$OC_SIDE_OTHER" ] && echo "  on-copy: mxcli exec wrote outside the model and outside $OC_SIDE_DIRS: $(printf '%s' "$OC_SIDE_OTHER" | head -3 | tr '\n' ' ')— this blocks the promotion"
   fi
 fi
 
@@ -1729,7 +1822,7 @@ if [ "$ON_COPY" = 1 ]; then
     if [ "$_oc_rc" -eq 0 ]; then
       OC_NOTE="on-copy: promoted (copy ${OC_COPY_MS} ms, swap ${OC_SWAP_MS} ms)"
       echo "  ✓ promoted by rename in ${OC_SWAP_MS} ms (copy took ${OC_COPY_MS} ms); scratch copy removed."
-      rm -rf "$OC_SCR"
+      rm -rf "${OC_SCR:?}"
       if [ -n "$OC_PENDING_APPLIED" ]; then log_applied "$OC_PENDING_APPLIED"
       elif [ -n "$OC_PENDING_STATUS" ]; then log_build "$OC_PENDING_STATUS" "$OC_PENDING_DETAIL"; fi
     elif [ "$_oc_rc" -eq 1 ]; then

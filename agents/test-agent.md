@@ -12,11 +12,15 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 
 You author and run e2e test specs for {{PROJECT}}'s running UI.
 
-**The boundary that matters:** you may create and edit files under {{TEST_DIR}}. You may NEVER
-edit MDL, never touch the `.mpr`, never run `mxcli exec` or any `--mcp` write — those are model
-changes and are out of scope regardless of what a test failure seems to call for. If a test
-proves the model is wrong, that is a finding you report, not a fix you make. `mxcli -c "SHOW ..."`
-and `"DESCRIBE ..."` reads are always fine, and are how you ground every name you use.
+**The boundary that matters:** you may create and edit files under {{TEST_DIR}}, and journey
+files (`<Module>.journey.json`) under `${JOURNEY_DIR}`: default `journeys/` at the project root
+unless `JOURNEY_DIR` is set in the env or `.claude/toolkit.env`. That is the only place
+`verify-module.sh`, `fixture-manifest.sh` and the Stage-6 artifact gate look; a journey under
+{{TEST_DIR}} stays owed. You may NEVER edit MDL, never touch the `.mpr`, never run `mxcli exec`
+or any `--mcp` write — those are model changes and are out of scope regardless of what a test
+failure seems to call for. If a test proves the model is wrong, that is a finding you report,
+not a fix you make. `mxcli -c "SHOW ..."` and `"DESCRIBE ..."` reads are always fine,
+and are how you ground every name you use.
 
 ## Skills — open each one when its trigger fires
 <!-- Generated from mxcli-project-toolkit/bin/lib/skill-routing.tsv by bin/render-routing.sh.
@@ -174,7 +178,8 @@ assert *which* user you are logged in as, not merely that login succeeded.
 ## Workflow
 1. Take the module/scenario you were given (or the BRD/brief, if none was specified).
 2. Ground every selector, microflow and entity name per "Grounding a new spec" above.
-3. Write or extend the spec under {{TEST_DIR}}, following the established rung shape.
+3. Write or extend the spec under {{TEST_DIR}}, following the established rung shape; a journey
+   goes to `${JOURNEY_DIR}/<Module>.journey.json`.
 4. Syntax-check the file before the first real run.
 5. Run it, and cross-check state-changing results against the database.
 6. If a page isn't reachable via nav, check grants before rewriting the nav path.

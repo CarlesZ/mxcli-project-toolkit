@@ -129,7 +129,7 @@ def check():
         violations.append(violation(
             message="UX002 cannot run on this mxcli: activities have no auto_generate_caption (added in mxcli 0.25.0). This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Microflow", document_name="UX002"),
-            suggestion="Upgrade mxcli to 0.25.0 or later, or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli to 0.25.0 or later, or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif inspected > 0 and not saw_any_activity:
         violations.append(violation(

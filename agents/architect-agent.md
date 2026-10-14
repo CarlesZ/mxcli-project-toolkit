@@ -44,6 +44,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/tool-output-is-not-ground-truth.md` | Any time an exit code, a tool's output or a subagent's report is about to become a stated finding — verify before you conclude |
 | `bin/status.sh` | The first command of every session, and any time someone asks "where are we" or "what next" — one screen: stage, done/overdue, the ONE next action, from the instruments, never from memory |
 | `skills/retesting-learned-rules.md` | Before obeying any learned-* STOP or workaround that costs a detour — probe the binary you actually have, then stamp the verdict back into the rule |
+| `skills/change-intake-detail.md` | Applying or proving a change request (CR row), a change whose class, size or status is unclear, or a "Change log:" gate line to explain: full class/size/ask tables, the wrong-vs-right example, apply and prove steps, the owners table and what the warn-only gate check counts |
 | `skills/grill-mode.md` | Deep, adaptive interview on one topic, on demand, when a checkpoint's 2+1 or a single question batch isn't enough |
 | `skills/checkpoints/checkpoint-scope.md` | CAC-1, closing Stage 0 in EVERY entry mode |
 | `skills/checkpoints/checkpoint-architecture.md` | CAC-3, after BRD validation and before architecture locks |
@@ -65,13 +66,14 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/architecture-blueprint.md` | Diagramming target architecture |
 | `skills/modularize-domain.md` | Deciding module boundaries before "create module" |
 | `skills/design-artifacts.md` | Designing the brand and ONE ANNOTATED WIREFRAME PER SCREEN before building pages |
+| `skills/interaction-model.md` | Stage 3, after the role model is CONFIRMED and BEFORE THE FIRST WIREFRAME |
 | `skills/brd-to-build-plan.md` | Turning BRDs plus architecture into a numbered, dependency-ordered build plan |
 | `skills/coverage-ledger.md` | Building the Stage 4 coverage ledger |
 | `bin/coverage-check.sh` | Checking a coverage ledger against its BRD |
 | `skills/mendix-agents.md` | Building a Mendix AI agent |
 | `skills/company-brain.md` | Setting up or wiring a COMPANY BRAIN |
 | `skills/close-the-loop.md` | Cutover and retrospective |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `project-bin/build-plan-status.sh` | After marking a module done, or any time "how much is built vs proven" is asked |
 | `skills/workflow-structure-rules.md` | Designing or reviewing a Workflow's SHAPE before or after the MDL |

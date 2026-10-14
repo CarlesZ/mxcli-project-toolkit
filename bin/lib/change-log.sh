@@ -17,7 +17,7 @@
 # toolkit pull) — both mandatory chain steps. Rows are written by the lead per change-intake.md.
 #
 # WARN-ONLY. gate-check.sh reports what mxtk_change_log_scan counts as a WARN line and never
-# blocks on it. change-intake.md says when that changes, and why not yet.
+# blocks on it. change-intake-detail.md "The mechanical check" says when that changes, and why not yet.
 #
 # Sourced, never executed. Callers are `set -euo pipefail`, so keep this side-effect free.
 
@@ -33,9 +33,17 @@ Feedback and change requests, one row each, written BEFORE any edit (`skills/cha
 EOF
 }
 
+# CRLF (2026-10-13 review of #306): a PROJECT.md saved on Windows ends every line in \r, so
+# '^## +change log *$' never matched — gate-check reported "no section" and sync-project.sh
+# appended a SECOND empty one; the scan likewise read 0 rows. Both readers drop a trailing \r
+# first, as gate-check.sh does for every table it reads (tr -d '\r'). awk, not tr | grep -q:
+# under the callers' pipefail an early-exiting grep -q can SIGPIPE the producer and turn a hit
+# into a miss.
+#
 # Usage: mxtk_change_log_has_section <PROJECT.md>   — rc 0 when the heading is present
 mxtk_change_log_has_section() {
-  [ -f "$1" ] && grep -qiE '^## +change log *$' "$1"
+  [ -f "$1" ] || return 1
+  awk '{ sub(/\r$/, "") } tolower($0) ~ /^## +change log *$/ { found = 1; exit } END { exit !found }' "$1"
 }
 
 # Usage: mxtk_change_log_scan <PROJECT.md>
@@ -53,6 +61,7 @@ mxtk_change_log_scan() {
     function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
     function clean(s) { gsub(/[*`]/, "", s); return trim(s) }
     function owe(id, st, why) { rows = rows sprintf("ROW\t%s\t%s\t%s\t%s\n", id, st, why, ask) }
+    { sub(/\r$/, "") }                          # CRLF register: see mxtk_change_log_has_section
     /<!--/ { incomment = 1 }
     incomment { if ($0 ~ /-->/) incomment = 0; next }
     /^## / { insec = (tolower($0) ~ /^## +change log *$/); next }

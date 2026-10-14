@@ -120,7 +120,7 @@ def check():
         violations.append(violation(
             message="PERF002 cannot run on this mxcli: widgets have no parent_widget_id / widget_type field. This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Page", document_name="PERF002"),
-            suggestion="Upgrade mxcli, or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli, or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif widgets_seen >= VOCAB_MIN_WIDGETS and data_seen == 0:
         violations.append(violation(

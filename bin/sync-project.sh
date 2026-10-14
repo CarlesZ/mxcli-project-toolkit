@@ -353,9 +353,13 @@ elif [ -n "$INTAKE" ]; then
     # alarming — it is the expected state of a project whose interview has not happened yet.
     # Without this branch every freshly-scaffolded project drew the "text has been edited, NOT
     # touching it" warning below, which is both false and --strict-failing.
+    # An earlier template's Q9 (body still opening "_Not yet asked._") is the same state: the
+    # 2026-10-14 body rewrite (steering|assist|auto) must not turn every untouched scaffold
+    # into the "edited, NOT touching it" warning below.
     q9_current_text > "$Q9_REF"
-    if cmp -s "$Q9_TMP" "$Q9_REF"; then
-      echo "Note: $INTAKE Q9 is the current template, still unanswered — Stage P will FAIL until"
+    if cmp -s "$Q9_TMP" "$Q9_REF" \
+       || sed -n '2,$p' "$Q9_TMP" | grep -v '^[[:space:]]*$' | head -1 | grep -q '^_Not yet asked\._'; then
+      echo "Note: $INTAKE Q9 is the unanswered template text — Stage P will FAIL until"
       echo "      the kickoff interview happens. That is correct; nothing to repair."
 
     elif q9_stale_scaffold_text > "$Q9_REF"; cmp -s "$Q9_TMP" "$Q9_REF"; then
@@ -992,6 +996,12 @@ known_fix_note() {
   case "$1" in
     verify-module.sh)
       echo "bin/verify-module.sh is missing the design-audit wiring fix (toolkit, 2026-08-21) — wires tests/e2e/design-audit.js (rungs 6-7, UI/a11y) into the composed pass as an informational, non-gating rung — and/or the page-scope wiring fix (F-042, 2026-08-28), which generates .claude/loop/page-scope.json right before the audit reads it; before that fix the scope file's producer was wired into no step and the audit measured against a stale or missing denominator. Recommended upgrade." ;;
+    model-stamp.sh)
+      # Keyed on GIT_WORK_TREE: the fixed script pins it (with GIT_DIR/GIT_INDEX_FILE) before
+      # any git call; a copy without it is the pre-fix one (#162, #236).
+      if ! grep -q 'GIT_WORK_TREE' "$PROJECT_DIR/bin/model-stamp.sh" 2>/dev/null; then
+        echo "bin/model-stamp.sh predates the HOOK BLIND-SPOT fix (toolkit, 2026-09-29, card-disbursement requirements-driven build): a commit made from a git worktree, or with --git-dir, runs the pre-commit hook with GIT_DIR exported, and on a two-tree checkout (.mpr under app/) 'check --staged' then looked for the model at the wrong top, printed 'no model files staged' and PASSED a model change nobody had verified. The project root it checks comes from _common.sh, which learned the app/ probe in the same fix. Upgrade BOTH: --upgrade-bin model-stamp.sh --upgrade-bin _common.sh."; return
+      fi ;;
     page-scope.sh)
       echo "bin/page-scope.sh predates the HEADER_WORDS fix (F-042, 2026-08-28): SHOW PAGES header columns Excluded/Folder/Params were parsed as page rows, inflating the page denominator (measured: 6 real pages counted as 13), so every consumer of page-scope.json graded against furniture. One-line fix — recommended upgrade." ;;
     _common.sh)
@@ -1444,6 +1454,49 @@ fi
 if [ "$WIRED" -eq 1 ]; then
   mxtk_install_lint_rules "$(cd "$SCRIPT_DIR/.." && pwd)" "$PROJECT_DIR" "$DRY_RUN" "$UPGRADE_LINT"
   CHANGES=$((CHANGES + ${MXTK_LINT_CHANGES:-0}))
+  # SEC014 says "not configured" here, on every sync, never on exec (bin/lib/sec014-notice.sh).
+  # A NOTE, not warn(): a fresh scaffold has not decided yet, and a pristine sync must stay
+  # clean under --strict (tests/wave2/test-bug12-sync.sh T0).
+  . "$SCRIPT_DIR/lib/sec014-notice.sh"
+  if _sec014_msg=$(mxtk_sec014_notice "$PROJECT_DIR"); then
+    echo "NOTE: $_sec014_msg" | sed '2,$s/^/      /'
+  fi
+fi
+
+# --- 4d. Studio Pro merge safety: property sets, once per mxcli version (#295) -------------
+# Units an mxcli before v0.26 wrote can lack Studio Pro's full property set; the model passes
+# mx check, the build and the runtime, and Studio Pro's merge/diff throws. Sync is the step a
+# project runs after an upgrade, so it runs the READ-ONLY check (`doctor.sh --property-sets
+# --if-stale`: skipped when it already ran for the installed mxcli) and never the repair —
+# that is `doctor.sh --fix-property-sets`, through exec.sh's gate, on the user's say-so.
+if [ "$WIRED" -eq 1 ] && [ -x "$SCRIPT_DIR/doctor.sh" ] \
+   && { [ -x "$PROJECT_DIR/mxcli" ] || [ -x "$PROJECT_DIR/mxcli.exe" ]; }; then
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "Would run: bin/doctor.sh --property-sets --if-stale (read-only model check; skipped when it already ran for this mxcli)"
+  else
+    _ps_rc=0
+    # Sync's own, shorter bound (doctor's default is 300 s): the output is captured, so say
+    # up front how long this may sit quiet.
+    _ps_t="${MXTK_PROPSETS_TIMEOUT:-120}"
+    echo "   checking property sets (read-only, up to ${_ps_t}s)…"
+    _ps_out="$(MXTK_PROPSETS_TIMEOUT="$_ps_t" "$SCRIPT_DIR/doctor.sh" --property-sets --if-stale "$PROJECT_DIR" 2>&1)" || _ps_rc=$?
+    # rc 3 (an mxcli before v0.26 cannot check) and rc 4 (the check itself failed) are not
+    # findings about the model, so doctor's WARN line for them is relabelled, not shown as one.
+    if [ "$_ps_rc" -eq 3 ] || [ "$_ps_rc" -eq 4 ]; then
+      printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed -e 's/^  WARN  /  info  /' -e 's/^/   /' || true
+    else
+      printf '%s\n' "$_ps_out" | grep -v '^[[:space:]]*$' | sed 's/^/   /' || true
+    fi
+    case "$_ps_rc" in
+      0|2) ;;
+      3) echo "   (the project's mxcli predates 'fix property-sets', v0.26.0 — upgrade it before a Team Server merge)" ;;
+      4) _ps_why="$(printf '%s\n' "$_ps_out" | sed -n 's/^  WARN  property sets: //p' | head -1)"
+         echo "   could not check property sets: ${_ps_why:-see above} — not recorded; the next sync re-checks" ;;
+      1) warn "property sets: Studio Pro's merge/diff can throw on this model (see above). Repair, gated:" \
+              "bin/doctor.sh --fix-property-sets '$PROJECT_DIR'" ;;
+      *) echo "   property-set check exited $_ps_rc — see above" ;;
+    esac
+  fi
 fi
 
 # ── Script smoke — do the refreshed copies actually load on THIS machine? ────────────────

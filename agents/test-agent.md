@@ -57,7 +57,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/close-the-loop.md` | Cutover and retrospective |
 | `skills/report-schema.md` | Writing or reading docs/report.json |
 | `skills/harness-architecture.md` | Installing, extending, debugging or porting the verification harness |
-| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence |
+| `skills/measured-claims.md` | Before citing ANY behavioural claim about the harness, the Mendix runtime or a test tool as evidence, or counting tokens from transcripts |
 | `skills/agent-permission-friction.md` | Any refused, denied or blocked command |
 | `skills/e2e-evidence-report.md` | Turning an already-rigorous run into a narrated proof a stakeholder can trust without running anything |
 | `skills/record-demo-video.md` | Recording a narrated screen-capture demo of a running app for a human to watch |

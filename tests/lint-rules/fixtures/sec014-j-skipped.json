@@ -1,0 +1,331 @@
+{
+ "associations": [
+  {
+   "from_entity": "Portal.Offer",
+   "module_name": "Portal",
+   "name": "Offer_Partner",
+   "qualified_name": "Portal.Offer_Partner",
+   "to_entity": "Portal.Partner"
+  },
+  {
+   "from_entity": "Portal.Offer",
+   "module_name": "Portal",
+   "name": "Offer_Contact",
+   "qualified_name": "Portal.Offer_Contact",
+   "to_entity": "Portal.Contact"
+  }
+ ],
+ "attributes": {
+  "Administration.Account": [
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Administration.Account",
+    "module_name": "Administration",
+    "name": "FullName"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Administration.Account",
+    "module_name": "Administration",
+    "name": "Email"
+   }
+  ],
+  "Portal.Contact": [
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Contact",
+    "module_name": "Portal",
+    "name": "Name"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Contact",
+    "module_name": "Portal",
+    "name": "Email"
+   }
+  ],
+  "Portal.Draft": [
+   {
+    "data_type": "Enumeration",
+    "entity_qualified_name": "Portal.Draft",
+    "module_name": "Portal",
+    "name": "Status"
+   }
+  ],
+  "Portal.Feed": [
+   {
+    "data_type": "Enumeration",
+    "entity_qualified_name": "Portal.Feed",
+    "module_name": "Portal",
+    "name": "Status"
+   }
+  ],
+  "Portal.Offer": [
+   {
+    "data_type": "Enumeration",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "Status"
+   },
+   {
+    "data_type": "Decimal",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "Amount"
+   },
+   {
+    "data_type": "DateTime",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "SubmittedAt"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "ApprovedBy"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "Note"
+   },
+   {
+    "data_type": "String",
+    "entity_qualified_name": "Portal.Offer",
+    "module_name": "Portal",
+    "name": "Format"
+   }
+  ]
+ },
+ "entities": [
+  {
+   "entity_type": "Persistent",
+   "module_name": "Portal",
+   "name": "Offer",
+   "qualified_name": "Portal.Offer"
+  },
+  {
+   "entity_type": "Persistent",
+   "module_name": "Portal",
+   "name": "Contact",
+   "qualified_name": "Portal.Contact"
+  },
+  {
+   "entity_type": "Persistent",
+   "module_name": "Administration",
+   "name": "Account",
+   "qualified_name": "Administration.Account"
+  },
+  {
+   "entity_type": "NonPersistent",
+   "module_name": "Portal",
+   "name": "Draft",
+   "qualified_name": "Portal.Draft"
+  },
+  {
+   "entity_type": "Persistent",
+   "is_external": true,
+   "module_name": "Portal",
+   "name": "Feed",
+   "qualified_name": "Portal.Feed"
+  }
+ ],
+ "options": {
+  "external_roles": "Partner"
+ },
+ "permissions": [
+  {
+   "access_type": "READ",
+   "entity_name": "Administration.Account",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "WRITE",
+   "entity_name": "Administration.Account",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Administration.Account",
+   "is_constrained": false,
+   "member_name": "FullName",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Administration.Account",
+   "is_constrained": false,
+   "member_name": "FullName",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Administration.Account",
+   "is_constrained": false,
+   "member_name": "Email",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Administration.Account",
+   "is_constrained": false,
+   "member_name": "Email",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "READ",
+   "entity_name": "Portal.Draft",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "WRITE",
+   "entity_name": "Portal.Draft",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Draft",
+   "is_constrained": false,
+   "member_name": "Status",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Draft",
+   "is_constrained": false,
+   "member_name": "Status",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "READ",
+   "entity_name": "Portal.Feed",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "WRITE",
+   "entity_name": "Portal.Feed",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Feed",
+   "is_constrained": false,
+   "member_name": "Status",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Feed",
+   "is_constrained": false,
+   "member_name": "Status",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_READ",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Note",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  },
+  {
+   "access_type": "MEMBER_WRITE",
+   "entity_name": "Portal.Offer",
+   "is_constrained": false,
+   "member_name": "Note",
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "xpath_constraint": ""
+  }
+ ],
+ "role_mappings": [
+  {
+   "module_name": "Portal",
+   "module_role_name": "Portal.Partner",
+   "user_role_name": "Partner"
+  },
+  {
+   "module_name": "Portal",
+   "module_role_name": "Portal.Buyer",
+   "user_role_name": "Buyer"
+  },
+  {
+   "module_name": "Portal",
+   "module_role_name": "Portal.Customer",
+   "user_role_name": "Customer"
+  }
+ ],
+ "user_roles": [
+  {
+   "module_roles": [
+    "Portal.Partner"
+   ],
+   "name": "Partner"
+  },
+  {
+   "module_roles": [
+    "Portal.Buyer"
+   ],
+   "name": "Buyer"
+  },
+  {
+   "module_roles": [
+    "Portal.Customer"
+   ],
+   "name": "Customer"
+  }
+ ]
+}

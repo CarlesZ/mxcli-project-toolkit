@@ -116,7 +116,7 @@ def check():
         violations.append(violation(
             message="PERF001 cannot run on this mxcli: entities have no generalization / qualified_name field. This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Entity", document_name="PERF001"),
-            suggestion="Upgrade mxcli, or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli, or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif entities_seen >= VOCAB_MIN_ENTITIES and with_parent == 0:
         violations.append(violation(

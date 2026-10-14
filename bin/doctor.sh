@@ -42,6 +42,18 @@
 #                                           # (search "Gate self-test") for what it proves and
 #                                           # why: mxbuild/java being PRESENT does not mean the
 #                                           # mxbuild gate can actually SEE an error.
+#   bin/doctor.sh --property-sets <dir>     # ONLY the Studio Pro merge-safety check: runs
+#                                           # `mxcli fix property-sets --dry-run` (read-only)
+#                                           # and records the result. Add --if-stale to skip
+#                                           # the run when it already ran for this mxcli
+#                                           # version (sync-project.sh does). Exit 0 clean,
+#                                           # 1 units need repair (NEEDS/FAILED rows), 2 not run
+#                                           # (incl. timeout), 3 this mxcli predates the command
+#                                           # (v0.26.0), 4 could not check (error, unclassified
+#                                           # output, a crashed probe) — a repair would not help.
+#   bin/doctor.sh --fix-property-sets <dir> # the same check, then the repair — and only
+#                                           # through bin/exec.sh --patch (snapshot, mxbuild
+#                                           # gate, restore on failure). See "Property sets".
 #
 # --install never downloads silently: it prints the plan first — what, from where, how big,
 # why, and the detected OS/arch — then asks [y/N] at a terminal, or requires --yes when there
@@ -56,12 +68,22 @@
 
 set -u
 
+# The repair step of --fix-property-sets, run BY bin/exec.sh --patch, never by hand: exec.sh
+# calls a .sh patch as `bash <script> <model.mpr> [args...]`, so this file is its own patch
+# script and the repair inherits exec.sh's snapshot, mxbuild gate and restore.
+if [ "${2:-}" = "--property-sets-apply-step" ]; then
+  { [ -n "${3:-}" ] && [ -x "$3" ]; } || { echo "--property-sets-apply-step: no runnable mxcli given" >&2; exit 2; }
+  exec "$3" fix property-sets -p "$1"
+fi
+
 TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_DIR=""
 INSTALL=0
 ASSUME_YES=0
 QUICK=0
 GATE_SELFTEST=0
+PS_MODE=""
+PS_IF_STALE=0
 NO_DOCKER="${MXTK_DOCTOR_SKIP_DOCKER:-0}"
 DOCKER_PROBE_SECS="${MXTK_DOCKER_PROBE_SECS:-8}"
 for _arg in "$@"; do
@@ -71,6 +93,9 @@ for _arg in "$@"; do
     --quick)   QUICK=1 ;;
     --gate-selftest) GATE_SELFTEST=1 ;;
     --no-docker) NO_DOCKER=1 ;;
+    --property-sets)     PS_MODE=check ;;
+    --fix-property-sets) PS_MODE=fix ;;
+    --if-stale)          PS_IF_STALE=1 ;;
     *)         PROJECT_DIR="$_arg" ;;
   esac
 done
@@ -140,6 +165,206 @@ probe_runs() {
   fi
   return "$_pr_exit"
 }
+
+# --- property sets: Studio Pro merge safety (mxcli v0.26.0+) ----------------------------------
+#
+# WHY THIS EXISTS (#295). Studio Pro's merge and diff compare two revisions of an element by its
+# property NAMES, and throw when they differ ("Objects with ID … of type … do not have the same
+# properties"). mxcli up to v0.25 wrote units without Studio Pro's full property set. Such a
+# model passes `mx check`, the build and the runtime — every rung exec.sh has — and breaks the
+# first diff or Team Server merge after Studio Pro has saved one of those documents. mxcli
+# v0.26.0 completes the set on every write it makes, but only for the units it rewrites; units
+# an older mxcli wrote keep their gaps until `mxcli fix property-sets` normalizes them. Field
+# case: 78 changed units written with v0.24 on a production app, and no gate could see it.
+#
+# REPORT FIRST. The check is always the --dry-run (read-only; mxcli opens the model with its
+# reader, not its writer). The repair runs only on --fix-property-sets, and only through
+# bin/exec.sh --patch, so it gets the snapshot, the mxbuild gate and the auto-restore every
+# other model write gets. A repair that leaves units FAILED (a value in a key the project's
+# Mendix version does not declare) exits 1, and exec.sh then restores the whole run — fix
+# those units by hand first.
+#
+# What the dry-run prints and how it exits is mxcli's cmd/mxcli/cmd_fix_property_sets.go at
+# v0.26.0: exit 0 = nothing to do; exit 1 = a `  NEEDS ` or `  FAILED ` row per unit, OR an
+# error such as "project not found" (both exit 1, so the rows decide, never the code alone).
+# Anything else is "could not classify", never clean. Support is read from `mxcli fix --help`
+# listing the subcommand: `mxcli fix property-sets --help` exits 0 on v0.24/v0.25 too (cobra
+# prints the parent's help for an unknown subcommand), so it cannot be the probe. Golden
+# captures of all three versions: tests/wave2/fixtures/property-sets/.
+#
+# The result is recorded in <project>/.claude/.property-sets-receipt (machine-local, like the
+# doctor receipt): line 1 "<date> <time> <result> <detail>", line 2 "mxcli: <--version line>".
+# Line 2 is what --if-stale and --quick compare: the check is owed again when mxcli changes.
+# Only a settled answer is recorded — clean, needs, failed, or unsupported (the support probe
+# ran and the subcommand is absent). An error or a timeout is never written, and --if-stale
+# skips the run only on a recorded clean/unsupported, so a one-off failure (locked model,
+# unreadable version, a probe that crashed) is re-checked on the next sync instead of being
+# repeated from the receipt until mxcli changes.
+#
+# The dry-run reads every unit, so it is bounded: MXTK_PROPSETS_TIMEOUT seconds (default 300),
+# through `timeout` when a working one is on PATH, else a polling watchdog. A timeout is
+# NOT RUN (exit 2), not cached. MXTK_PROPSETS_NO_TIMEOUT_BIN=1 forces the watchdog (fixtures).
+PS_RESULT=""
+PS_DETAIL=""
+PS_OUT=""
+PS_VER=""
+ps_receipt() { printf '%s/.claude/.property-sets-receipt' "$PROJECT_DIR"; }
+ps_version() { probe_capture _ps_v "$1" --version || true; printf '%s\n' "$_ps_v" | grep -v '^[[:space:]]*$' | head -1; }
+# ps_supported <mxcli> — 0 supported, 1 the help ran and does not list it, 2 the probe failed.
+ps_supported() {
+  probe_capture _ps_help "$1" fix --help || return 2
+  printf '%s\n' "$_ps_help" | grep -qE '^[[:space:]]+property-sets[[:space:]]' || return 1
+}
+# ps_bounded <var> <secs> <cmd...> — probe_capture with a clock; returns 124 on timeout.
+ps_bounded() {
+  _pb_var="$1"; _pb_t="$2"; shift 2
+  _pb_f=$(mktemp "${TMPDIR:-/tmp}/doctor-ps.XXXXXX"); _pb_rc=0
+  if [ "${MXTK_PROPSETS_NO_TIMEOUT_BIN:-0}" != 1 ] && timeout 5 true >/dev/null 2>&1; then
+    timeout "$_pb_t" "$@" > "$_pb_f" 2>&1 < /dev/null || _pb_rc=$?
+  else
+    "$@" > "$_pb_f" 2>&1 < /dev/null &
+    _pb_pid=$!; _pb_s=0
+    while kill -0 "$_pb_pid" 2>/dev/null; do
+      if [ "$_pb_s" -ge "$_pb_t" ]; then
+        kill "$_pb_pid" 2>/dev/null; wait "$_pb_pid" 2>/dev/null; _pb_rc=124; break
+      fi
+      sleep 1; _pb_s=$((_pb_s + 1))
+    done
+    [ "$_pb_rc" -eq 124 ] || { wait "$_pb_pid"; _pb_rc=$?; }
+  fi
+  eval "$_pb_var=\$(cat \"\$_pb_f\")"
+  rm -f "$_pb_f"
+  return "$_pb_rc"
+}
+# ps_classify <exit> <output> — sets PS_RESULT (clean|needs|failed|error) and PS_DETAIL.
+ps_classify() {
+  _psc_checked="$(printf '%s\n' "$2" | grep -m1 -E '^Checked [0-9]+ unit' || true)"
+  _psc_needs="$(printf '%s\n' "$2" | grep -c '^  NEEDS ' || true)"
+  _psc_failed="$(printf '%s\n' "$2" | grep -c '^  FAILED ' || true)"
+  if [ "$1" -eq 0 ] && printf '%s\n' "$2" | grep -q 'no readable Mendix version'; then
+    PS_RESULT=error; PS_DETAIL="mxcli read no Mendix version from the model, so nothing was checked"
+  elif [ "$1" -eq 0 ]; then
+    PS_RESULT=clean; PS_DETAIL="${_psc_checked:-exit 0}"
+  elif [ "$1" -eq 1 ] && [ "$_psc_needs" -gt 0 ]; then
+    PS_RESULT=needs; PS_DETAIL="$_psc_needs unit(s) need their property set completed, $_psc_failed cannot be normalized"
+  elif [ "$1" -eq 1 ] && [ "$_psc_failed" -gt 0 ]; then
+    PS_RESULT=failed; PS_DETAIL="$_psc_failed unit(s) hold a value in a key this Mendix version does not declare"
+  else
+    PS_RESULT=error
+    PS_DETAIL="exit $1: $(printf '%s\n' "$2" | grep -v -e '^[[:space:]]*$' -e '^WARNING: This is a' | head -1)"
+  fi
+}
+ps_write_receipt() {
+  case "$PS_RESULT" in clean|needs|failed|unsupported) ;; *) return 0 ;; esac
+  [ -n "$PS_VER" ] || return 0
+  [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ] || return 0
+  mkdir -p "$PROJECT_DIR/.claude" 2>/dev/null || return 0
+  { printf '%s %s %s\n' "$(date '+%Y-%m-%d %H:%M')" "$PS_RESULT" "$PS_DETAIL"
+    printf 'mxcli: %s\n' "$PS_VER"
+  } > "$(ps_receipt)" 2>/dev/null || true
+  if [ -d "$PROJECT_DIR/.git" ] && ! git -C "$PROJECT_DIR" check-ignore -q .claude/.property-sets-receipt 2>/dev/null; then
+    printf '\n# Machine-local toolkit marker (doctor.sh property-set check)\n/.claude/.property-sets-receipt\n' \
+      >> "$PROJECT_DIR/.gitignore" 2>/dev/null \
+      && note "(added /.claude/.property-sets-receipt to the project's .gitignore — the receipt is machine-local)"
+  fi
+}
+# ps_stale — 0 when no check has been recorded for the mxcli that is installed now.
+ps_stale() { [ ! -f "$(ps_receipt)" ] || [ "$(sed -n '2s/^mxcli: //p' "$(ps_receipt)")" != "$PS_VER" ]; }
+# ps_check — needs MPR and PMXCLI_PROBE (empty is fine: reported NOT RUN). Sets PS_RESULT.
+ps_check() {
+  PS_RESULT=not-run; PS_DETAIL=""
+  if [ -z "${MPR:-}" ]; then note "property sets: NOT RUN — no .mpr in the project root or app/"; return 0; fi
+  if [ -z "${PMXCLI_PROBE:-}" ]; then note "property sets: NOT RUN — no runnable project mxcli"; return 0; fi
+  PS_VER="$(ps_version "$PMXCLI_PROBE")"
+  _pss_rc=0; ps_supported "$PMXCLI_PROBE" || _pss_rc=$?
+  if [ "$_pss_rc" -eq 2 ]; then
+    PS_RESULT=error; PS_DETAIL="'mxcli fix --help' itself failed, so support is unknown"
+    warn "property sets: could not run the check — $PS_DETAIL (not recorded; the next run re-checks)"
+    return 0
+  fi
+  if [ "$_pss_rc" -eq 1 ]; then
+    PS_RESULT=unsupported; PS_DETAIL="${PS_VER:-this mxcli} has no 'fix property-sets'"
+    warn "property sets: ${PS_VER:-this mxcli} cannot check them — 'mxcli fix property-sets' arrived in v0.26.0"
+    note "Units an mxcli before v0.26 wrote can make Studio Pro's merge/diff throw although mx check,"
+    note "the build and the runtime all pass. Upgrade the project's mxcli, then run this check."
+    ps_write_receipt; return 0
+  fi
+  _psk_rc=0
+  _psk_t="${MXTK_PROPSETS_TIMEOUT:-300}"
+  ps_bounded PS_OUT "$_psk_t" "$PMXCLI_PROBE" fix property-sets -p "$MPR" --dry-run || _psk_rc=$?
+  if [ "$_psk_rc" -eq 124 ]; then
+    PS_RESULT=not-run; PS_DETAIL="timed out after ${_psk_t}s"
+    note "property sets: NOT RUN — the read-only check timed out after ${_psk_t}s (MXTK_PROPSETS_TIMEOUT)."
+    note "Not recorded. Run it when there is time: bin/doctor.sh --property-sets ${PROJECT_DIR:-<project>}"
+    return 0
+  fi
+  ps_classify "$_psk_rc" "$PS_OUT"
+  case "$PS_RESULT" in
+    clean) ok "property sets: $PS_DETAIL — every unit has the property names Studio Pro writes" ;;
+    needs|failed)
+      warn "property sets: $PS_DETAIL — Studio Pro's merge/diff can throw on these"
+      printf '%s\n' "$PS_OUT" | grep -E '^  (NEEDS|FAILED) ' | head -10 | while IFS= read -r l; do note "$l"; done
+      _psk_rows="$(printf '%s\n' "$PS_OUT" | grep -cE '^  (NEEDS|FAILED) ' || true)"
+      [ "$_psk_rows" -gt 10 ] && note "  … $((_psk_rows - 10)) more"
+      [ "$PS_RESULT" = needs ] && note "repair (snapshot + mxbuild gate + restore): bin/doctor.sh --fix-property-sets ${PROJECT_DIR:-<project>}"
+      [ "$(printf '%s\n' "$PS_OUT" | grep -c '^  FAILED ' || true)" -gt 0 ] && \
+        note "FAILED units are left alone by mxcli and make the guarded repair roll back — resolve them first." ;;
+    *) warn "property sets: could not classify the check — $PS_DETAIL (not recorded; the next run re-checks)"
+       printf '%s\n' "$PS_OUT" | grep -v '^[[:space:]]*$' | head -5 | while IFS= read -r l; do note "  $l"; done ;;
+  esac
+  ps_write_receipt
+}
+ps_apply() {
+  _psa_ex="$PROJECT_DIR/bin/exec.sh"
+  if [ ! -x "$_psa_ex" ] || ! grep -q 'PATCH_MODE' "$_psa_ex" 2>/dev/null; then
+    bad "property sets: not repaired — this project's bin/exec.sh has no --patch, and the repair is only run through it"
+    note "upgrade it first: bin/sync-project.sh $PROJECT_DIR --upgrade-bin exec.sh"
+    return 0
+  fi
+  note "repairing through bin/exec.sh --patch (snapshot, fix, mxbuild gate, kept only on a verified gate)…"
+  _psa_rc=0
+  ( cd "$PROJECT_DIR" && ./bin/exec.sh --patch "$TOOLKIT_ROOT/bin/doctor.sh" --property-sets-apply-step "$PMXCLI_PROBE" ) || _psa_rc=$?
+  if [ "$_psa_rc" -ne 0 ]; then
+    bad "property sets: exec.sh --patch exited $_psa_rc — the repair was not kept (its output above says why)"
+    return 0
+  fi
+  note "re-checking…"
+  ps_check
+}
+ps_exit_code() {
+  case "$PS_RESULT" in clean) echo 0 ;; not-run) echo 2 ;; unsupported) echo 3 ;; needs|failed) echo 1 ;; *) echo 4 ;; esac
+}
+
+# --property-sets / --fix-property-sets: only this check, then exit. Stands alone so
+# sync-project.sh and an agent about to merge can run it without waiting through the rest.
+if [ -n "$PS_MODE" ]; then
+  if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR" ]; then
+    echo "usage: $0 --property-sets|--fix-property-sets [--if-stale] <project-dir>" >&2; exit 2
+  fi
+  PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+  PROJECT_ROOT="$PROJECT_DIR"
+  # shellcheck disable=SC1091
+  . "$TOOLKIT_ROOT/project-bin/_common.sh"
+  MPR="$(ls "$PROJECT_DIR"/*.mpr 2>/dev/null | head -1)"
+  [ -n "$MPR" ] || MPR="$(ls "$PROJECT_DIR"/app/*.mpr 2>/dev/null | head -1)"
+  PMXCLI_PROBE="$(find_project_mxcli 2>/dev/null || true)"
+  head_ "Property sets (Studio Pro merge safety): $PROJECT_DIR"
+  if [ "$PS_IF_STALE" = 1 ] && [ "$PS_MODE" = check ] && [ -n "$PMXCLI_PROBE" ]; then
+    PS_VER="$(ps_version "$PMXCLI_PROBE")"
+    if [ -n "$PS_VER" ] && ! ps_stale; then
+      PS_RESULT="$(sed -n '1s/^[^ ]* [^ ]* \([^ ]*\).*/\1/p' "$(ps_receipt)")"
+      # Only a settled "nothing to do here" short-circuits; needs/failed re-check every time.
+      case "$PS_RESULT" in
+        clean|unsupported)
+          ok "already checked for $PS_VER: $(sed -n 1p "$(ps_receipt)")"
+          exit "$(ps_exit_code)" ;;
+      esac
+    fi
+  fi
+  ps_check
+  [ "$PS_MODE" = fix ] && [ "$PS_RESULT" = needs ] && ps_apply
+  exit "$(ps_exit_code)"
+fi
 
 # --- platform -------------------------------------------------------------------------------
 
@@ -958,6 +1183,35 @@ if [ -n "$PROJECT_DIR" ]; then
     note "your own default mode (~/.claude/settings.json): ${_um:-not set, so the Claude Code built-in default applies}"
     note "No prompts at all is your call, not the project's: set it in ~/.claude/settings.json, or start"
     note "'claude --dangerously-skip-permissions' only inside a container/VM. Deny/ask rules still apply."
+
+    # Property sets (#295) — see the header above ps_check. A full run checks (read-only);
+    # --quick (what exec.sh runs when the mxcli version changes) only compares the receipt
+    # with the installed mxcli, so an upgrade surfaces as a WARN at the next exec.
+    head_ "Property sets (Studio Pro merge safety): $PROJECT_DIR"
+    if [ "$QUICK" != 1 ]; then
+      ps_check
+    elif [ -n "${MPR:-}" ] && [ -n "${PMXCLI_PROBE:-}" ]; then
+      PS_VER="$(ps_version "$PMXCLI_PROBE")"
+      if ps_stale; then
+        _psq_rc=0; ps_supported "$PMXCLI_PROBE" || _psq_rc=$?
+        case "$_psq_rc" in
+          0) warn "property sets not checked for this mxcli (${PS_VER:-?}) — Studio Pro merge/diff can throw on units an older mxcli wrote"
+             note "read-only check: bin/doctor.sh --property-sets $PROJECT_DIR" ;;
+          1) note "${PS_VER:-this mxcli} predates 'mxcli fix property-sets' (v0.26.0) — upgrade before a Team Server merge" ;;
+          *) warn "property sets: could not probe this mxcli for 'fix property-sets' ('mxcli fix --help' failed)" ;;
+        esac
+      else
+        _psq="$(sed -n 1p "$(ps_receipt)")"
+        case "$_psq" in
+          *" clean "*|*" clean") ok "property sets: last check for this mxcli was clean ($_psq)" ;;
+          *" unsupported "*) note "property sets: this mxcli cannot check them (v0.26.0+ needed)" ;;
+          *) warn "property sets: last check for this mxcli: $_psq"
+             note "repair: bin/doctor.sh --fix-property-sets $PROJECT_DIR" ;;
+        esac
+      fi
+    else
+      note "property sets: NOT RUN — no .mpr or no runnable project mxcli (see above)"
+    fi
   fi
 fi
 

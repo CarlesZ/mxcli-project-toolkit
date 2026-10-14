@@ -109,6 +109,46 @@ fi
 PH_TOTAL="$(mxtk_placeholder_total "$PROJECT_DIR"/.claude/agents/*.md "$PROJECT_DIR/CLAUDE.local.md")"
 PH_FILES="$(mxtk_placeholders "$PROJECT_DIR"/.claude/agents/*.md "$PROJECT_DIR/CLAUDE.local.md" | grep -c .)"
 
+# --- existing-app-change: the delivery round, not the stage (#301) ----------------------------
+# A change stream on a live app is delivered as rounds of small stories, and the stage line stood
+# still at "Stage 1" through four delivered rounds (field, 2026-10-13). The round is the unit of
+# status in that mode: PROJECT.md "## Rounds" (skills/existing-app-change.md), one row per round,
+# columns found by header name. The LAST row is the round in flight. Nothing here is read, and
+# nothing printed, in the other entry modes.
+ROUND_LINE=""; EAC=0
+if [ "$ENTRY" = "existing-app-change" ]; then
+  EAC=1
+  ROUND_LINE="$(awk -F'|' '
+    function trim(s) { gsub(/^[ \t*`]+|[ \t*`]+$/, "", s); return s }
+    function cell(k) { return (k in col) ? trim($(col[k])) : "" }
+    /^## +Rounds *$/ { sec = 1; next }
+    sec && /^## / { sec = 0 }
+    !sec || !/^\|/ { next }
+    !hdr { for (i = 2; i < NF; i++) col[tolower(trim($i))] = i; hdr = 1; next }
+    /^\| *:?-/ { next }
+    { n++; r = cell("round"); t = cell("title"); s = cell("state"); st = cell("stories")
+      if (tolower(s) ~ /^delivered/) d++ }
+    END {
+      if (!n) { print "none recorded — add a row to PROJECT.md \"## Rounds\" when a round starts (skills/existing-app-change.md)"; exit }
+      printf "Round %s: %s — %s%s · %d of %d round(s) delivered\n", r, (t != "" ? t : "(no title)"), (s != "" ? s : "(no state)"), (st != "" ? " · stories: " st : ""), d, n
+    }' "$REG")"
+fi
+
+# --- targeted manual Studio Pro steps (#298) -------------------------------------------------
+# docs/manual-steps.md, from templates/manual-steps.md: one "- [ ] Done" line per step, ticked
+# when the step is done (by hand or by patch). Pending = unticked. Fenced blocks are skipped so
+# the template's worked example never counts. No file, no output — the screen is unchanged.
+MANUAL=""
+MS_FILE="$PROJECT_DIR/docs/manual-steps.md"
+if [ -f "$MS_FILE" ]; then
+  MANUAL="$(awk '
+    /^[ \t]*```/ { fence = !fence; next }
+    fence { next }
+    /^[ \t]*[-*] \[ \] *(\*\*)?Done/ { p++; t++ }
+    /^[ \t]*[-*] \[[xX]\] *(\*\*)?Done/ { t++ }
+    END { printf "manual steps pending %d of %d", p, t }' "$MS_FILE")"
+fi
+
 # --- doctor receipt -------------------------------------------------------------------------
 DR="$PROJECT_DIR/.claude/.doctor-receipt"
 if [ -f "$DR" ]; then
@@ -142,6 +182,25 @@ NEED_ATTN="$(printf '%s\n' "$GC" | awk '/^Needs attention/{f=1;next} /^Next up:|
 APPROVED_OVER="$(printf '%s\n' "$GC" | grep -m1 '^Approved over a failing gate:' | sed -E 's/^Approved over a failing gate: *//; s/ — .*$//')"
 N_ATTN="$(printf '%s\n' "$GC" | grep -oE '[0-9]+ need attention' | grep -oE '^[0-9]+' || echo 0)"
 OB_PENDING="$(printf '%s\n' "$GC" | grep -E '^Obligation ' | grep -E ' (PENDING|FAULT) ' | awk '{print $2": "$3}' | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+# NEXT never sends a project to final-look (the Stage 6 whole-app LOOK) before Stage 6: a Stage 1
+# project was told "discharge: final-look" and never saw gate-check's "Next up:" hint behind it
+# (review of #303). final-look ONLY, and only when the stage line is gate-check's own derived
+# readout — the same rule obligation-check.sh applies once it prints NOT YET DUE (#321), at which
+# point final-look never reaches OB_PENDING and this is a no-op. Every other obligation keeps its
+# place in NEXT whatever the stage line says: a hand-written or lagging line must not hide the
+# module passes a project with an opened module owes (review of #326). The FIRST "Stage N" on the
+# line is the stage; the screen's "obligations pending" line still lists final-look.
+OB_NEXT="$OB_PENDING"
+case "$STAGE_LINE" in *"(derived by gate-check"*)
+  CUR_STAGE="$(printf '%s\n' "$STAGE_LINE" | grep -oE 'Stage [0-9P]' | head -1 | sed 's/^Stage //')"
+  FL_FROM="$(awk -F'\t' '$1=="final-look"{print $8; exit}' "$TOOLKIT_ROOT/bin/lib/obligations.tsv" 2>/dev/null)"
+  case "$CUR_STAGE:$FL_FROM" in
+    P:[0-9]*) _behind=1 ;;
+    [0-9]:[0-9]*) [ "$CUR_STAGE" -lt "$FL_FROM" ] && _behind=1 || _behind=0 ;;
+    *) _behind=0 ;;
+  esac
+  [ "$_behind" = 1 ] && OB_NEXT="$(printf '%s\n' "$OB_PENDING" | tr ',' '\n' | sed -E 's/^ +//' | grep -v '^final-look:' | paste -s -d, - | sed 's/,/, /g')" ;;
+esac
 MOD_OPENED="$(printf '%s\n' "$GC" | grep -m1 -E '^Obligation look ' | grep -q 'no module has been opened' && echo 0 || echo '≥1')"
 GC_NEXT="$(printf '%s\n' "$GC" | grep -m1 '^Next up:' | sed 's/^Next up: *//')"
 TK_UPD="$(printf '%s\n' "$GC" | grep -m1 '^Toolkit updates:' | sed 's/^Toolkit updates: *//; s/\..*$//')"
@@ -150,6 +209,13 @@ if [ -x "$PROJECT_DIR/bin/coherence-cadence.sh" ]; then
   COH_OUT="$(cd "$PROJECT_DIR" && bash bin/coherence-cadence.sh 2>/dev/null | tail -1 | sed -E 's/^ +//')"
   COH="coherence $COH_OUT"
 fi
+
+# existing-app-change: a change stream delivered in rounds does not fill the pipeline agent stubs,
+# and "agent slots unfilled: 35 in 6 file(s)" sat in WATCH through four delivered rounds (#301).
+# In that mode only, that one WATCH item is dropped; the round line above is the progress readout.
+# done- stays: Stage 5-6 run the build loop unchanged in this mode (existing-app-change.md), and
+# the stub NEXT rule stays because it still fires only at Stage 5-7. Every other mode prints
+# exactly as before (tests/wave2/test-status-existing-app.sh, byte-diff).
 
 # --- NEXT: ordered lookup, earliest wins. Owner skill in the right-hand comment. -------------
 next_action() {
@@ -166,7 +232,7 @@ next_action() {
   if [ -n "$LAST_FAIL" ]; then echo "last gate FAILED for: $LAST_FAIL— fix and re-exec (docs/BUILD-LOG.md, .mpr-snapshots/last-mxbuild-errors.json)"; return; fi   # iterative-build-loop.md Gate: BUILD
   if [ -n "$DONE_STALL" ]; then echo "$DONE_STALL — done- needs the coverage checklist; run bin/coverage-preflight.sh to see what blocks it (iterative-build-loop.md)"; return; fi
   if [ -n "$NOT_DONE_PASS" ]; then echo "gate-passed but not done-: $NOT_DONE_PASS— walk the happy path + coverage checklist, then git mv to done- (iterative-build-loop.md step 13-15)"; return; fi
-  if [ -n "$OB_PENDING" ]; then echo "discharge: $OB_PENDING (bin/lib/obligations.tsv names the artifact each owes)"; return; fi
+  if [ -n "$OB_NEXT" ]; then echo "discharge: $OB_NEXT (bin/lib/obligations.tsv names the artifact each owes)"; return; fi
   [ -n "$GC_NEXT" ] && { echo "$GC_NEXT"; return; }
   echo "nothing overdue — take the next script in architecture/build-plan.md"
 }
@@ -195,12 +261,13 @@ TK="toolkit $TK_COMMIT_NOW"; [ -n "$TK_COMMIT_REG" ] && [ "$TK_COMMIT_REG" != "$
 [ -n "$TK_UPD" ] && TK="$TK · updates: $TK_UPD"
 WATCH=""
 for _w in "${APPROVED_OVER:+APPROVED OVER A FAILING GATE: $APPROVED_OVER}" "$DONE_STALL" "${BP_STALE%% (*}" \
-          "$( [ "${PH_TOTAL:-0}" -gt 0 ] && echo "agent slots unfilled: $PH_TOTAL in $PH_FILES file(s)" )" "$PACK_GAP"; do
+          "$( [ "${PH_TOTAL:-0}" -gt 0 ] && [ "$EAC" = 0 ] && echo "agent slots unfilled: $PH_TOTAL in $PH_FILES file(s)" )" "$PACK_GAP"; do
   [ -n "$_w" ] && WATCH="${WATCH:+$WATCH · }$_w"
 done
 if [ "$BRIEF" = 1 ]; then
   echo "WHERE   $NAME · $STAGE_LINE${ENTRY:+ · $ENTRY}${ADOPTED:+ · joined at $ADOPTED}"
-  echo "STATE   scripts $N_SCRIPTS written / $N_PASS gate-pass / $N_DONE done- · modules opened $MOD_OPENED${SKELETON:+ · skeleton $SKELETON} · UNSYNCED $UNSYNCED · open questions $OPEN_Q"
+  [ -n "$ROUND_LINE" ] && echo "ROUND   $ROUND_LINE"
+  echo "STATE   scripts $N_SCRIPTS written / $N_PASS gate-pass / $N_DONE done- · modules opened $MOD_OPENED${SKELETON:+ · skeleton $SKELETON} · UNSYNCED $UNSYNCED · open questions $OPEN_Q${MANUAL:+ · $MANUAL}"
   [ -n "$WATCH" ] && echo "WATCH   $WATCH"
   echo "NEXT    $NEXT"
   "$TOOLKIT_ROOT/bin/token-burn.sh" "$PROJECT_DIR" --brief 2>/dev/null
@@ -208,8 +275,10 @@ if [ "$BRIEF" = 1 ]; then
 fi
 printf '\n%s — %s%s%s\n' "$NAME" "$STAGE_LINE" "${ENTRY:+ · $ENTRY}" "${ADOPTED:+ · joined at stage $ADOPTED}"
 printf '%s\n\n' "$TK"
+[ -n "$ROUND_LINE" ] && printf 'ROUND     %s\n' "$ROUND_LINE"
 printf 'DONE      scripts: %s written, %s gate-pass, %s done-  ·  modules opened: %s%s\n' "$N_SCRIPTS" "$N_PASS" "$N_DONE" "$MOD_OPENED" "${SKELETON:+  ·  skeleton proven $SKELETON}"
 printf 'OVERDUE   %s  ·  %s  ·  %s  ·  UNSYNCED markers: %s  ·  open questions: %s\n' "$DOCTOR" "$LINT" "${COH:-coherence: cadence script not installed}" "$UNSYNCED" "$OPEN_Q"
+[ -n "$MANUAL" ] && printf '          %s (docs/manual-steps.md)\n' "$MANUAL"
 [ -n "$OB_PENDING" ] && printf '          obligations pending: %s\n' "$OB_PENDING"
 [ -n "$LAST_FAIL" ] && printf '          last gate FAILED: %s\n' "$LAST_FAIL"
 [ -n "$WATCH" ] && printf 'WATCH     %s\n' "$WATCH"

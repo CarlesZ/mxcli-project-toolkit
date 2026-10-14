@@ -150,7 +150,7 @@ def check():
         violations.append(violation(
             message="UI001 cannot run on this mxcli: widgets have no parent_widget_id / widget_type / style field. This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Page", document_name="UI001"),
-            suggestion="Upgrade mxcli, or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli, or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif widgets_seen >= VOCAB_MIN_WIDGETS and vocab_hits == 0:
         violations.append(violation(

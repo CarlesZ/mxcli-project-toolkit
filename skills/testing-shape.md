@@ -94,9 +94,8 @@ written by `bin/init-project.sh`, appended to older projects by `bin/sync-projec
 
 - **Unit flips to yes per module** only when the module has calculation, mapping, or date/money
   logic; calls a Java action or a REST service; or a bug was fixed in that flow (the unit test pins
-  the fix). Otherwise Unit stays **no**. Before this default existed nothing set it, so agents read
-  "optional" as "yes" — and in a 20-task UX-fix run (toolkit issue #274) **143 minutes** of
-  microflow tests found stale expected strings and credential problems, not a single logic bug.
+  the fix). Otherwise Unit stays **no**. With no default set, agents read "optional" as "yes"
+  (what that cost: §3, "Why scoped").
 - **Trace may be added** by a module that **calls out** to something external, even when the
   project default is off. That is where swallowed failures live, and it is the only place Trace
   reliably earns its setup cost.
@@ -131,19 +130,16 @@ definition of done (`iterative-build-loop.md`). Without this anchor someone decl
 
 **After the base set: re-run what the change touched — once — and nothing else.**
 
-> **The routing question, before any test run after the base set:** *does this run prove something
-> the existing artifact does not?* If the journey report, screenshot or diff already in hand proves
-> it, the run is waste. If you cannot name what the run would show that the artifact does not, do
-> not run it.
+> **Before any test run after the base set, ask:** *does this run prove something the artifact in
+> hand (journey report, screenshot, diff) does not?* If you cannot name what it would show, do not run it.
 
-**The subject set.** A re-run is scoped to the tests whose *subject* the change touched, read off
-what the exec'd script(s) changed — the script is the change list; `bin/exec.sh` also tags each run
-`ui-only` or `logic` and prints the lane below:
+**The subject set.** A re-run covers the tests whose *subject* the exec'd script(s) changed — the
+script is the change list; `bin/exec.sh` tags each run `ui-only` or `logic` and prints its lane:
 
 | Changed in this exec | Its subject set — re-run these, only these |
 |---|---|
 | A microflow | the tests that call it, plus the tests of its callers (`SHOW CALLERS OF <Mod.Flow>`) |
-| A page or snippet | the journeys whose steps visit that page (or a page that embeds the snippet) |
+| A page, snippet or layout | the journeys of every page the change reaches: the page itself, and every page that embeds a changed snippet or uses a changed layout, in any module |
 | An entity, association, enum or access rule | the tests and journeys of the module that owns it |
 
 Anything outside that set was not at risk from this change and is not re-run.
@@ -152,7 +148,7 @@ Anything outside that set was not at risk from this change and is not re-run.
 
 | Change class | What re-runs | What does not |
 |---|---|---|
-| **UI-only** — `ALTER PAGE`/`ALTER SNIPPET`, styling, captions, visibility, layout; **no** microflow, entity, association, enum, security or navigation change (`exec.sh` tag `ui-only`) | The implementer's own journey for that page, **once**, plus a **LOOK** (screenshot, actually opened — `module-review.md` stage 4) | No `.test.mdl`. No regression journeys of other modules. No full `mxcli test`. |
+| **UI-only** — `ALTER PAGE`/`ALTER SNIPPET`, styling, captions, visibility, layout; **no** microflow, entity, association, enum, security or navigation change (`exec.sh` tag `ui-only`) | The journeys of every page the change reaches (embedders of a changed snippet/layout included), **once**, plus a **LOOK** (screenshot, actually opened — `module-review.md` stage 4) | No `.test.mdl`. No journeys of pages the change does not reach. No full `mxcli test`. |
 | **Logic** — anything else (`exec.sh` tag `logic`; a mixed script is logic) | The subject set above: the changed microflows' tests and their callers' tests, the changed pages' journeys | Tests whose subject this change did not touch. |
 
 **Who re-runs:** the implementer, once per gate. **Reviewers verify artifacts** — the diff, the
@@ -160,12 +156,9 @@ screenshots, the journey report — and **never re-run** what the implementer al
 recorded. A reviewer who doubts an artifact says which claim it fails to prove; that is a finding,
 not a second run.
 
-**When the full suite runs:** full `mxcli test` (and the module's whole journey set) runs **at
-module close**, as part of `module-review.md`'s PROVE stage; the **project-wide** suite runs at
-project close / cutover; and either runs **whenever the user explicitly asks for it** in that
-message. Those are the only triggers — **never at batch close**, never after an individual fix,
-and never because the change "felt wide". The e2e instruments themselves (journeys, Playwright,
-DB assertions, LOOK) are unchanged by this rule; only their trigger is.
+**The full suite (and the module's whole journey set) runs on the last three rows below only** — **never at batch close**, never after
+an individual fix, never because the change "felt wide". The e2e instruments are unchanged; only
+their trigger is.
 
 | Event | What happens |
 |---|---|
@@ -176,15 +169,10 @@ DB assertions, LOOK) are unchanged by this rule; only their trigger is.
 | Project close / cutover | The project-wide suite, once. |
 | The user asks for a full run | Run it, that message is the trigger. |
 
-> **What the unscoped rule produced (toolkit issue #274, a 20-task UX-fix retro).** This table
-> used to say "a fix to an existing script → re-run the suite as regression", with no scope. Read
-> literally, every caption change re-ran everything. Measured: each UI-only change was re-proven
-> **5–10×** — the implementer's journey, then 4–5 regression journeys of other modules, then the
-> reviewer re-running the same journeys, then a full `mxcli test` (~6 min) at every batch close.
-> **143 minutes of microflow tests** in that run found stale expected strings and credential
-> problems — not one logic bug — because the changes under test contained no logic. The fix is
-> not "test less", it is "test the subject": a caption change has no microflow subject, so it owes
-> one journey and one look.
+> **Why scoped (#274):** the old unscoped "re-run the suite as regression" re-proved each UI-only
+> change 5–10× (other modules' journeys, the reviewer re-running them, a full `mxcli test` at every
+> batch close), and with no Unit default set, **143 minutes** of microflow tests found stale strings,
+> not one logic bug. A caption change owes one journey and one look.
 
 So the authoring conversation happens **once per module**; everything after is a scoped re-run.
 That is what makes this affordable on a module under active development.
@@ -241,13 +229,10 @@ is measured and wrong (the feature is broken), `INVALID` means **the instrument 
 absent, not green. "The test could not run" and "the feature is broken" send you to different
 people; blending them is how a week gets spent debugging a page that was never reached. In the
 report/exit-code dialect these become `pass` / `fail` / `fault`, and **`fault` is never amber** —
-amber means "ran, degraded". Corollary, applied everywhere in this toolkit: an empty result set is
-never a pass — guard non-emptiness first, then assert (`[].every()` is `true`).
+amber means "ran, degraded".
 
-**Two verdicts, never collapsed.** When a §4 shape is present the correct report is ***the test is
-invalid***, not *the feature failed*. Collapsing them is what sends people diagnosing the wrong
-subsystem. Refuse to report green on a zero-span trace assertion, an unguarded navigation, or a
-bare-existence DB assertion — regardless of what the runner printed.
+**A §4 shape means the test is *invalid*, not that the feature *failed*** — never report green on
+a zero-span trace assertion, an unguarded navigation or a bare-existence DB assertion.
 
 **An assertion is also too weak if it lacks a fixture, an observable, and an exact expected value.**
 Not "correct", not "as specified". The register says how a part lies; this says when the assertion
@@ -506,6 +491,9 @@ Data:   <ran | n/a>  — delta-not-existence: <y/n>                             
 Unit:   <ran | n/a>  — --list count matches file: <y/n>    every @expect visible: <y/n>
 Trace:  <ran | n/a>  — non-empty span check: <y/n>         activity granularity: <y/n>
 Stack:  docker | sp-local, APP_URL=<url>, docker status verified: <y/n>
+Refusals: <N of N> restricted pairs probed server-side (not a hidden menu item)
+HTTP:   undeclared 4xx/5xx: <0 of M> requests — each fails its step
+Final:  one clean-DB run <id>: <N of N> scenarios incl. timers, not stitched
 Invalid tests: <any §4 shape found — reported separately from feature failures, or "none">
 ```
 

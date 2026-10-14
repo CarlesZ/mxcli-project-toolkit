@@ -194,7 +194,7 @@ def check():
         violations.append(violation(
             message="UX001 cannot run on this mxcli: widgets() has no action_type/has_confirmation (added in mxcli 0.25.0). This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Page", document_name="UX001"),
-            suggestion="Upgrade mxcli to 0.25.0 or later, or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli to 0.25.0 or later, or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif widgets_in_scope == 0:
         violations.append(violation(

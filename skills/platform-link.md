@@ -450,6 +450,36 @@ cause, in the same output. A smoke test that quietly omits them reads as full co
 
 ---
 
+## Before a Team Server merge — three mxcli v0.25/v0.26 checks
+
+A model can be valid everywhere the toolkit looks and still break the first time Studio Pro
+compares two revisions. Three mxcli commands see what `mx check` and exec.sh's gate cannot.
+Each has a read-only form; run that first and read it before anything writes.
+
+| When | Read-only check | Repair |
+|---|---|---|
+| After every mxcli upgrade, and before any merge or Studio Pro pull of CLI-written history | `bin/doctor.sh --property-sets <project>` — wraps `mxcli fix property-sets -p <app>.mpr --dry-run` (v0.26.0+) | `bin/doctor.sh --fix-property-sets <project>` — runs `mxcli fix property-sets` through `exec.sh --patch` (snapshot, mxbuild gate, restore) |
+| After a `git checkout`, `git restore` or merge touched `mprcontents/` | `./mxcli fix hashes -p <app>.mpr` (v0.25.0+; exits 1 on any mismatch) | `./mxcli fix hashes -p <app>.mpr --repair` — rewrites the `.mpr` hash index from the files, never the files |
+| After committing model changes with git | `./mxcli git note -p <app>.mpr` (v0.26.0+) prints the `mx_metadata` note per unpushed commit | `--write` attaches it; push `refs/notes/mx_metadata` with the branch (trap 6c) |
+
+**Property sets, the one no gate sees.** mxcli up to v0.25 wrote units without part of the
+property set Studio Pro writes for the project's Mendix version. `mx check`, the build and the
+runtime all pass. Studio Pro's merge and diff then throw — *"Objects with ID … do not have the
+same properties"* — once Studio Pro has saved such a document, and the Version Control panel
+fails. Field case: 78 changed units written with v0.24 on a production app, with no gate able to
+see them. mxcli v0.26.0 completes the set on every unit it writes, but only on units it rewrites,
+so a project upgraded mid-flight still carries the old ones until the repair runs.
+`sync-project.sh` runs the read-only check after every toolkit pull until it comes back clean
+for the installed mxcli. After that it runs again only when mxcli changes. Errors and timeouts
+are never recorded, so the next run re-checks. `doctor --quick`, which exec.sh runs when the mxcli
+version changes, warns while the check is owed. The check reads every unit, so it is bounded by
+`MXTK_PROPSETS_TIMEOUT` (default 300 s, 120 s under sync), and a timeout reports NOT RUN. A unit the
+check reports `FAILED` has a value in a key the project's Mendix version does not declare. mxcli
+leaves such units alone, and its exit 1 makes `exec.sh --patch` roll the whole repair back, so
+resolve those units first. An mxcli older than v0.26.0 cannot run this check: upgrade it first.
+
+---
+
 ## Which repository is authoritative
 
 Decide once and write it down. The answer differs by route. (A project laid out per step 3's

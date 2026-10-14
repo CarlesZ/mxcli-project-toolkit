@@ -120,7 +120,7 @@ def check():
         violations.append(violation(
             message="PERF004 cannot run on this mxcli: entities have no entity_type / generalization field. This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Association", document_name="PERF004"),
-            suggestion="Upgrade mxcli, or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli, or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif len(ents) >= VOCAB_MIN_ENTITIES and persist_mark == 0:
         violations.append(violation(

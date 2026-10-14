@@ -14,11 +14,12 @@
 
 ## Where the ledger lives
 
-Three path shapes exist in real projects. All three are read by `project-bin/conformance-check.sh`
-and `project-bin/coverage-preflight.sh`; the first is canonical.
+Four path shapes exist in real projects. All four are read by `project-bin/conformance-check.sh`
+and `project-bin/coverage-preflight.sh`; the per-module file is canonical.
 
 | Path | When | Status |
 |---|---|---|
+| `architecture/modules/<Module>/coverage-ledger/<BRDID>.md` | module with several BRDs, split one ledger per BRD (`coverage-check-all.sh`'s form) | accepted — wins over the `coverage-ledger.md` beside it, which becomes the index |
 | `architecture/modules/<Module>/coverage-ledger.md` | multi-module project | **canonical** |
 | `architecture/modules/<Module>-coverage-ledger.md` | project whose `architecture/modules/` is flat | accepted |
 | `architecture/coverage-ledger.md` | single-BRD project | accepted |
@@ -30,8 +31,19 @@ together), and changing canon would invalidate every ledger already written to i
 The flat shape is read because it is what projects actually have: PROJECT-A's `architecture/modules/`
 contains `Approval-brief.md`, `ProductNumbers.md`, `Common-brief.md` and no subdirectories at all.
 An instrument that globs only the canonical shape tells such a project it has no ledger even when
-it has one. **When no ledger is found, the instruments print all three paths they tried** — a
+it has one. **When no ledger is found, the instruments print all the paths they tried** — a
 "not found" that does not name what it looked for is not actionable.
+
+The per-BRD directory is read because a module with several BRDs splits its ledger that way and
+keeps `coverage-ledger.md` as an index. Conformance measures every `<BRDID>.md` in it and writes
+one `docs/conformance/report-<date>-<BRDID>.tsv` per BRD; baseline pointers carry the BRD
+(`<BRDID>:<pointer>`), because the same JSON pointer recurs across BRDs. An index read on its own
+(`LEDGER_FILE=…/coverage-ledger.md`, or a module whose index links to another module's per-BRD
+file) is reported as an index, naming the files its rows are in.
+
+Bad, before the per-BRD read (field report, 2026-10-11) — every module with an index printed
+`FAULT: 0 measurable rows extracted from 1 ledger(s).` while its rows sat one directory down.
+`LEDGER_FILE=<file or directory>` overrides discovery in both instruments.
 
 ---
 

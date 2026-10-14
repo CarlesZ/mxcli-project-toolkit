@@ -55,6 +55,9 @@ mkproj() {  # $1 = dir
 set -e
 cd "$(dirname "$0")/.."
 sleep "${SNAP_SLEEP:-0}"
+if [ -n "${CS_DIR:-}" ]; then   # critical-section probe for the race case: who else is in here?
+  : > "$CS_DIR/in.$$"; ls "$CS_DIR" | grep -c '^in\.' >> "$CS_DIR/counts"; sleep 0.3; rm -f "$CS_DIR/in.$$"
+fi
 D=".mpr-snapshots/$(date +%Y%m%d-%H%M%S)-$$"
 mkdir -p "$D"; cp Fixture.mpr "$D/"; cp -r mprcontents "$D/"
 echo "Snapshot saved: $D"
@@ -114,6 +117,58 @@ has "takeover is said out loud" "$OUT" "taking it over"
 has "the run actually wrote" "$OUT" "fake mxcli exec"
 [ -f "$LOCK" ] && bad "lock left behind after a clean run" || ok "lock removed after the run"
 
+echo "-- lock: 12 contenders against one stale lock — never more than one holder (#304 review)"
+# The takeover used to move the stale lock aside and put it back with mv -f when it found a
+# fresh one: check-then-act. With >=3 contenders, B moved A's fresh lock aside, C's noclobber
+# write landed in the gap, B saw -e $LOCK and deleted A's lock — up to 3 holders at once.
+RACE_BAD=0; RACE_ENTERED=0; ROUNDS=10; N=12
+for round in $(seq 1 $ROUNDS); do
+  CS="$WORK/cs.$round"; mkdir -p "$CS"; GO="$WORK/go.$round"
+  printf '%s 1700000000 old.mdl\n' "$(dead_pid)" > "$LOCK"
+  PIDS=""
+  for c in $(seq 1 $N); do
+    ( cd "$P" && while [ ! -e "$GO" ]; do sleep 0.01; done
+      exec env CS_DIR="$CS" SKIP_BASELINE=1 SP_RESTART=0 MXTK_NO_INSTALL=1 MXTK_NO_SCORE=1 \
+        MXBUILD_PATH="$WORK/mxbuild" ./bin/exec.sh mdlsource/test.mdl ) >"$CS/out.$c" 2>&1 &
+    PIDS="$PIDS $!"
+  done
+  sleep 0.3; : > "$GO"
+  for p in $PIDS; do wait "$p" 2>/dev/null; done
+  [ -s "$CS/counts" ] && RACE_ENTERED=$((RACE_ENTERED+1))
+  _max="$(sort -n "$CS/counts" 2>/dev/null | tail -1)"
+  if [ "${_max:-0}" -gt 1 ]; then RACE_BAD=$((RACE_BAD+1)); echo "    round $round: $_max holders at once"; fi
+  rm -f "$LOCK" "$LOCK.takeover"
+done
+[ "$RACE_ENTERED" -eq "$ROUNDS" ] && ok "[setup] a contender took the stale lock in every round" \
+  || bad "[setup] only $RACE_ENTERED/$ROUNDS rounds had any holder — case proves nothing"
+[ "$RACE_BAD" -eq 0 ] && ok "never more than one holder across $ROUNDS rounds of $N contenders" \
+  || bad "$RACE_BAD/$ROUNDS rounds had more than one holder in the critical section"
+ls "$P/.mpr-snapshots/" | grep -q '\.stale\.' && bad "a .stale.<pid> aside file was left behind" || ok "no aside files left behind"
+
+echo "-- lock: a takeover file left by a killed contender does not block (instrument rule 7)"
+printf '%s 1700000000 old.mdl\n' "$(dead_pid)" > "$LOCK"
+printf '%s %s\n' "$(dead_pid)" "$(date +%s)" > "$LOCK.takeover"
+OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && has "dead-pid takeover file cleared, stale lock taken over" "$OUT" "taking it over" \
+  || bad "a dead contender's takeover file blocked (rc $RC): $(printf '%s' "$OUT" | tail -3)"
+[ -e "$LOCK.takeover" ] && bad "takeover file left behind" || ok "takeover file gone after the run"
+printf '%s 1700000000 old.mdl\n' "$(dead_pid)" > "$LOCK"
+: > "$LOCK.takeover"; touch -t 202601010000 "$LOCK.takeover"
+OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && ok "an empty takeover file older than a minute is stale too" || bad "empty old takeover file blocked (rc $RC)"
+rm -f "$LOCK.takeover"
+# A FRESH empty takeover file is a live contender between its create and its write, NOT stale.
+# `find -mmin +0` judged it stale within a second, so a third contender got in (review of #324).
+printf '%s 1700000000 old.mdl\n' "$(dead_pid)" > "$LOCK"
+: > "$LOCK.takeover"
+OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+[ "$RC" -ne 0 ] && ok "a fresh empty takeover file is respected: the run waits, then refuses (rc $RC)" \
+  || bad "a fresh empty takeover file was judged stale and the run went ahead"
+hasnt "  and it did not execute" "$OUT" "fake mxcli exec"
+[ -e "$LOCK.takeover" ] && [ ! -s "$LOCK.takeover" ] && ok "  and the contender's takeover file was left in place" \
+  || bad "the fresh takeover file was moved or replaced"
+rm -f "$LOCK" "$LOCK.takeover"
+
 echo "-- lock: old bare-pid format, dead pid"
 dead_pid > "$LOCK"
 OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
@@ -170,6 +225,65 @@ hasnt "nothing executed" "$OUT" "fake mxcli exec"
 kill -KILL "$SP" 2>/dev/null; wait "$SP" 2>/dev/null; rm -f "$P/Fixture.mpr.lock"
 ( cd "$P" && git checkout -q -- mprcontents )
 
+echo "-- leading flags in any order (#306 review): --commit-first --cr CR-NN <script>"
+printf 'cr edit\n' >> "$P/mprcontents/a.mxunit"
+HEAD2="$(git -C "$P" rev-parse HEAD)"
+OUT="$(run "$P" --commit-first --cr CR-07 mdlsource/test.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && ok "documented order ran (rc 0)" || bad "--commit-first --cr failed (rc $RC): $(printf '%s' "$OUT" | tail -4)"
+has "the CR tag was honoured" "$OUT" "Change request: CR-07"
+has "the script that ran is the real one" "$OUT" "fake mxcli exec"
+tail -1 "$P/docs/BUILD-LOG.md" 2>/dev/null | grep -q 'cr: CR-07' && ok "BUILD-LOG row carries cr: CR-07" \
+  || bad "BUILD-LOG row: $(tail -1 "$P/docs/BUILD-LOG.md" 2>/dev/null)"
+[ "$(git -C "$P" rev-list --count "$HEAD2"..HEAD)" = 1 ] && ok "exactly one model commit made" || bad "commits made: $(git -C "$P" rev-list --count "$HEAD2"..HEAD)"
+printf 'flag edit\n' >> "$P/mprcontents/a.mxunit"
+HEAD3="$(git -C "$P" rev-parse HEAD)"; NSNAP="$(ls "$P/.mpr-snapshots" | grep -c .)"
+OUT="$(run "$P" --commit-first --bogus mdlsource/test.mdl)"; RC=$?
+[ "$RC" -eq 2 ] && ok "a script name starting with -- is refused (rc 2)" || bad "misplaced flag: rc $RC"
+has "  and named" "$OUT" "'--bogus'"
+[ "$(git -C "$P" rev-parse HEAD)" = "$HEAD3" ] && ok "  before commit-first committed anything" || bad "commit-first committed before the refusal"
+[ "$(ls "$P/.mpr-snapshots" | grep -c .)" = "$NSNAP" ] && ok "  and before any snapshot" || bad "a snapshot was taken before the refusal"
+hasnt "  and nothing executed" "$OUT" "fake mxcli exec"
+( cd "$P" && git checkout -q -- mprcontents )
+
+echo "-- two-tree checkout (.mpr under app/): lock and --commit-first (#304 review; CLAUDE.md field-proof rule 2)"
+T="$WORK/twotree"; mkproj "$T"
+( cd "$T" && mkdir app && git mv Fixture.mpr app/ && git mv mprcontents app/ \
+  && git -c user.email=t@t -c user.name=t commit -qm two-tree ) >/dev/null 2>&1
+cat > "$T/bin/snapshot-mpr.sh" <<'SNAP2'
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+sleep "${SNAP_SLEEP:-0}"
+D=".mpr-snapshots/$(date +%Y%m%d-%H%M%S)-$$"
+mkdir -p "$D"; cp app/Fixture.mpr "$D/"; cp -r app/mprcontents "$D/"
+echo "Snapshot saved: $D"
+SNAP2
+chmod +x "$T/bin/snapshot-mpr.sh"
+TLOCK="$T/.mpr-snapshots/.exec.lock"
+[ -f "$T/app/Fixture.mpr" ] && [ ! -e "$T/Fixture.mpr" ] && ok "[setup] model only under app/" || bad "[setup] two-tree layout not built"
+H2="$(bg_hold "$T")"; BG_PIDS="$BG_PIDS $H2"
+if wait_lock "$TLOCK"; then
+  ok "the lock lives at the project root (.mpr-snapshots/.exec.lock), not under app/"
+  OUT="$(run "$T" mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -ne 0 ] && has "a second exec is refused on a two-tree checkout" "$OUT" "PID $H2" || bad "two-tree: second exec ran concurrently"
+else
+  bad "two-tree: background exec never took the lock at $TLOCK"
+fi
+kill -KILL "$H2" 2>/dev/null; wait "$H2" 2>/dev/null
+OUT="$(run "$T" mdlsource/test.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && has "two-tree: the SIGKILLed holder's lock is taken over" "$OUT" "taking it over" || bad "two-tree stale lock blocked (rc $RC)"
+printf 'edited\n' >> "$T/app/mprcontents/a.mxunit"; printf 'new\n' > "$T/app/mprcontents/b.mxunit"
+printf 'unrelated staged\n' > "$T/staged.txt"; ( cd "$T" && git add staged.txt )
+OUT="$(run "$T" mdlsource/test.mdl)"; RC=$?
+[ "$RC" -ne 0 ] && has "two-tree: a dirty app/ model is refused by default" "$OUT" "app/mprcontents" || bad "two-tree: dirty model under app/ not refused"
+TH="$(git -C "$T" rev-parse HEAD)"
+OUT="$(run "$T" --commit-first mdlsource/test.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && ok "two-tree: --commit-first committed and executed" || bad "two-tree --commit-first failed (rc $RC): $(printf '%s' "$OUT" | tail -4)"
+FILES="$(git -C "$T" diff --name-only "$TH" HEAD | sort | tr '\n' ' ')"
+[ "$FILES" = "app/mprcontents/a.mxunit app/mprcontents/b.mxunit " ] && ok "two-tree: commit holds exactly app/'s model paths" || bad "two-tree commit holds: $FILES"
+git -C "$T" diff --cached --name-only | grep -qx staged.txt && ok "two-tree: unrelated staged file still staged" || bad "two-tree: staged.txt lost its staged state"
+[ -e "$TLOCK" ] && bad "two-tree: lock left behind" || ok "two-tree: lock removed after the run"
+
 echo "-- watch-compat over real MDL"
 AG="$TOOLKIT/skills/agents-examples"; GAL="$TOOLKIT/examples/stylegallery/mdlsource/gallery"
 PFM="$TOOLKIT/tests/wave2/fixtures/page-fidelity-mocks"
@@ -201,6 +315,37 @@ printf "alter page Shop.Order_Overview { set Url = 'orders'; }\n" > "$WORK/url.m
 expect "$WORK/url.mdl" "restart needed" "page URL" "alter page { set Url = ... } (bug-log shape)"
 printf -- "-- create microflow Shop.ACT_X in a comment\nalter page Shop.P { set Caption = 'create microflow X; grant' on t1 }\n" > "$WORK/noise.mdl"
 expect "$WORK/noise.mdl" "watch can apply this" "" "comments and string literals never count"
+# Only ui-loop.md's watch-safe list may say "watch can apply this" (#304 review). Statements on
+# neither column are `unknown`. Real MDL where the repo has it: a shipped repro script, the
+# workflow example, a bug-log transcript, a captured DESCRIBE NAVIGATION.
+UNK="unknown — restart if behaviour looks stale"
+expect "$TOOLKIT/fixtures/import-mapping-range-repro/flip.mdl" "restart needed" "microflow" \
+  "associations + import mapping + microflow (flip.mdl) → the microflow still wins"
+grep -m1 -E '^create association RenA\.Item_Owner from RenA\.Item to RenA\.Owner;' \
+  "$TOOLKIT/bug-logs/pending-github-issues/rename-module-leaves-xpath.md" > "$WORK/assoc.mdl"
+[ -s "$WORK/assoc.mdl" ] && expect "$WORK/assoc.mdl" "$UNK" "create association" "create association (pending issue, verbatim)" \
+                         || bad "golden 'create association' line not found"
+awk '/^CREATE ENUMERATION /{p=1} p{print} p&&/^\);/{exit}' "$TOOLKIT/skills/build/workflow-example.mdl" > "$WORK/enum.mdl"
+[ -s "$WORK/enum.mdl" ] && expect "$WORK/enum.mdl" "$UNK" "CREATE ENUMERATION" "create enumeration (workflow-example.mdl)" \
+                        || bad "golden CREATE ENUMERATION block not found"
+awk '/^create java action Test\.JA_WithTypeParam/{p=1} p{print} p&&/^\$\$;/{exit}' \
+  "$TOOLKIT/bug-logs/pending-github-issues/bug87-describe-java-action-type-param-name.md" > "$WORK/ja.mdl"
+[ -s "$WORK/ja.mdl" ] && expect "$WORK/ja.mdl" "$UNK" "create java action" "create java action with a \$\$ body (bug87, verbatim)" \
+                      || bad "golden create java action block not found"
+expect "$TOOLKIT/tests/wave2/fixtures/design-audit-nav/describe-navigation-responsive.txt" "$UNK" "navigation" \
+  "create or replace navigation (captured DESCRIBE NAVIGATION output)"
+# No shipped file holds these two; written from the statement grammar in mxcli's generated
+# project CLAUDE.md (ALTER ENTITY ... MODIFY, CREATE CONSTANT) — no capture exists to take them from.
+printf 'alter entity Shop.Order modify attribute Note: String(500);\n' > "$WORK/modattr.mdl"
+expect "$WORK/modattr.mdl" "$UNK" "modify attribute" "alter entity ... modify attribute (no ADD) is not watch-safe"
+printf "create constant Shop.ApiBase type String default 'https://example.invalid';\n" > "$WORK/const.mdl"
+expect "$WORK/const.mdl" "$UNK" "create constant" "create constant"
+# Neutral for the watch verdict: a move into a folder (verbatim from a pending issue) next to a
+# watch-safe page edit stays "watch can apply this".
+{ grep -m1 -E "^move page RenA\.Other to folder 'Pages/Same';" \
+    "$TOOLKIT/bug-logs/pending-github-issues/rename-page-renames-folder.md"; cat "$PFM/bind-contract-alter.mdl"; } > "$WORK/movefolder.mdl"
+grep -q '^move page' "$WORK/movefolder.mdl" && expect "$WORK/movefolder.mdl" "watch can apply this" "" "move page ... to folder + alter page is not 'unknown'" \
+  || bad "golden 'move page ... to folder' line not found"
 
 echo "-- watch-compat in a real run"
 cp "$GAL/05-demo-data.mdl" "$P/mdlsource/demo.mdl"
@@ -223,6 +368,21 @@ has "a page-only script after an SCSS edit → restart, naming the file" "$OUT" 
 touch "$P/.mxcli/run-local.json"
 OUT="$(run "$P" mdlsource/page.mdl)"
 has "same script, SCSS older than the boot → watch applies it" "$OUT" "→ Watch: watch can apply this"
+
+echo "-- lint-gate's SEC014 note reaches a clean exec (#312)"
+# The note line is lint-gate.sh's own text in PR #312 (project-bin/lint-gate.sh, stderr, rc 0).
+cat > "$P/bin/lint-gate.sh" <<'LG'
+#!/usr/bin/env bash
+echo "note: SEC014 not configured — set .claude/lint-config.yaml rules: SEC014: options: external_roles (ask the user; 'none' is their decision)" >&2
+echo "PASS: no rule rose vs baseline"
+exit 0
+LG
+chmod +x "$P/bin/lint-gate.sh"
+OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+[ "$RC" -eq 0 ] && ok "clean lint run still exits 0" || bad "lint note changed the exit code (rc $RC)"
+has "the SEC014 note is shown on a clean run" "$OUT" "    note: SEC014 not configured"
+has "  and the run still reports lint clean" "$OUT" "lint: no rule rose"
+rm -f "$P/bin/lint-gate.sh"
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"

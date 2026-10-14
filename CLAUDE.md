@@ -28,7 +28,7 @@ Every stage and module build follows the **Live Checklist Protocol** (`skills/co
 ## One decision register
 All gate decisions land in the consuming project's `PROJECT.md`, marked `CONFIRMED` or `ASSUMED`. The `skills/checkpoints/` CAC files are the packaged mechanism that runs the runbook's interview protocol at the six busiest transitions — they write to `PROJECT.md`, never to a separate state file.
 
-**Ask, then stop.** Gate questions are actually asked in chat — on Claude Code via `AskUserQuestion` (clickable options), on any other harness as plain numbered markdown with "something else" always available — and **either way the agent ends its turn and waits for the answer**. `AskUserQuestion` is a Claude Code built-in, not something a Copilot/Cursor/Windsurf session can install; the rendering is tool-specific, the asking and the stopping are not. `skills/interview-protocol.md` §3 → "Asking on a non-Claude agent" is the single source of that rule; every other mention defers there. `ASSUMED` is earned by asking (user said "you decide"), never by skipping the question — finding the answer in the source justifies the *recommendation*, not silence. Unattended runs are opt-in only (`Interview mode: unattended` in `PROJECT.md`, at the user's explicit request).
+**Ask, then stop.** Gate questions are actually asked in chat — on Claude Code via `AskUserQuestion` (clickable options), on any other harness as plain numbered markdown with "something else" always available — and **either way the agent ends its turn and waits for the answer**. `AskUserQuestion` is a Claude Code built-in, not something a Copilot/Cursor/Windsurf session can install; the rendering is tool-specific, the asking and the stopping are not. `skills/interview-protocol.md` §3 → "Asking on a non-Claude agent" is the single source of that rule; every other mention defers there. `ASSUMED` is earned by asking (user said "you decide"), never by skipping the question — finding the answer in the source justifies the *recommendation*, not silence. Unattended runs are opt-in only (`Interview mode: auto` in `PROJECT.md`, alias `unattended`, at the user's explicit request; modes in `skills/interview-protocol.md`).
 
 ## Key skills and when to load them
 
@@ -160,6 +160,72 @@ checkpoint script, and an expert user's reaction was "I can't even compact?":
 7. **A guard must never block the action that resolves it.** Blocking the remedy is
    perverse: warn once, then let it through.
 
+## Merging a PR — independent review before every merge
+
+**A merge go from the maintainer is not a review.** Before any PR merges, an agent that did
+**not** write it reviews the diff and returns a verdict. The builder's own report and green CI
+never count: the builder grades its own work, and CI proves only the tests the builder wrote.
+
+1. **Who reviews, and with what.** A fresh agent given the PR diff, the linked issues and the PR
+   body's description of *what* changed — never the builder's verdict, risk assessment or "all
+   checks pass" claims. One reviewer per PR, plus one composition check when several PRs in a
+   batch touch the same files. The reviewer may run the fixtures the PR adds or that target its
+   changed files, in a detached worktree — that is part of the review the maintainer asked for, not
+   a free-standing test run (see "Testing this toolkit").
+2. **What it answers, each with file:line.** *Value*: does it fix the issue as reported, and is
+   anything overbuilt? *Regression risk*: what changes for an existing project after
+   `sync-project.sh` (new FAIL / BLIND / refusals, exit codes, output another tool parses, gate
+   verdicts that flip), across both layouts and macOS / Git Bash? *Correctness*: real bugs, tests
+   that do not test what they claim, hand-written golden input where a capture was required.
+   *Context cost*: words added to always-loaded skill files — re-measured by the reviewer, not taken
+   from the PR body.
+3. **Verdict.** `MERGE`, `MERGE-AFTER-FIX` (exact fixes listed; the fixes are pushed and
+   re-reviewed before merge) or `HOLD` (goes back to the maintainer with the reason). Only `MERGE`
+   merges.
+4. **Record the verdict durably.** The squash commit body carries a line
+   `Review: MERGE — <one-line top finding or "no findings">`, and the merge announcement repeats it
+   next to CI. A merge with no `Review:` line was not reviewed.
+5. **No exceptions for size.** A one-line fix, a docs-only PR and an outside contributor's PR all
+   get the same review. "Small", "only skill text" and "CI is green" are how the exceptions start.
+   The one exception is guard rule 7's: a fix whose only purpose is to unblock master (a broken CI
+   check, a leak guard that blocks every commit) may merge first, with its review within 24 hours
+   and a `Review: PENDING (unblock)` line; the follow-up verdict is recorded as a comment on the
+   merged PR (and a follow-up fix PR if it finds anything), since a squash commit cannot be edited.
+
+**Why (real incident, 2026-10-13).** Nine PRs merged in one day on the builders' own reports and
+green CI, each carrying its builder's "all checks pass". When the maintainer asked whether value
+and regression risk had been checked, the honest answer was no: nobody who had not written the
+code had read it. The after-the-fact reviews found, among others, a journey preflight that made
+every synced project's journey rung FAULT, and an exec lock that let three writers in at once. The same day showed the cost of unread diffs in another form — the always-loaded
+skill text hit its 80,000-word cap because each PR added words that nobody outside the PR weighed.
+
+## Always-loaded skill text — the word budget
+
+`bin/render-routing.sh --check` caps the always-loaded (baseline) skill set at
+`MXTK_BASELINE_BUDGET_WORDS` — a ratchet, explained in that script's header: lowered as text moves
+out, never raised to admit growth. Room is made by **moving** text, never by deleting the text
+that does the work.
+
+1. **Protected — never removed to make room:** rules, STOP rows, denominators / completion
+   criteria, and the one-line failure example each rule is paired with. Removing one needs its own
+   PR that argues the rule itself is obsolete, with an independent review.
+2. **Movable:** incident narratives, worked examples, tables of past numbers, and a rule stated a
+   second time in another baseline file. Each moves to an on-demand file and leaves a one-line
+   pointer (path) at the same spot. A move keeps the text; nothing is lost.
+3. **Every PR that adds baseline words** states the before/after count from
+   `render-routing.sh --check` in its body, and why each addition is needed at the trigger moment.
+   The independent reviewer checks that (see "Merging a PR").
+4. **At the cap, a feature PR never squeezes other text to fit.** Room comes from a separate trim
+   PR that only moves movable text; its reviewer compares removed against moved line by line, and
+   any protected line that disappeared is a HOLD.
+5. **Trim before the cap, not at it:** when a PR would take the baseline (measured after the PR)
+   within 2,000 words of the budget, a trim PR lands first. A trim PR does not lower the ratchet by
+   itself; lowering it is a separate one-line change once the trimmed total has held for a release.
+
+**Why (2026-10-13).** One feature PR pushed the baseline to 80,466 words against the 80,000 budget
+while six other open PRs each added words; to fit, it merged two sentences in a testing skill and
+landed at 79,997. That one was harmless, but nothing stopped the next one from cutting a STOP row.
+
 ## Changelog and contributions
 
 **Every user-visible change appends its `CHANGELOG.md` line in the same commit.** That is the
@@ -172,7 +238,7 @@ and tag every few days — the release cycle is defined at the top of `CHANGELOG
 
 Contributions arrive through three lanes (`CONTRIBUTING.md`): the `contrib/inbox/` drop
 (no quality bar — triage promotes into `skills/`/`bug-logs/`/`bin/` and deletes the inbox file
-in the same commit; inbox files are unreviewed and nothing may cite them),
+in the same commit; inbox files are unreviewed — their content is not vetted for promotion — and nothing may cite them; a PR that adds one still gets the merge review below),
 `bin/harvest-learnings.sh <project-root>` (drafts inbox files from a project's bug logs,
 register promotion tables, and locally-patched installed scripts — run it at project wrap-up),
 and direct PRs held to the full field-proof bar. CI (`.github/workflows/checks.yml`) runs
@@ -277,7 +343,12 @@ to. Wide blast radius is a reason to pick the right *scoped* check, not to run e
 `bin/lib/skill-routing.tsv` and its re-render (README.md, ROUTING.md, every agent template, and
 `gate-check.sh`'s stage map at once) that check is `bin/render-routing.sh --check`.
 
-**Asking is also required for a single fixture** — name it, say what it will tell us, and wait.
+**One standing exception: the independent reviewer of a PR** (see "Merging a PR") may run the
+fixtures the PR adds or that target its changed files, without asking, in a detached worktree of
+the PR branch. That isolation is what avoids the shared-tree problem above; the reviewer still
+never runs the full suites.
+
+**Outside that reviewer exception, asking is also required for a single fixture** — name it, say what it will tell us, and wait.
 
 Where a fixture's assertions are greps over a file you changed, prefer verifying by inspection:
 read the fixture, replicate its greps against the changed file, and report that. Same signal, no

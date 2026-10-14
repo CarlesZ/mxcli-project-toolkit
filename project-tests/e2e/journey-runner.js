@@ -9,7 +9,8 @@
 // credential + reachability, required env vars, live sessions. Exit 2 = aborted there.
 // Env: TEST_USER / TEST_PASS (required; ALLOW_CONFIG_CREDENTIALS=1 to use the config
 // default), M2EE_ADMIN_PASS / M2EE_ADMIN_PORT, ALLOW_NO_DATA_RUNG=1, JOURNEY_SESSION_CAP=<n>,
-// ALLOW_SESSION_CAP=1. Journeys may declare requiresEnv / requires / leaves / consumes,
+// ALLOW_SESSION_CAP=1, APP_PROBE=0 (no app probe between journeys). Journeys may declare
+// requiresEnv / requires / leaves / consumes,
 // resetsData (refused under --protect-state) and assertLanding (or --assert-landing).
 //
 // WHY THIS EXISTS
@@ -126,6 +127,8 @@ const subst = (v, vars) =>
 // meant to stay declarative enough to generate from a module brief's golden-path
 // table.
 const PAUSE = ms => new Promise(r => setTimeout(r, ms));
+// Clock-skew margin for the liveness window (see runJourney's jt0).
+const LIVENESS_SKEW_MS = 2000;
 // The combobox waits below used to be fixed sleeps (400/1200/120/500 ms per field). Each now
 // waits for the thing it was sleeping for; SETTLE_MODE=fixed keeps the old sleeps for an A/B run.
 const FIXED = process.env.SETTLE_MODE === 'fixed';
@@ -319,6 +322,88 @@ async function act(page, a, vars, note) {
   else await settle(page, { timeout: 10000, stableMs: 300, networkIdleMs: 0, fallbackMs: 1200 });
 }
 
+// ── RUNG 2: ordered spans, as a function (called from runJourney) ───────────
+// Runs for a positive claim (ordered) OR a negative-only claim (mustNotFire with ordered
+// empty/absent) — a step whose whole proof is "this did NOT run" (#150). `capture` and
+// `live` are injected so tests/wave2/test-journey-liveness.sh drives it with a
+// captured Jaeger trace and no browser. `rec(name, verdict, detail)` records one row.
+//
+// NEGATIVE-ONLY NEEDS A LIVENESS REFERENCE. Zero spans in the step window is what a correct
+// Cancel looks like AND what Jaeger down / OTel off looks like. Before 2026-10-13 that was
+// INVALID "Jaeger down or OTel off" for both, so the claim could never pass; the opposite
+// fix (zero spans → PASS) would pass with tracing dead. So: wait the full capture window
+// (there is nothing to `until` on), then require evidence the pipeline was delivering —
+// the step's declared `spans.liveness` span, or any span from the service since the
+// journey began (otel.js liveness). No evidence → INVALID, naming which.
+async function traceRung(step, { t0, since, rec, capture = null, live = O.liveness }) {
+  if (!step.spans) return;
+  // A spans block that declares nothing this rung reads reads as a trace claim in the journey
+  // file and proves nothing — said out loud, never skipped (#150 item 3). The array shape
+  // [{ mf, status }] is the old example.journey.json shape, named as such.
+  const shape = Array.isArray(step.spans) ? 'array'
+    : typeof step.spans !== 'object' ? typeof step.spans : 'object';
+  const claimed = (shape === 'object' && Array.isArray(step.spans.ordered)) ? step.spans.ordered : [];
+  const mustNot = (shape === 'object' && Array.isArray(step.spans.mustNotFire)) ? step.spans.mustNotFire : [];
+  if (!claimed.length && !mustNot.length) {
+    const why = shape === 'array'
+      ? 'spans is an array — the old shape [{ mf, status }], which the runner never read; use { "ordered": [...], "mustNotFire": [...] }'
+      : shape !== 'object'
+        ? `spans is a ${shape} — use { "ordered": [...], "mustNotFire": [...] }`
+        : !Object.keys(step.spans).length
+          ? 'spans is {} — declares neither `ordered` nor `mustNotFire`'
+          : 'spans block declares neither `ordered` nor `mustNotFire`';
+    rec(`${step.name}: spans`, 'INVALID',
+        `${why} — nothing to evaluate; trace rung did NOT run. Declare the claim or remove the block.`);
+    return;
+  }
+  const negOnly = !claimed.length;
+  const probe = (step.spans && step.spans.liveness) || null;
+  const has = (sp, n) => O.microflowNames(sp).includes(n) || sp.some(x => x.op === n);
+  // Wait for the claimed microflows, not just any span — see otel.js capture() `until`.
+  const until = !negOnly ? sp => claimed.every(n => O.microflowNames(sp).includes(n))
+    : probe ? sp => has(sp, probe) : () => false;
+  let spans = capture ? await capture(t0, { min: 1, until })
+                      : await O.capture(t0, { min: 1, until: until });
+  const real = spans.length;
+  if (negOnly && (!real || probe)) {
+    // A project whose otel.js was hand-edited keeps it across a sync (it is not in the hold
+    // set with this file), so a new runner can meet an otel.js older than liveness(). Say so,
+    // never TypeError.
+    if (typeof live !== 'function') {
+      rec(`${step.name}: spans`, 'INVALID',
+          'negative-only claim needs otel.js liveness(), which this project\'s tests/e2e/otel.js does not export — ' +
+          'it is older than journey-runner.js (a locally edited copy kept by sync). Merge the toolkit\'s otel.js. ' +
+          'Trace rung did NOT run.');
+      return;
+    }
+    const lv = await live(since, { name: probe, spans });
+    if (!lv.ok) {
+      rec(`${step.name}: spans`, 'INVALID',
+          `negative-only claim (${mustNot.join(', ')} must not run) with no liveness evidence: ${lv.detail}. ` +
+          '"Nothing ran" and "tracing is off" look the same here — trace rung did NOT run.');
+      return;
+    }
+    rec(`${step.name}: tracing live`, 'PASS', lv.detail);
+  } else if (!real) {
+    rec(`${step.name}: spans`, 'INVALID',
+        'zero spans captured — Jaeger down or OTel off. Trace rung did NOT run.');
+    return;
+  }
+  // Positive control only (controlMutants' trace-negative branch for a negative-only claim):
+  // the forbidden microflow is injected into the capture AFTER the liveness verdict, so the
+  // mutant proves assertNotFired can go red without being able to vouch for a dead pipeline.
+  const inject = (step.spans && step.spans._controlInjectFired) || [];
+  if (inject.length) spans = spans.concat(inject.map(n => ({ op: n, start: Date.now() * 1000, dur: 0,
+    traceID: 'positive-control', tags: { 'mx.microflow.name': n }, logs: [] })));
+  const rep = (name, ok, detail) => rec(name, ok ? 'PASS' : 'FAIL', detail);
+  if (real) {
+    O.guard(spans, rep, `${step.name}: capture non-empty`);
+    if (claimed.length) O.assertSequence(spans, claimed, rep, `${step.name}: ordered`);
+    O.assertNoErrors(spans, rep, `${step.name}: no ERROR at any level`);
+  }
+  for (const n of mustNot) O.assertNotFired(spans, new RegExp(n), rep, `${step.name}: ${n} did not run`);
+}
+
 // ── Rung 3 helpers ──────────────────────────────────────────────────────────
 // oql() swallows every error and returns null, so null must mean "no measurement",
 // never "zero". A count assertion that treats null as 0 passes when the instrument
@@ -491,6 +576,17 @@ const CONTROL_RUNGS = [
   'data-delta', 'data-target', 'outcome',
 ];
 
+// A microflow name the mustNotFire pattern matches: the pattern itself when it matches its
+// own text (the usual bare name, `Mod.ACT_X`), else the pattern with anchors and escapes
+// stripped; null when neither matches (the mutant is then reported unsupported, not faked).
+function forbiddenSample(pattern) {
+  let re;
+  try { re = new RegExp(pattern); } catch (_) { return null; }
+  if (re.test(pattern)) return pattern;
+  const plain = String(pattern).replace(/^\^|\$$/g, '').replace(/\\(.)/g, '$1');
+  return re.test(plain) ? plain : null;
+}
+
 function controlMutants(j) {
   const clone = () => JSON.parse(JSON.stringify(j));
   const out = [];
@@ -535,8 +631,16 @@ function controlMutants(j) {
   // any out-of-sequence microflow through unnoticed.
   add('trace-negative', 'assert a microflow that DID run must not have run', (c) => {
     const s = c.steps.find(x => x.spans && x.spans.ordered && x.spans.ordered.length);
-    if (!s) return false;
-    s.spans.mustNotFire = [s.spans.ordered[0].split('.').pop()];
+    if (s) { s.spans.mustNotFire = [s.spans.ordered[0].split('.').pop()]; return; }
+    // A negative-only claim has no microflow that is known to run, so the mutant makes one:
+    // the forbidden name is injected into the step's capture (after its liveness check) and
+    // assertNotFired must go red on it (#150).
+    const neg = c.steps.find(x => x.spans && (x.spans.mustNotFire || []).length);
+    if (!neg) return false;
+    const name = forbiddenSample(neg.spans.mustNotFire[0]);
+    if (name === null) return false;
+    neg.spans.mustNotFire = [neg.spans.mustNotFire[0]];
+    neg.spans._controlInjectFired = [name];
   }, named('did not run'));
 
   // Rung 4a — the row-count delta.
@@ -607,6 +711,12 @@ async function resetToStart(page) {
 }
 
 async function runJourney(page, j) {
+  // Journey start: the window a negative-only span claim's liveness check reads. Only this
+  // journey's own spans count — never the previous journey's, nor other users' from before
+  // it began. LIVENESS_SKEW_MS (2 s) absorbs clock skew between this host and the runtime's
+  // span timestamps (Jaeger stamps with the runtime's clock); it is far shorter than any
+  // journey, so a span from the previous one cannot fall inside it in practice.
+  const jt0 = Date.now() - LIVENESS_SKEW_MS;
   console.log(`\n=== JOURNEY ${j.id} — ${j.title || ''}`);
   console.log(`    persona: ${j.persona || cfg.user}   requirements: ${(j.requirement || []).join(', ') || '(none declared)'}`);
 
@@ -751,27 +861,8 @@ async function runJourney(page, j) {
     }
 
     // ── RUNG 2: ordered spans ────────────────────────────────────────────────
-    // Runs for a positive claim (ordered) OR a negative-only claim (mustNotFire with
-    // ordered empty/absent) — a step whose whole proof is "this did NOT run" (#150).
-    const claimed = (step.spans && step.spans.ordered) || [];
-    const mustNot = (step.spans && step.spans.mustNotFire) || [];
-    if (claimed.length || mustNot.length) {
-      // Wait for the claimed microflows, not just any span — see otel.js capture() `until`.
-      const spans = await O.capture(t0, { min: 1,
-        until: sp => { const got = O.microflowNames(sp); return claimed.every(n => got.includes(n)); } });
-      if (!spans.length) {
-        record('trace', `${step.name}: spans`, 'INVALID',
-               'zero spans captured — Jaeger down or OTel off. Trace rung did NOT run.', req);
-      } else {
-        O.guard(spans, otelReporter(req), `${step.name}: capture non-empty`);
-        if (claimed.length)
-          O.assertSequence(spans, claimed, otelReporter(req), `${step.name}: ordered`);
-        O.assertNoErrors(spans, otelReporter(req), `${step.name}: no ERROR at any level`);
-        for (const n of mustNot) {
-          O.assertNotFired(spans, new RegExp(n), otelReporter(req), `${step.name}: ${n} did not run`);
-        }
-      }
-    }
+    await traceRung(step, { t0, since: jt0,
+      rec: (name, verdict, detail) => record('trace', name, verdict, detail, req) });
 
     // ── RUNG 3: data effects ─────────────────────────────────────────────────
     const d = step.data;
@@ -931,9 +1022,9 @@ function classifyAdminProbe(text, status) {
   if (auth) return { state: 'auth', http: Number(auth[1] || auth[2]) };
   if (/cannot connect to Mendix admin API|ECONNREFUSED|connection refused/i.test(t))
     return { state: 'unreachable' };
-  const parsed = H.parseOqlOutput(t);
+  const parsed = H.parseOqlOutput(t, ADMIN_PROBE_SQL);
   if (status === 0 && parsed && parsed.rows && parsed.rows[0] !== undefined) {
-    const n = Number(parsed.rows[0][0]);
+    const v = H.scalarOf(parsed), n = v === null ? NaN : Number(v);
     return { state: 'ok', sessions: Number.isFinite(n) ? n : null };
   }
   return { state: 'unknown', detail: t.trim().split('\n').filter(Boolean).slice(-1)[0] || `exit ${status}` };
@@ -987,17 +1078,26 @@ function preflight(journeys, { env = process.env, probe = runAdminProbe, admin =
     rows.push({ rung: 'setup', name: `preflight: ${name}`, verdict: 'INVALID', detail, requirement: '' });
   };
 
-  // 0. login credential (#278). Unset TEST_PASS means the run would submit project.config's
-  // default and then the admin fallback. Each rejected submit counts toward Mendix's
-  // 3-attempt lockout, and in the field two demo accounts were locked for ~5 min each. So no
-  // login is attempted at all. The override exists for a project whose config default IS its
-  // real demo password.
-  if (!admin.passFromEnv && env.ALLOW_CONFIG_CREDENTIALS !== '1') {
+  // 0. login credential (#278). A run that would submit the TEMPLATE PLACEHOLDER password
+  // (nobody set TEST_PASS, nobody edited project.config.js's DEFAULT_PASS) then tries the admin
+  // fallback; each rejected submit counts toward Mendix's 3-attempt lockout, and in the field
+  // two demo accounts were locked for ~5 min each. So no login is attempted at all.
+  // A password the PROJECT set in project.config.js is accepted: the template tells every
+  // project to put its real demo password there, and nothing in the toolkit loads an env file
+  // before verify-module runs the journeys — refusing it (#302 as first shipped) faulted every
+  // journeys rung after the next sync. ALLOW_CONFIG_CREDENTIALS=1 overrides when the
+  // placeholder really is the demo password. An admin object without passSource (older
+  // config.js) keeps the #302 rule: refuse unless the password came from the env.
+  const placeholder = admin.passSource !== undefined
+    ? admin.passSource === 'template placeholder'
+    : !admin.passFromEnv;
+  if (placeholder && env.ALLOW_CONFIG_CREDENTIALS !== '1') {
     setup('credentials', `TEST_PASS is unset — the run would log in as "${admin.user}" with ` +
-      "project.config.js's default password and then try the fallback account, and each rejected " +
-      'attempt counts toward the account lockout. Load the project env first (export TEST_USER / ' +
+      "project.config.template.js's placeholder password and then try the fallback account, and each " +
+      'rejected attempt counts toward the account lockout. Put the real demo password in ' +
+      "project.config.js's DEFAULT_PASS, or load the project env first (export TEST_USER / " +
       'TEST_PASS, e.g. `set -a; . ./.env; set +a`), or set ALLOW_CONFIG_CREDENTIALS=1 if the ' +
-      'config default is the real demo password. Suite ABORTED before any login');
+      'placeholder is the real demo password. Suite ABORTED before any login');
     return { lines, rows, skip, abort: 2 };
   }
 
@@ -1188,6 +1288,50 @@ function stateTracker(journeys) {
   };
 }
 
+// ── App liveness between journeys (#285) ────────────────────────────────────
+// The preflight probes the app once, before the first journey. Field run 2026-10-12: a watch
+// rebuild failed mid-suite (IO_PathNotFound on deployment/web/pages), the runtime went down,
+// and every remaining journey failed as if the features were broken — the suite owner had to
+// be told to rerun only the infrastructure failures. So the runner asks before each journey
+// whether the app still answers, and after each one whether it outlived it:
+//   down before a journey → that journey is APP-DOWN (INVALID, `appDown: true`), not walked;
+//   down after a journey  → its FAIL rows are flagged `appDown: true` and named in the summary
+//                            as "rerun before reading as findings" — the verdict stays FAIL,
+//                            because the app may have died of what the journey found.
+// "Up" is any HTTP answer below 500; a refused connection, a timeout or a 5xx is down. A few
+// short retries absorb a restart already in progress. APP_PROBE=0 turns it off.
+async function probeApp(url, { timeoutMs = 5000, fetchFn = globalThis.fetch } = {}) {
+  try {
+    const r = await fetchFn(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+    return r.status >= 500 ? { up: false, detail: `HTTP ${r.status}` } : { up: true, detail: `HTTP ${r.status}` };
+  } catch (e) {
+    return { up: false, detail: (e && e.cause && e.cause.code) || (e && e.name) || String(e) };
+  }
+}
+
+async function appGate(url, { probe = probeApp, tries = 3, waitMs = 5000, sleep = PAUSE } = {}) {
+  let last = null;
+  for (let i = 0; i < tries; i++) {
+    last = await probe(url);
+    if (last.up) return { up: true, detail: last.detail, tries: i + 1 };
+    if (i + 1 < tries) await sleep(waitMs);
+  }
+  return { up: false, detail: last.detail, tries };
+}
+
+// The rows a journey just produced, after the app was found down: flag every FAIL. Returns
+// how many were flagged.
+function flagAppDown(rows, detail) {
+  let n = 0;
+  for (const r of rows) {
+    if (r.verdict !== 'FAIL') continue;
+    r.appDown = true;
+    r.detail = `${r.detail ? r.detail + '  ' : ''}[APP-DOWN after this journey: ${detail} — rerun before reading as a finding]`;
+    n++;
+  }
+  return n;
+}
+
 // ── Exports for the rung-4 scope unit test ──────────────────────────────────
 // The SQL builders are pure and exported so their behaviour can be proven against
 // fixture rows without a running app. See tests/e2e/journey-rung4-scope.test.js.
@@ -1200,6 +1344,7 @@ module.exports = {
   runExitCode, personaMismatch,
   classifyAdminProbe, journeyNeedsAdmin, missingEnv, preflight, orderJourneys, stateTracker,
   judgeLanding,
+  traceRung, controlMutants, forbiddenSample, probeApp, appGate, flagAppDown, LIVENESS_SKEW_MS,
 };
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -1219,8 +1364,29 @@ function armRelease(page, li) {
     if (!ok) console.log('  ⚠ logout NOT confirmed — this run\'s session may still be open on the runtime ' +
                          '(trial licences cap live sessions; a restart clears them)');
   };
+}
+
+// An interrupted run (SIGINT/SIGTERM) writes its findings slot as aborted, with whatever it
+// measured so far. Exiting without writing left the PREVIOUS run's file in the slot, reading
+// as this run — the same stale-slot defect the preflight abort already guards against.
+function writeAbortedFindings(reason, extra = {}) {
+  try {
+    fs.mkdirSync(cfg.artifactsDir, { recursive: true });
+    fs.writeFileSync(findingsFile(), JSON.stringify({
+      capturedAt: new Date().toISOString(), aborted: reason,
+      configuredUser: cfg.user, actualUser: extra.actualUser ?? null, usedFallback: !!extra.usedFallback,
+      baseUrl: cfg.baseUrl, positiveControl: POSITIVE_CONTROL, results, walks,
+    }, null, 2));
+  } catch (e) { console.error(`  ⚠ could not write the aborted findings file: ${e.message}`); }
+}
+let SIGNAL_CTX = {};
+function armSignals() {
   for (const sig of ['SIGINT', 'SIGTERM']) {
-    process.once(sig, () => { RELEASE().finally(() => process.exit(2)); });
+    process.once(sig, () => {
+      console.log(`\n  ABORTED by ${sig} — findings written as aborted; this run is not a result.`);
+      writeAbortedFindings(`signal ${sig}`, SIGNAL_CTX);
+      RELEASE().finally(() => process.exit(2));
+    });
   }
 }
 
@@ -1247,20 +1413,17 @@ const findingsFile = () => path.join(cfg.artifactsDir,
     console.log(`  ABORTED at preflight — 0 of ${journeys.length} journeys walked. Fix the SETUP line(s) above.`);
     // Written, not skipped: an aborted run must not leave the previous run's file in the slot
     // reading as this one.
-    fs.mkdirSync(cfg.artifactsDir, { recursive: true });
-    fs.writeFileSync(findingsFile(), JSON.stringify({
-      capturedAt: new Date().toISOString(), aborted: 'preflight',
-      configuredUser: cfg.user, actualUser: null, usedFallback: false,
-      baseUrl: cfg.baseUrl, positiveControl: POSITIVE_CONTROL, results, walks,
-    }, null, 2));
+    writeAbortedFindings('preflight');
     console.log(`  findings → ${path.relative(cfg.root, findingsFile())}`);
     process.exit(pf.abort);
   }
 
+  armSignals();
   const { browser, page } = await H.launchBrowser();
 
   const li = await H.login(page);
   armRelease(page, li);
+  SIGNAL_CTX = { actualUser: li.user, usedFallback: li.usedFallback };
 
   // Landing check: once per run, right after login, before any click. One run signs in as
   // one role, so "N of N roles" is the count over the per-role runs.
@@ -1297,10 +1460,25 @@ const findingsFile = () => path.join(cfg.artifactsDir,
   if (assumed.length)
     console.log(`  requires that no journey in this run leaves (trusted to the fixture): ${assumed.join(', ')}`);
 
+  const appDown = [], appDiedIn = [];
+  const APP_PROBE = process.env.APP_PROBE !== '0';
   if (li.ok && !li.usedFallback) {
     for (const j of journeys) {
       // Already named once on the preflight SETUP line; no per-journey INVALID on top.
       if (pf.skip.has(j.id)) { state.settle(j, [], false); continue; }
+      if (APP_PROBE) {
+        const app = await appGate(cfg.baseUrl);
+        if (!app.up) {
+          console.log(`  APP-DOWN  ${j.id} — ${cfg.baseUrl} not answering (${app.detail}, ${app.tries} tries)`);
+          record('setup', `${j.id}: app up`, 'INVALID',
+            `APP-DOWN — ${cfg.baseUrl} did not answer before this journey (${app.detail}). Not walked; ` +
+            'not a feature failure. Restart the app and rerun the APP-DOWN journeys.', (j.requirement || []).join(', '));
+          results[results.length - 1].appDown = true;
+          appDown.push(j.id);
+          state.settle(j, [], false);
+          continue;
+        }
+      }
       const wrongPersona = personaMismatch(j, li.user);
       if (wrongPersona) {
         record('ui', `${j.id}: persona`, 'INVALID', wrongPersona, (j.requirement || []).join(', '));
@@ -1362,6 +1540,10 @@ const findingsFile = () => path.join(cfg.artifactsDir,
         const before = results.length;
         await resetToStart(page);
         await runJourney(page, j);
+        if (APP_PROBE) {
+          const after = await probeApp(cfg.baseUrl);
+          if (!after.up && flagAppDown(results.slice(before), after.detail)) appDiedIn.push(j.id);
+        }
         state.settle(j, results.slice(before), true);
       }
     }
@@ -1381,6 +1563,11 @@ const findingsFile = () => path.join(cfg.artifactsDir,
     console.log('  ⚠ INVALID means an instrument did not run. Those checks are NOT green —');
     console.log('    they are absent. Fix the instrument before reading this report as coverage.');
   }
+  if (appDown.length)
+    console.log(`  APP-DOWN ${appDown.length} journey(s) not walked — the app stopped answering: ${appDown.join(', ')}. ` +
+                'Restart it and rerun only these.');
+  if (appDiedIn.length)
+    console.log(`  ⚠ the app was down when ${appDiedIn.join(', ')} ended — their FAIL rows are flagged APP-DOWN; rerun before reading them as findings.`);
 
   // The control run's own denominator. Without it, 4 of 7 rungs proven and 7 of 7
   // print the same, and the second claim is the one everyone reads.
@@ -1422,6 +1609,7 @@ const findingsFile = () => path.join(cfg.artifactsDir,
     capturedAt: new Date().toISOString(),
     configuredUser: cfg.user, actualUser: li.user, usedFallback: !!li.usedFallback,
     baseUrl: cfg.baseUrl, positiveControl: POSITIVE_CONTROL, mutants, results, walks,
+    appDown, appDiedIn,
   }, null, 2));
   console.log(`  findings → ${path.relative(cfg.root, out)}`);
 

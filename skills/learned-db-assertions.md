@@ -54,6 +54,29 @@ on every data rung (#286). The shipped `tests/e2e/config.js` now resolves the to
 as a guess. `journey-runner.js` probes the admin API once before the suite and aborts on 401/403,
 naming where the token came from.
 
+### Read the answer by alias, never by position
+
+`mxcli oql --direct --json` prints an array of objects. Captured from the v0.26.0 binary
+(`tests/wave2/fixtures/oql-json/`):
+
+```
+SELECT c.Zeta AS zeta, c.Alpha AS alpha, c.Mid AS mid …   →   [{"mid":"m1","zeta":"z1"}]
+SELECT b.AttentionCount AS n FROM <Module>.<ViewEntity> …    →   [{"ID":"2814…","n":"7"}]
+```
+
+The keys come back alphabetically. A column that is null in every row is left out. A view entity
+adds `ID` beside your alias. So a row read by position is wrong: `Object.values(row)[0]` is
+`"m1"` in the first query (not `zeta`) and the view's ID in the second (not the count). That is
+what `helpers.js` did until #154.
+
+- `H.oqlScalar(sql)` returns the **first alias in the SELECT list**, or null when there is no row
+  or the value is null. Null always means "no measurement", never 0.
+- `H.oqlRows(sql)` returns alias-keyed objects with **every alias present** (explicit `null`).
+- `H.oql(sql).rows` is in SELECT order with explicit nulls.
+- Name every column (`COUNT(*) AS n`). An unaliased bare path (`c.Name`) is read as `Name`. A
+  `SELECT *` or an unnamed expression has no alias, so `oqlScalar` returns null rather than
+  guess a column.
+
 ### Correction to the previous version of this skill
 
 This skill used to open with: *"`mxcli oql --direct` requires the M2EE admin token. In Mendix

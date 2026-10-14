@@ -57,6 +57,9 @@ any real project. The **Deriving the values** section says where each one actual
 ```jsonc
 {
   "schemaVersion": "1.2",              // renderer refuses on major mismatch, warns on newer minor
+  "aborted": null,                     // "preflight" | "signal SIGINT" | … when journey-findings.json is an
+                                       // aborted run: its checks carry notAResult: true + abortedRun, and the
+                                       // journey-runner instrument is a fault. None of them is a result.
 
   "project": {
     "id": "acme-procurement",          // stable key; a fleet index groups on this
@@ -97,8 +100,9 @@ any real project. The **Deriving the values** section says where each one actual
     {
       "id": "journey/J-PR-01/step5/landing",     // stable, sortable, unique
       "instrument": "journey-runner",            // WHO measured
-      "kind": "ui",                              // ui | trace | data | outcome | control
+      "kind": "ui",                              // ui | trace | data | outcome | control | setup
                                                  // | build | lint | coverage | conformance | stack
+                                                 // setup = journey-runner preflight / precondition / APP-DOWN rows
       "module": "Procurement",                   // null for cross-cutting
       "journey": "J-PR-01",                      // null when not a journey check
       "stepIndex": 5,                            // ordinal position on the path
@@ -139,6 +143,11 @@ any real project. The **Deriving the values** section says where each one actual
     { "name": "positive-control", "verdict": "fault",   "reason": "not requested (--positive-control absent)" },
     { "name": "monkey",           "verdict": "skipped", "reason": "--skip-monkey" },
     { "name": "conformance",      "verdict": "pass",    "log": "docs/conformance/report-<date>.tsv" }
+      // conformance reads the NEWEST date among report-<date>.tsv and report-<date>-<suffix>.tsv
+      // (any suffix — conformance-check writes one per BRD, and a BRD id may hold a space), and
+      // joins EVERY file of that date (rows concatenated; "log" lists them comma-separated). An
+      // older date is never mixed in. A per-BRD pointer "<BRD>:`/x`" gives requirement "/x";
+      // the BRD stays in the check id.
   ],
 
   // Rollups have denominators, so they are not checks.

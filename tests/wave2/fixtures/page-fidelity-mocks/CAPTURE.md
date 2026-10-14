@@ -99,3 +99,54 @@ the parser had never seen: v0.25 prints the expression bare (`DynamicClasses: if
 'is-active' else 'is-idle'`), under `--mdl 0` as well. `dynclasses-script.mdl` is the
 headerless script as exec'd (quoted form). `dynclasses.html` is a **synthetic** one-card
 wireframe; nothing in it is a fact about a real wireframe — the case is about the MDL side.
+
+## product-overview — text matched on what the page shows; ButtonStyle classes (2026-10-13)
+
+The MDL side is **not copied here**: the test reads the real `mxcli describe page` capture that
+already lives at `tests/wave2/fixtures/context-pack/capture/describe/PAGE__Sales.Product_Overview.out`.
+It carries what the two rules need and nobody would have imagined: a multi-line `actionbutton`
+with `ButtonStyle: Primary`, one with `ButtonStyle: Danger`, two with **no** ButtonStyle (DESCRIBE
+omits the Default style), a page named `Product_Overview` whose title is `'Catalog'`, a
+microflow `ACT_Product_Deactivate` behind a button captioned `'Deactivate'`, and a `-- Context:`
+comment inside the grid.
+
+`product-overview.html` is **synthetic**, one element per rule. Shown by the page: the H1
+`Catalog`, the sub-title paragraph, `New item` / `Edit` / `Delete` buttons with
+`btn btn-<style>` classes. Not shown by the page: an H2 `Product overview` (only the page
+*name* carries those words), a `Deactivate product` button (the caption is `Deactivate`; the
+second word is in identifiers only), an `Add` button (no `>3`-char word, so it used to pass
+vacuously), and a `row-actions` wrapper the page does not declare.
+
+Master: `89% headings 2/2 actions 5/5 content 1/1 classes 4/9`. Fixed: `73% headings 1/2
+actions 3/5 content 1/1 classes 8/9`.
+
+The ButtonStyle → `btn btn-<style>` mapping rests on `learned-stylegallery.md` → "The Mendix
+DOM contract" (ACTIONBUTTON → `<button class="btn mx-button … btn-default">`, measured in a
+running 11.13 app). Only the Default style was measured there; the other styles follow the
+same `btn-<lowercase style>` class, which is how Atlas styles them. A rendered-DOM capture of a
+non-default style is still owed.
+
+## layout-app-default — chrome from the page's layout (2026-10-13)
+
+`layout-app-default.mdl` is **upstream mxcli's own example**, verbatim: the
+`LayoutTest.App_Default` layout and `LayoutTest.Home` page from `mendixlabs/mxcli`
+`mdl-examples/doctype-tests/layouts.mdl` at commit `bd45c47` (Apache-2.0), which upstream's
+doctype test execs. It is a script, not a field capture — no field project in this repo has
+a captured `describe layout`; upstream documents that `DESCRIBE LAYOUT` emits this same
+re-executable form. `layout-app-default.html` is **synthetic**: the page drawn inside its
+frame, with the layout's `region-topbar` / `region-sidebar` / `region-content` classes.
+
+Master: `71% classes 0/2` (the layout's region classes scored as the page's). Fixed, with the
+layout in the input or named with `--chrome`: `100% classes 0/0`, both reported as chrome.
+Without either, the default chrome set is unchanged and the classes are still owed.
+
+## alter-multiline — review counter-case for the caption match (2026-10-13)
+
+**Synthetic**, all three files: the independent review's counter-case, kept as written apart
+from the marker comments and the `btn btn-success` classes on the Approve button. It pins three
+things the first cut of the caption match got wrong: an ALTER `set (…) on w` spread over
+several lines (the segment ended at the first newline and dropped `'Approve order'`); a
+plural wireframe heading (`Orders`) against a singular title (`'Order'`), which whole-word
+matching without a plural fold read as missing; and a ButtonStyle set by that ALTER. Misses
+that remain are real: `Save changes` vs the caption `'Save'`, an icon-only Edit button with an
+empty caption, and `Recent activity`, whose second word is a bound parameter.

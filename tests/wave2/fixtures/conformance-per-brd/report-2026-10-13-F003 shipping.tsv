@@ -1,0 +1,3 @@
+module	pointer	stored	observed	verdict	command
+Shipping	F003 shipping:`/domainEntities/0`	built	PRESENT	OK	DESCRIBE ENTITY Shipping.Parcel
+Shipping	F003 shipping:`/microflows/0`	built	PRESENT	OK	DESCRIBE MICROFLOW Shipping.ACT_Parcel_Send

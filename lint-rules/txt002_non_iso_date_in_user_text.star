@@ -28,8 +28,11 @@
 # a DateTime attribute rendered with the locale's default format — that is a widget format
 # setting, not a string.
 #
-# If this project's display standard is deliberately not ISO, delete this rule rather than
-# loosening the patterns until it is quiet.
+# ISO dates are a toolkit opinion, not a Mendix rule. If this project's display standard is
+# deliberately not ISO, that is the user's decision (asked in chat, recorded in PROJECT.md):
+# set `rules: TXT002: enabled: false` in .claude/lint-config.yaml, and optionally list this file
+# with a `# reason:` in .claude/lint-rules-disabled.txt so sync stops installing it. Never
+# delete or loosen this file (lint-rules/README.md "Opting out of a rule").
 #
 # REQUIRES mxcli >= 0.25.0 (the strings() builtin) and a FULL catalog. On an older binary
 # this file does not load at all — mxcli prints "rule file skipped" on stderr and no `_rule`
@@ -124,7 +127,7 @@ def check():
         violations.append(violation(
             message="TXT002 cannot run on this mxcli: strings() rows lack value / context / object_type. This rule inspected NOTHING.",
             location=location(module="_rule", document_type="Text", document_name="TXT002"),
-            suggestion="Upgrade mxcli (strings() fields as of 0.26.0), or remove this rule deliberately rather than leaving it inert.",
+            suggestion="Upgrade mxcli (strings() fields as of 0.26.0), or have the user turn it off (`enabled: false` in .claude/lint-config.yaml, recorded in PROJECT.md) rather than leaving it inert.",
         ))
     elif len(ss) == 0 and len(pages()) >= MIN_PAGES_FOR_BLINDNESS:
         violations.append(violation(

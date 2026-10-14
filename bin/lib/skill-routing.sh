@@ -35,16 +35,56 @@ _routing_has() {
   return 1
 }
 
-# The Role(s) cell of the baseline view: "all" reads as "every role", a list as "lead, mdl".
+# ── Per-role on-demand token ───────────────────────────────────────────────────────────────
+#
+# An agents-cell token "<role>?" (e.g. "mdl?") makes a BASELINE row on-demand for that one role:
+# the role still finds the row in its stub's on-demand rows (trigger only), but it is not in
+# that role's always-read set and not in its word count. Every other role the cell names keeps
+# the row at baseline. "all,mdl?" = every role at baseline except mdl, which gets it on demand.
+#
+# WHY (2026-10-14, context-cost research r-stub-diet). The tier column is per ROW, so a row that
+# one role needs every session and another needs once a module had to be baseline for both. The
+# mdl helper never closes a module, pushes or writes a gate script, yet carried module-review,
+# ui-loop, teamserver-alignment, learned-css-that-never-applied and skills-over-scripts as
+# always-read: ~13k of its Stage 5 words.
+
+# The Role(s) cell of the baseline view: "all" reads as "every role", a list as "lead, mdl";
+# "<role>?" tokens are named after, as "gate (mdl, review: on demand)" or, with "all",
+# "every role except mdl, review (on demand for those)".
 _routing_roles_cell() {
-  if [ "$1" = "all" ]; then printf 'every role'; else printf '%s' "$1" | sed 's/,/, /g'; fi
+  local plain od
+  plain="$(printf '%s' "$1" | tr ',' '\n' | grep -v '?$' | tr '\n' ',' | sed 's/,$//')"
+  od="$(printf '%s' "$1" | tr ',' '\n' | grep '?$' | sed 's/?$//' | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+  # "every role" alone would read as "mdl too" to a helper scanning for its name, so the
+  # all-case names the exceptions in the same phrase.
+  if _routing_has "$plain" all; then
+    if [ -n "$od" ]; then printf 'every role except %s (on demand for those)' "$od"; else printf 'every role'; fi
+    return 0
+  fi
+  printf '%s' "$plain" | sed 's/,/, /g'
+  if [ -n "$od" ]; then
+    [ -n "$plain" ] && printf ' '
+    printf '(%s: on demand)' "$od"
+  fi
 }
 
-# Does a row's agents cell reach <who>? "all" reaches everyone, lead included; an empty <who>
-# means "no role filter" (the whole stage pack, as before roles existed).
+# _routing_role_tier <agents> <who> <tier> — the tier this row has FOR <who>, or nothing when
+# the row does not name <who> at all. "<who>?" turns baseline into ondemand for <who> only.
+_routing_role_tier() {
+  if _routing_has "$1" "$2?"; then
+    if [ "$3" = "baseline" ]; then echo ondemand; else echo "$3"; fi
+    return 0
+  fi
+  if _routing_has "$1" all || _routing_has "$1" "$2"; then echo "$3"; fi
+}
+
+# Does a row's agents cell reach <who> AT BASELINE? "all" reaches everyone, lead included,
+# except a role named with the on-demand token ("all,mdl?" does not reach mdl here); an empty
+# <who> means "no role filter" (the whole stage pack, as before roles existed).
 _routing_reaches() {
   [ -z "$2" ] && return 0
-  [ "$1" = "all" ] && return 0
+  _routing_has "$1" "$2?" && return 1
+  _routing_has "$1" all && return 0
   _routing_has "$1" "$2"
 }
 
@@ -150,7 +190,8 @@ _routing_stage_arm() {
 #
 #   Optional third argument <role> (lead|ba|architect|mdl|gate|test|review): count only rows
 #   whose agents cell is "all" or names that role — what one helper at that stage is pointed
-#   at. Omitted = every role, the number this function always returned.
+#   at. A "<role>?" token excludes the row for that role (it is on demand there, see
+#   _routing_role_tier). Omitted = every role, the number this function always returned.
 #
 #   One script row IS counted: bin/runbook-slice.sh. Its whole output is read into context —
 #   it replaces the runbook for the helper roles — so it is counted as the words it prints for
@@ -260,7 +301,7 @@ routing_render() {
       # trigger text and the reasoning behind each row live in ROUTING.md, one read away (a fresh
       # scaffold's CLAUDE.local.md went 17.5 KB → 11.7 KB, 2026-10-07). readme-baseline keeps the
       # full text: README and the runbook are read on purpose, not loaded every turn.
-      echo "Triggers, not a reading list: open a row's file only when its trigger happens now, at *every stage* or the stage PROJECT.md records. Main session = **lead**; a role stub reads only its own rows and *every role*."
+      echo "Triggers, not a reading list: open a row's file only when its trigger happens now, at *every stage* or the stage PROJECT.md records. Main session = **lead**; a role stub reads only its own rows and *every role*; a role named *on demand* opens that row only when its trigger fires."
       echo ""
       echo "Full trigger text and the why behind each row: \`${prefix%/}/ROUTING.md\`."
       echo ""
@@ -302,15 +343,15 @@ routing_render() {
       local who="${view#agent:}"
       echo "Open a file when its When cell happens in your task, not all of them at the start. Below the baseline rows, a When cell is only the trigger; the file says the rest. A page task never opens the microflow rows; a microflow task never opens the page rows."
       echo ""
-      echo "This table is your whole list. The baseline table in the project's CLAUDE.local.md is shared with the main session and the other helpers: skip every row there whose Role(s) cell does not say *every role* or name $who."
+      echo "This table is your whole list. The baseline table in the project's CLAUDE.local.md is shared with the main session and the other helpers: skip every row there whose Role(s) cell does not say *every role* or name $who. A cell that names $who as *on demand* is a row this table lists below the baseline rows, by its trigger."
       echo ""
       echo "| Load this | When |"
       echo "|---|---|"
       local t
       for t in baseline ondemand experimental; do
         routing_rows | while IFS=$'\t' read -r name path when agents stages tier group; do
-          [ "$tier" = "$t" ] || continue
-          if [ "$agents" != "all" ]; then _routing_has "$agents" "$who" || continue; fi
+          # The tier FOR THIS ROLE: a "<who>?" token moves a baseline row to the on-demand rows.
+          [ "$(_routing_role_tier "$agents" "$who" "$tier")" = "$t" ] || continue
           # A helper reads its stub on every dispatch, so non-baseline rows keep only the trigger
           # (the When cell up to its first " — "); the tail describes the file, which the helper
           # reads once the trigger fires. Baseline tails stay whole: several are instructions

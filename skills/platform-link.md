@@ -210,7 +210,10 @@ changes (Studio Pro's) is left alone unless you pass `--force`.
 
 `git push` never carries the notes; the toolkit leaves push config alone. **After you push your
 branch, publish the notes with `sync`.** It fetches, merges (a colleague's non-empty note wins) and
-pushes, with no force. A Studio Pro push does not carry CLI notes either, until someone runs sync.
+pushes, with no force. A Studio Pro push does not carry CLI notes either, until someone runs sync. Never
+`git notes remove` a note by hand: sync merges the removal and pushes it, so the note is gone
+for everyone. To correct a note, rewrite it with `write <commit> --force`; to drop one, ask the team
+first.
 
 ```bash
 ./bin/install-project-hooks.sh                 # once; init-project.sh / sync-project.sh run it too

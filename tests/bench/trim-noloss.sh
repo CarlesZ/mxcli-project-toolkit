@@ -76,4 +76,9 @@ for f in $(git diff --name-only --diff-filter=MD "$BASE" "$HEAD_REF" -- '*.md');
       printf 'LEFT     %s  :   %s\n' "$f" "$t"; echo L >> "$TMPC"
     fi
   done
-done 3>&-
+done
+
+c() { grep -c "^$1\$" "$TMPC" 2>/dev/null || true; }
+printf '\nremoved lines: %s found elsewhere, %s routing rows still routed, %s reviewed, %s LEFT\n' \
+  "$(c F)" "$(c R)" "$(c V)" "$(c L)"
+[ "$(c L)" = "0" ]

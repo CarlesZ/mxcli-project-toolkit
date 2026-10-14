@@ -169,6 +169,20 @@ their trigger is.
 | Project close / cutover | The project-wide suite, once. |
 | The user asks for a full run | Run it, that message is the trigger. |
 
+**Check tiers — which checks each of those moments owes.** Fast checks run during development;
+heavy checks wait for module close or the release gate. This sorts checks by *when*, not what
+testing a module means: the §1 shape and the two lanes are unchanged, and this is not the numbered
+ladder §1 dropped. A row marked *(planned: #N)* is not built yet and claims nothing until it lands.
+
+| Tier | Budget | What runs |
+|---|---|---|
+| **Every exec** | seconds | What `exec.sh` already runs: the exec lock, the mxbuild delta gate, the lint ratchet. Static STOP-row scan before the apply (planned: #349, PR #355); Studio Pro warning ratchet (planned: #351); human-locked gate baselines (planned: #348). |
+| **Module close** | minutes | The module's full suite and journey set (row above). Every new page or action has a test (planned: #354); that module's server-side security tests, run as each demo user (planned: #352). |
+| **Release gate** — before UAT or production | as needed | The project-wide suite (row above). Page × role smoke on the production database engine (planned: #353); the full security report (planned: #352); language/RTL layout when the app has several languages (planned: #354). |
+
+A heavy check never moves into the every-exec tier because a change "felt wide" — that is the
+over-testing measured below.
+
 > **Why scoped (#274):** the old unscoped "re-run the suite as regression" re-proved each UI-only
 > change 5–10× (other modules' journeys, the reviewer re-running them, a full `mxcli test` at every
 > batch close), and with no Unit default set, **143 minutes** of microflow tests found stale strings,

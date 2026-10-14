@@ -33,10 +33,12 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # The surfaces. Anything listed here MUST carry at least one ROUTING:BEGIN marker; a surface
 # that has lost its markers is a structural error (exit 1), not silence — that silent-drop is
 # precisely how the old six-copy arrangement lost track of a table.
+# skills/conversion-runbook.md left this list 2026-10-14: it carried a fourth rendered copy of the
+# baseline table (~1,800 words) inside a baseline file every role reads, the same rows already in
+# README, ROUTING.md and every project's CLAUDE.local.md. It now points at those instead.
 SURFACES="
 ROUTING.md
 README.md
-skills/conversion-runbook.md
 agents/ba-agent.md
 agents/architect-agent.md
 agents/mdl-agent.md

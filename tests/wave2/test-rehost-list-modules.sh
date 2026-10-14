@@ -12,6 +12,9 @@
 #       before creating the out-dir
 #   T5  rehost-extract.sh with a capture holding no own module: exit 2 with a message, not an
 #       unbound-variable crash (bash 3.2 `set -u` on an empty array)
+#   T6  the sibling export-module-mpk.py refuses an unknown `--` option (a typo such as
+#       `--scrub-constants`) with exit 2 and writes nothing; the three known flags pass that check
+#       (the run then stops at the missing source, exit 3)
 #
 # Golden input: tests/wave2/fixtures/rehost-list-modules/ (verbatim; see CAPTURE.txt there).
 # Usage: bash tests/wave2/test-rehost-list-modules.sh [path to the pipeline's rehost extractor]
@@ -53,6 +56,15 @@ printf '#!/bin/sh\ncase "$*" in *"list modules"*) cat "%s";; *) echo "[]";; esac
 MXCLI="$TMP/mxcli" bash "$SUBJ" "$TMP/app.mpr" "$TMP/tgt.mpr" "$TMP/out5" >"$TMP/t5.log" 2>&1; rc=$?
 if [ "$rc" = 2 ] && grep -q 'no own modules' "$TMP/t5.log" && ! grep -q 'unbound' "$TMP/t5.log"; then ok "T5 no own modules: exit 2 with a message"
 else bad "T5 rc=$rc: $(tail -2 "$TMP/t5.log")"; fi
+
+EXP="$(cd "$(dirname "$SUBJ")" && pwd)/export-module-mpk.py"
+. "$(cd "$(dirname "$0")/../.." && pwd)/bin/lib/portable.sh"
+require_py
+"$PY" -I "$EXP" "$TMP/none.mpr" M "$TMP/t6.mpk" --scrub-constants >"$TMP/t6.log" 2>&1; rc=$?
+"$PY" -I "$EXP" "$TMP/none.mpr" M "$TMP/t6b.mpk" --no-widgets --scrub-constant-defaults --json >"$TMP/t6b.log" 2>&1; rc2=$?
+if [ "$rc" = 2 ] && grep -q 'unknown option(s): --scrub-constants' "$TMP/t6.log" && [ ! -e "$TMP/t6.mpk" ] && [ "$rc2" = 3 ]; then
+  ok "T6 exporter: unknown flag refused (exit 2, nothing written); known flags accepted"
+else bad "T6 rc=$rc rc2=$rc2: $(head -1 "$TMP/t6.log") / $(head -1 "$TMP/t6b.log")"; fi
 
 echo "test-rehost-list-modules.sh: $PASS ok, $FAIL FAIL"
 [ "$FAIL" -eq 0 ]

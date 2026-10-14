@@ -82,7 +82,9 @@ before handing the `.mpk` on. With `--scrub-constant-defaults`, an emptied non-S
 constant (Integer, Boolean …) will need a value in the target; how `mx check` reports an empty one
 is not yet measured.
 
-The script refuses (exit 2) when the output path is the source `.mpr`, before writing anything.
+The script refuses (exit 2), before writing anything, when the output path is the source `.mpr`
+and when it is given an option it does not know (a typo such as `--scrub-constants` would
+otherwise export with every constant default in it).
 The zip also carries the module's `javasource/`,
 `javascriptsource/`, `themesource/` and `resources/` folders, the userlib jars that have a
 `.<Module>.RequiredLib` marker, and the widget `.mpk` files its pages reference. The script header

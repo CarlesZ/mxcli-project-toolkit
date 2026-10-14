@@ -497,7 +497,18 @@ def _export(src, module, out, with_widgets, tmp_mpr, scrub_constant_defaults=Fal
     }
 
 
+KNOWN_FLAGS = {"--no-widgets", "--scrub-constant-defaults", "--json"}
+
+
 def main(argv):
+    # an unknown flag is refused, never ignored: a typo such as `--scrub-constants` would otherwise
+    # export with every constant default in plain text while the caller believes it scrubbed them
+    unknown = [a for a in argv if a.startswith("--") and a not in KNOWN_FLAGS]
+    if unknown:
+        print(f"unknown option(s): {' '.join(unknown)} (known: {' '.join(sorted(KNOWN_FLAGS))})",
+              file=sys.stderr)
+        print(__doc__.split("\n\n")[0] + "\n" + __doc__.split("\n")[2], file=sys.stderr)
+        return 2
     args = [a for a in argv if not a.startswith("--")]
     if len(args) != 3:
         print(__doc__.split("\n\n")[0] + "\n" + __doc__.split("\n")[2], file=sys.stderr)

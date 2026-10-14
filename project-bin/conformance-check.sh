@@ -411,7 +411,7 @@ lock_write() {
   [ "$PRIOR" = FAIL ] && why="${why:+$why; }follows a baseline that moved without approval"
   if [ -z "$why" ]; then
     mv "$new" "$BASELINE"
-    if [ -n "$LOCK" ]; then bash "$LOCK" record "$PROJECT_ROOT" conformance "$(bash "$LOCK" sha "$BASELINE")" "$basis"
+    if [ -n "$LOCK" ]; then bash "$LOCK" record "$PROJECT_ROOT" conformance "$basis"
     else echo "  note: bin/baseline-lock.sh not installed — this baseline write is unrecorded (sync-project.sh)" >&2; fi
     return 0
   fi
@@ -422,7 +422,7 @@ lock_write() {
   sha="$(bash "$LOCK" sha "$new")"
   if bash "$LOCK" approved "$PROJECT_ROOT" conformance "$sha"; then
     mv "$new" "$BASELINE"
-    bash "$LOCK" record "$PROJECT_ROOT" conformance "$sha" approved
+    bash "$LOCK" record "$PROJECT_ROOT" conformance approved
     echo "  human approval found for this exact baseline (sha $(printf '%s' "$sha" | cut -c1-12))"
     return 0
   fi

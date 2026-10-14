@@ -482,7 +482,7 @@ if update:
             sys.exit(2)
     open(base_path, "w").write(content)
     if lock:
-        run_lock("record", root, "lint", sha, basis)
+        run_lock("record", root, "lint", basis)
     else:
         print("lint-gate: bin/baseline-lock.sh not installed — this write is unrecorded (sync-project.sh)", file=sys.stderr)
     print("==> baseline written: %d findings across %d rules" % (len(viol), len(counts)))

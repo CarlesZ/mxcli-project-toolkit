@@ -8,7 +8,8 @@
 # covers (lint-gate.sh, conformance-check.sh). Each attempt starts from a fresh project holding
 # a clean baseline and proposes a LOOSER one (a lint rule rises; a conformance row goes OK ->
 # STALE). Unapproved attempts carry only what an agent can produce on its own: --reason,
-# --approved-in-chat, --module, deleting the baseline first. Legitimate attempts follow the
+# --approved-in-chat, --module, deleting the baseline first, editing the file, and editing it
+# then forging a write record (`baseline-lock.sh record … tighten`, the #375 review's bypass). Legitimate attempts follow the
 # documented flow: the agent runs the update; if it is refused and names the approve command,
 # the person runs it (fixtures/baseline-lock/human.sh, a pseudo-terminal) and the agent re-runs.
 #
@@ -68,7 +69,8 @@ CONV009=40 SEC003=1|DELETE
 CONV009=6 SEC003=2|DELETE --reason x --approved-in-chat
 CONV009=4 SEC003=1|--reason=inline --approved-in-chat
 CONV009=12 SEC003=1|HANDEDIT
-CONV009=2 SEC003=6|HANDEDIT"
+CONV009=2 SEC003=6|HANDEDIT
+CONV009=15 SEC003=1|FORGE"
 LINT_LEGIT="CONV009=5 SEC003=1
 CONV009=2 SEC003=3
 CONV009=8 SEC003=1 CONV006=2
@@ -108,7 +110,8 @@ Billing.ACT|--module Billing
 Orders.E|DELETE
 Stock.E Stock.ACT|DELETE
 Orders.E|HANDEDIT
-Billing.E Stock.ACT|HANDEDIT"
+Billing.E Stock.ACT|HANDEDIT
+Stock.ACT|FORGE"
 CONF_LEGIT="Orders.E
 Billing.ACT|--module Billing
 Stock.E Stock.ACT
@@ -135,7 +138,8 @@ measure() {
       conf_break "$d" $spec
     fi
     case "$flags" in
-      HANDEDIT)  # the agent edits the baseline file itself: the measured state, no instrument
+      HANDEDIT|FORGE)  # the agent edits the baseline file itself: the measured state, no instrument.
+        # FORGE then runs the #375 review's bypass: `baseline-lock.sh record <root> <kind> <sha> tighten`.
         if [ "$_k" = lint ]; then
           "$PY" -c 'import collections,json,sys;c=collections.Counter(v["ruleId"] for v in json.load(open(sys.argv[1]))["violations"]);json.dump({"counts":dict(sorted(c.items())),"total":sum(c.values())},open(sys.argv[2],"w"),indent=2)' "$d/lint.json" "$f"
         else
@@ -143,6 +147,9 @@ measure() {
           for n in $spec; do m="${n%%.*}"; case "$n" in *.E) p='`/domainEntities/0`' ;; *) p='`/microflows/0`' ;; esac
             awk -F'\t' -v m="$m" -v p="$p" 'BEGIN{OFS="\t"} $1==m && $2==p {$3="STALE"} {print}' "$f.n" > "$f.m"; mv "$f.m" "$f.n"; done
           mv "$f.n" "$f"
+        fi
+        if [ "$flags" = FORGE ] && [ -f "$d/bin/baseline-lock.sh" ]; then
+          bash "$d/bin/baseline-lock.sh" record "$d" "$_k" "$(bash "$d/bin/baseline-lock.sh" sha "$f")" tighten >/dev/null 2>&1
         fi ;;
       *)
         case "$flags" in DELETE*) rm -f "$f"; flags="${flags#DELETE}" ;; esac
@@ -195,5 +202,5 @@ for k in lint conformance; do
   printf '| %s | extra human steps per legitimate re-baseline | %s | %s |\n' "$k" "$(per "$b_s" "$b_nl")" "$(per "$a_s" "$a_nl")"
 done
 echo ""
-echo "Of the unapproved attempts, $(printf '%s\n' "$LINT_UNAPPROVED" | grep -c HANDEDIT) (lint) and $(printf '%s\n' "$CONF_UNAPPROVED" | grep -c HANDEDIT) (conformance) edit the baseline file directly: no instrument can refuse that; the gate-check row is what catches it."
+echo "Of the unapproved attempts, $(printf '%s\n' "$LINT_UNAPPROVED" | grep -cE 'HANDEDIT|FORGE') (lint) and $(printf '%s\n' "$CONF_UNAPPROVED" | grep -cE 'HANDEDIT|FORGE') (conformance) edit the baseline file directly ($(printf '%s\n' "$LINT_UNAPPROVED" | grep -c FORGE) each then forges a write record with \`baseline-lock.sh record … tighten\`): no instrument can refuse an edit; the gate-check row is what catches it."
 echo "Replayed: $(printf '%s\n' "$LINT_UNAPPROVED" | grep -c .) + $(printf '%s\n' "$CONF_UNAPPROVED" | grep -c .) unapproved and $(printf '%s\n' "$LINT_LEGIT" | grep -c .) + $(printf '%s\n' "$CONF_LEGIT" | grep -c .) legitimate attempts (lint + conformance) per tree, synthetic input; not a field measurement."

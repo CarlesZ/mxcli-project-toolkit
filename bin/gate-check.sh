@@ -2547,11 +2547,12 @@ fi
 # ---------------------------------------------------------------------------
 # Baselines — did a ratchet baseline move without a person's approval? (#348)
 #
-# lint-gate.sh and conformance-check.sh record every baseline they write, and a loosening write
-# only lands against a row bin/baseline-approve.sh wrote (a person, in a terminal). A baseline
-# whose content matches neither record moved some other way — a hand edit, or a write by a
-# script that skipped the lock: FAIL. A baseline with no record at all predates the lock:
-# MANUAL, since nothing can say who moved it. The toolkit's own baseline-lock.sh reads the
+# lint-gate.sh and conformance-check.sh record every baseline they write, with its content, and a
+# loosening write only lands against a row bin/baseline-approve.sh wrote (a person, in a
+# terminal). baseline-lock.sh verify replays the records against their content: a baseline, or a
+# recorded write, looser than the write before it with no approval is FAIL (a hand edit, or a
+# forged record — #375 review). MANUAL: no record at all (predates the lock), or the looser
+# content is committed (a merge). CR is stripped before comparing. The toolkit's own baseline-lock.sh reads the
 # project, whichever version the project installed. BLOCKS Stages 5 and 6 on FAIL (below); the
 # remedy, a person running `bin/baseline-approve.sh <kind> --current`, is never blocked.
 BASE_STATUS="PASS"; BASE_NOTE=""
@@ -3302,7 +3303,8 @@ if [ -n "$REQUESTED_STAGE" ]; then
     echo "" >&2
     echo "Gate BLOCKED by a baseline that moved without approval: $BASE_NOTE" >&2
     echo "Show the user the change (git log -p on the baseline file). If they accept it, THEY run" >&2
-    echo "bin/baseline-approve.sh <kind> --current in their own terminal; otherwise restore it from git." >&2
+    echo "bin/baseline-approve.sh <kind> --current in a separate terminal window (not via the agent" >&2
+    echo "or Claude Code's ! prefix: it needs a TTY); otherwise restore it from git." >&2
     exit 1
   fi
   if { [ "$REQUESTED_STAGE" = "5" ] || [ "$REQUESTED_STAGE" = "6" ]; } && [ "$DISP_STATUS" = "FAIL" ]; then

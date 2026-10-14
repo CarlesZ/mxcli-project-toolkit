@@ -102,7 +102,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
    and whether the rise belongs to the script under review or to earlier debt. A rise is a FAIL
    for the script even when mxbuild is clean. Never re-baseline to turn a row green — that is
    the user's decision; `--update-baseline` refuses a rise without `--reason`, and then
-   without the user running `bin/baseline-approve.sh lint` in their own terminal (never you), and
+   without the user running `bin/baseline-approve.sh lint` in a separate terminal (never you), and
    logs each one to `.claude/lint-acceptances.tsv`. A row reading `LINT BLIND` is an instrument fault (a rule
    inspected nothing), not a rise: name the rule and its configuration fix. `LINT BLIND: rules
    reverted to stock (…)` means `mxcli init` re-seeded the toolkit rules and lint did not run:

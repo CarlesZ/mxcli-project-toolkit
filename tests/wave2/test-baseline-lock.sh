@@ -16,6 +16,12 @@
 #   G1  gate-check: a hand-moved baseline reports FAIL, and Stage 5 is BLOCKED (exit 1)
 #   G2  after the person approves the file as it is (--current) → PASS
 #   G3  a baseline with no record at all (predates the lock) → MANUAL, not PASS
+#   --- #375 review ---
+#   F1  forge: hand-edit the baseline looser, then run `baseline-lock.sh record … tighten`
+#       directly → gate-check still FAIL (the record is checked against its content)
+#   X1  a CRLF checkout of a recorded baseline (Windows autocrlf) → PASS, not FAIL
+#   X2  a looser baseline that is exactly git HEAD's blob → MANUAL; the same edit uncommitted → FAIL
+#   X3  a real merge of two branches that each ratcheted a different rule down → not FAIL
 #
 # Synthetic lint JSON and a stub mxcli, as in test-lint-gate-accept.sh and
 # test-conformance-baseline-scope.sh: nothing here parses tool output; the assertions are
@@ -135,6 +141,55 @@ case "$l" in *PASS*) ok "G2 after the person approves the file as it is: PASS" ;
 L="$WORK/legacy"; mkdir -p "$L/.claude"; cp "$LB" "$L/.claude/lint-baseline.json"
 l="$(gline "$L")"
 case "$l" in *MANUAL*) ok "G3 a baseline with no record: MANUAL" ;; *) bad "G3 unrecorded baseline not MANUAL" "${l:-<no Baselines line>}" ;; esac
+
+echo "F1 a direct record after a hand edit does not launder it"
+F="$WORK/f"; newproj "$F"; cp "$P/mxcli" "$F/mxcli"
+fgate() { (cd "$F" && LINT_JSON="$WORK/lint.json" bash bin/lint-gate.sh "$@") 2>&1; }
+lintjson CONV009=3; fgate --update-baseline >/dev/null
+printf '{\n  "counts": {"CONV009": 30}\n}\n' > "$F/.claude/lint-baseline.json"
+# The review's exact command: `record <root> <kind> <sha> tighten` (extra args are ignored now).
+bash "$F/bin/baseline-lock.sh" record "$F" lint "$(bash "$F/bin/baseline-lock.sh" sha "$F/.claude/lint-baseline.json")" tighten >/dev/null 2>&1
+l="$(gline "$F")"
+case "$l" in *FAIL*) ok "F1 forged record detected: FAIL" ;; *) bad "F1 a direct 'record … tighten' turned a hand edit green" "${l:-<no Baselines line>}" ;; esac
+lintjson CONV009=30
+out="$(fgate --update-baseline --reason x)"; rc=$?
+[ "$rc" -ne 0 ] && ok "F1 lint-gate refuses to build on the forged state (rc $rc)" || bad "F1 lint-gate wrote over a forged baseline" "$out"
+
+echo "X1-X3 no false FAIL from line endings or git"
+X="$WORK/x"; newproj "$X"; cp "$P/mxcli" "$X/mxcli"
+xgate() { (cd "$X" && LINT_JSON="$WORK/lint.json" bash bin/lint-gate.sh "$@") 2>&1; }
+lintjson CONV009=5 SEC003=5; xgate --update-baseline >/dev/null
+XB="$X/.claude/lint-baseline.json"
+"$PY" -c 'import sys;p=sys.argv[1];b=open(p,"rb").read();open(p,"wb").write(b.replace(b"\n",b"\r\n"))' "$XB"
+l="$(gline "$X")"
+case "$l" in *PASS*) ok "X1 CRLF checkout of the recorded baseline: PASS" ;; *) bad "X1 CRLF read as a move" "$l" ;; esac
+"$PY" -c 'import sys;p=sys.argv[1];b=open(p,"rb").read();open(p,"wb").write(b.replace(b"\r\n",b"\n"))' "$XB"
+if command -v git >/dev/null 2>&1; then
+  gx() { git -C "$X" -c user.name=t -c user.email=fixture "$@" >/dev/null 2>&1; }
+  gx init -q; gx checkout -q -b main; gx add -A; gx commit -q -m base
+  printf '{\n  "counts": {"CONV009": 9, "SEC003": 5}\n}\n' > "$XB"
+  l="$(gline "$X")"
+  case "$l" in *FAIL*) ok "X2 uncommitted looser edit: FAIL" ;; *) bad "X2 uncommitted looser edit not FAIL" "$l" ;; esac
+  gx commit -q -am "loosen in git"
+  l="$(gline "$X")"
+  case "$l" in *MANUAL*) ok "X2 the same content committed (HEAD blob): MANUAL" ;; *) bad "X2 committed content not MANUAL" "$l" ;; esac
+  gx reset -q --hard HEAD~1
+  gx checkout -q -b a; lintjson CONV009=3 SEC003=5; xgate --update-baseline >/dev/null; gx add -A; gx commit -q -m a
+  gx checkout -q main; gx checkout -q -b b; lintjson CONV009=5 SEC003=2; xgate --update-baseline >/dev/null; gx add -A; gx commit -q -m b
+  gx checkout -q a; gx merge -q --no-edit b
+  # The two logs and the baseline conflict; a person resolves them the obvious way: both log
+  # rows kept, the baseline taking each side's own ratchet (CONV009 3 from a, SEC003 2 from b).
+  # That content was never written by any instrument, so its hash is in no record — the case
+  # the review raised.
+  printf '{\n  "counts": {\n    "CONV009": 3,\n    "SEC003": 2\n  },\n  "total": 5\n}\n' > "$XB"
+  { git -C "$X" show a:.claude/baseline-writes.tsv; git -C "$X" show b:.claude/baseline-writes.tsv | tail -1; } > "$X/.claude/baseline-writes.tsv"
+  gx add -A; gx commit -q -m merge
+  [ "$(git -C "$X" rev-list --count HEAD)" -ge 4 ] || bad "X3 the merge was not built" "$(git -C "$X" log --oneline | head -5)"
+  l="$(gline "$X")"
+  case "$l" in *FAIL*|"") bad "X3 a committed two-branch merge read as tampering" "${l:-<no Baselines line>}" ;; *) ok "X3 merged baselines: not FAIL ($(printf '%s' "$l" | sed 's/^Baselines (human-approved?): //' | cut -c1-6))" ;; esac
+else
+  echo "  skip X2-X3 (no git)"
+fi
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"

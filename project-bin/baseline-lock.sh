@@ -6,37 +6,48 @@
 # itself, so "re-baselining is the user's call" was honour-system. A baseline that LOOSENS now
 # moves only against a row in .claude/baseline-approvals.tsv whose sha256 is the exact
 # proposed content — a row only bin/baseline-approve.sh writes, from a terminal, after a person
-# reads the change and types `approve`. The agent cannot write that row through its normal
-# tools: bin/install-claude-permissions.sh denies `*baseline-approv*` in Bash and edits to the
-# approvals file (deny beats allow and auto mode in Claude Code).
+# reads the change and types `approve`.
 #
-# WHAT IT DOES NOT PROTECT AGAINST, said plainly: an agent that deliberately evades the deny
-# rules (obfuscated shell, a script that writes the row), a harness with no deny rules whose
-# agent terminal is a real TTY, or someone deleting both ledgers. It turns "the agent typed a
-# flag" into "the agent forged a record", which is visible in git and named by gate-check.
+# THE RECORD IS CHECKED, NOT BELIEVED (#375 review). Every instrument write is logged with a
+# snapshot of its content, and `verify` replays the log: each recorded write must be no looser
+# than the one before it, or carry an approval. So appending a row by hand — or running
+# `record` directly after a hand edit — does not launder a rise: the forged row is looser than
+# its predecessor and verify says FAIL. Only content can pass, never a claim about content.
+#
+# What it does NOT stop, said plainly: a forged row in baseline-approvals.tsv (Claude Code denies
+# the approve command, file-tool edits and shell redirection into it — bin/install-claude-
+# permissions.sh — but an agent determined to evade those, e.g. via an interpreter, can still
+# write one); a harness with no deny rules whose agent terminal is a real TTY; deleting the whole
+# log (verify then reads "predates the lock": MANUAL, not PASS); and a loosening committed to git
+# (reported MANUAL, below, so a merge never reads as tampering). Each of those is a deliberate
+# forgery visible in git, not a flag the rule allowed.
 #
 # Covered baselines (kind -> file, relative to the project root):
 #   lint         .claude/lint-baseline.json     project-bin/lint-gate.sh
 #   conformance  docs/conformance/baseline.tsv  project-bin/conformance-check.sh
+# "Looser" means: lint — any rule's count above the previous one; conformance — any row OK in the
+# previous baseline and present but not OK now. Content is compared with CR stripped, so a CRLF
+# checkout (Windows autocrlf) hashes the same as LF.
 #
-# Records:
-#   .claude/baseline-approvals.tsv  ts kind sha256 by note   — written ONLY by baseline-approve.sh
-#   .claude/baseline-writes.tsv     ts kind sha256 basis     — every write an instrument made
-#                                   (basis: first | tighten | seed | approved)
-#   .claude/baseline-pending/<kind>[.summary]  the refused proposal, for the person to review
-# Commit all three with the baseline.
+# Records (commit them with the baseline):
+#   .claude/baseline-approvals.tsv            ts kind sha256 by note   — ONLY baseline-approve.sh
+#   .claude/baseline-writes.tsv               ts kind sha256 basis     — every write an instrument made
+#   .claude/baseline-history/<kind>/<sha256>  the content of each recorded write
+#   .claude/baseline-pending/<kind>[.summary] the refused proposal, for the person to review
 #
-# Usage (instruments and gate-check call it; a person never needs to):
+# Usage (instruments, baseline-approve.sh and gate-check call it; a person never needs to):
 #   baseline-lock.sh file     <kind>                         print the baseline path (relative)
-#   baseline-lock.sh sha      <file>                         print sha256 of a file
+#   baseline-lock.sh sha      <file>                         sha256 of the file, CR stripped
 #   baseline-lock.sh verify   <root> <kind>                  print STATE<TAB>note, exit 0
 #       NONE    no baseline and no record                    (a first write needs no approval)
 #       GONE    no baseline, but records exist               (re-creating it needs approval)
-#       PASS    the file on disk matches an approval or a recorded instrument write
-#       FAIL    it matches neither: it moved outside the instrument, or without approval
-#       MANUAL  a baseline with no record at all — it predates this lock; unverifiable
+#       PASS    approved, or no looser than the last verified write
+#       FAIL    looser than the last verified write with no approval, or a recorded write that
+#               loosened without one (a forged record)
+#       MANUAL  no record at all (predates the lock), or the looser content is exactly what git
+#               HEAD holds (a merge or checkout brought it in, not an uncommitted local edit)
 #   baseline-lock.sh approved <root> <kind> <sha>            exit 0 iff an approval row matches
-#   baseline-lock.sh record   <root> <kind> <sha> <basis>    append a write row
+#   baseline-lock.sh record   <root> <kind> <basis>          log the baseline now on disk
 #   baseline-lock.sh propose  <root> <kind> <file> <summary> save the proposal, print the ask
 #
 # Producer of the records: the two instruments above (writes, proposals) and
@@ -44,8 +55,143 @@
 # bin/gate-check.sh's "Baselines" line (toolkit copy, run against the project root).
 set -uo pipefail
 
-APPROVALS=".claude/baseline-approvals.tsv"
-WRITES=".claude/baseline-writes.tsv"
+PY=""
+for _c in python3 python py; do  # portability-ok: this IS the interpreter probe
+  case "$(command -v "$_c" 2>/dev/null)" in *[Ww]indows[Aa]pps*) continue ;; esac
+  if "$_c" -c 'import sys; sys.exit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then PY="$_c"; break; fi
+done
+[ -n "$PY" ] || { echo "baseline-lock: Python 3 is required and was not found" >&2; exit 2; }
+
+IFS= read -r -d '' _LOCK_PY <<'PY' || true
+import datetime, hashlib, json, os, shutil, subprocess, sys
+
+FILES = {"lint": ".claude/lint-baseline.json", "conformance": "docs/conformance/baseline.tsv"}
+APPROVALS, WRITES, HISTORY = ".claude/baseline-approvals.tsv", ".claude/baseline-writes.tsv", ".claude/baseline-history"
+
+def norm(b):
+    return b.replace(b"\r", b"")
+
+def sha_bytes(b):
+    return hashlib.sha256(norm(b)).hexdigest()
+
+def sha_file(p):
+    return sha_bytes(open(p, "rb").read())
+
+def rows(root, name, kind):
+    p = os.path.join(root, name)
+    if not os.path.isfile(p):
+        return []
+    out = []
+    for line in open(p, encoding="utf-8", errors="replace"):
+        f = line.rstrip("\r\n").split("\t")
+        if len(f) >= 3 and f[1] == kind and f[0] != "ts":
+            out.append(f)
+    return out
+
+def load(kind, b):
+    t = norm(b).decode("utf-8", "replace")
+    if kind == "lint":
+        return {k: int(v) for k, v in (json.loads(t).get("counts") or {}).items()}
+    d = {}
+    for line in t.splitlines():
+        f = line.split("\t")
+        if len(f) >= 3 and f[0]:
+            d[(f[0], f[1])] = f[2]
+    return d
+
+def looser(kind, prev, new):
+    if kind == "lint":
+        return [r for r in sorted(new) if new[r] > prev.get(r, 0)]
+    return ["%s %s" % k for k in sorted(new) if prev.get(k) == "OK" and new[k] != "OK"]
+
+def head_blob(root, rel):
+    try:
+        r = subprocess.run(["git", "-C", root, "show", "HEAD:./" + rel], capture_output=True, timeout=20)
+        return r.stdout if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+def verify(root, kind):
+    rel = FILES[kind]
+    path = os.path.join(root, rel)
+    w, a = rows(root, WRITES, kind), rows(root, APPROVALS, kind)
+    approved = {r[2] for r in a}
+    hw = head_blob(root, WRITES)
+    committed = set(norm(hw).decode("utf-8", "replace").splitlines()) if hw else set()
+    last, manual = None, []
+    for r in w:
+        snap = os.path.join(root, HISTORY, kind, r[2])
+        if not os.path.isfile(snap) or sha_file(snap) != r[2]:
+            return "FAIL", "recorded write %s (%s) has no matching snapshot under %s — the record cannot be checked" % (r[2][:12], r[0], HISTORY)
+        try:
+            c = load(kind, open(snap, "rb").read())
+        except ValueError:
+            return "FAIL", "recorded write %s (%s) is not a readable %s baseline" % (r[2][:12], r[0], kind)
+        up = [] if last is None or r[2] in approved else looser(kind, last, c)
+        if up and "\t".join(r) in committed:
+            # Committed rows came through git: two branches that each wrote a baseline, merged.
+            manual.append("recorded write %s (%s) is looser than the row before it (%s) but is committed — "
+                          "a merge of two branches' baselines, not a local edit; review the history" % (r[2][:12], r[0], ", ".join(up[:5])))
+            up = []
+        if up:
+            return "FAIL", ("recorded write %s (%s, basis %s) loosens the baseline (%s) and no approval matches it — "
+                            "a record is checked against its content, not believed" % (r[2][:12], r[0], r[3] if len(r) > 3 else "?", ", ".join(up[:5])))
+        last = c
+    if not os.path.isfile(path):
+        if w or a:
+            return "GONE", "%s is missing but was recorded before — re-creating it needs a person: bin/baseline-approve.sh %s" % (rel, kind)
+        return "NONE", "no %s baseline yet" % kind
+    raw = open(path, "rb").read()
+    s = sha_bytes(raw)
+    if s in approved:
+        return ("MANUAL", manual[0]) if manual else ("PASS", "%s matches a human approval" % rel)
+    if last is None:
+        return "MANUAL", "%s has no write record (it predates the lock) — cannot tell who moved it; the next instrument write starts the record" % rel
+    try:
+        cur = load(kind, raw)
+    except ValueError:
+        return "FAIL", "%s is not a readable %s baseline" % (rel, kind)
+    up = looser(kind, last, cur)
+    if not up:
+        return ("MANUAL", manual[0]) if manual else ("PASS", "%s is no looser than its last recorded write" % rel)
+    hb = head_blob(root, rel)
+    if hb and sha_bytes(hb) == s:
+        return "MANUAL", ("%s is looser than its last recorded write (%s) but is exactly what git HEAD holds — "
+                          "it came through git (a merge or checkout), not a local edit; review its history, and if the "
+                          "user accepts it they run: bin/baseline-approve.sh %s --current" % (rel, ", ".join(up[:5]), kind))
+    return "FAIL", ("%s moved without approval: looser than its last recorded write (%s) — a person reviews it and runs: "
+                    "bin/baseline-approve.sh %s --current" % (rel, ", ".join(up[:5]), kind))
+
+def record(root, kind, basis):
+    path = os.path.join(root, FILES[kind])
+    raw = open(path, "rb").read()
+    s = sha_bytes(raw)
+    d = os.path.join(root, HISTORY, kind)
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, s), "wb").write(norm(raw))
+    p = os.path.join(root, WRITES)
+    new = not os.path.isfile(p)
+    with open(p, "a") as f:
+        if new:
+            f.write("ts\tkind\tsha256\tbasis\n")
+        f.write("%s\t%s\t%s\t%s\n" % (datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), kind, s, basis))
+    for n in (kind, kind + ".summary"):
+        try:
+            os.remove(os.path.join(root, ".claude", "baseline-pending", n))
+        except OSError:
+            pass
+
+cmd, args = sys.argv[1], sys.argv[2:]
+if cmd == "sha":
+    print(sha_file(args[0]))
+elif cmd == "verify":
+    st, note = verify(args[0], args[1])
+    print("%s\t%s" % (st, note))
+elif cmd == "approved":
+    sys.exit(0 if any(r[2] == args[2] for r in rows(args[0], APPROVALS, args[1])) else 1)
+elif cmd == "record":
+    record(args[0], args[1], args[2])
+PY
 
 _file() {
   case "$1" in
@@ -55,69 +201,30 @@ _file() {
   esac
 }
 
-_sha() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
-  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
-  else openssl dgst -sha256 "$1" | sed 's/^.*= *//'
-  fi
-}
-
-_has() {  # _has <tsv> <kind> <sha> — a row for this kind and hash
-  [ -f "$1" ] && awk -F'\t' -v k="$2" -v s="$3" '$2==k && $3==s {f=1} END {exit !f}' "$1"
-}
-_any() {  # _any <tsv> <kind> — any row for this kind
-  [ -f "$1" ] && awk -F'\t' -v k="$2" '$2==k {f=1} END {exit !f}' "$1"
-}
-_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-
 cmd="${1:-}"; [ $# -gt 0 ] && shift
 case "$cmd" in
   file)
     _file "$1" ;;
   sha)
-    _sha "$1" ;;
-  verify)
-    root="$1"; kind="$2"; f="$(_file "$kind")" || exit 2
-    a="$root/$APPROVALS"; w="$root/$WRITES"
-    if [ ! -f "$root/$f" ]; then
-      if _any "$a" "$kind" || _any "$w" "$kind"; then
-        printf 'GONE\t%s is missing but was recorded before — re-creating it needs a person: bin/baseline-approve.sh %s\n' "$f" "$kind"
-      else
-        printf 'NONE\tno %s baseline yet\n' "$kind"
-      fi
-      exit 0
-    fi
-    s="$(_sha "$root/$f")"
-    if _has "$a" "$kind" "$s"; then
-      printf 'PASS\t%s matches a human approval\n' "$f"
-    elif _has "$w" "$kind" "$s"; then
-      printf 'PASS\t%s matches a recorded write (%s)\n' "$f" \
-        "$(awk -F'\t' -v k="$kind" -v s="$s" '$2==k && $3==s {b=$4} END {print b}' "$w")"
-    elif _any "$a" "$kind" || _any "$w" "$kind"; then
-      printf 'FAIL\t%s moved without approval (sha %s is in neither %s nor %s) — a person reviews it and runs: bin/baseline-approve.sh %s --current\n' \
-        "$f" "$(printf '%s' "$s" | cut -c1-12)" "$APPROVALS" "$WRITES" "$kind"
-    else
-      printf 'MANUAL\t%s has no approval or write record (it predates the lock) — cannot tell who moved it; the next instrument write starts the record\n' "$f"
-    fi
-    exit 0 ;;
-  approved)
-    _has "$1/$APPROVALS" "$2" "$3" ;;
+    "$PY" -c "$_LOCK_PY" sha "$1" ;;
+  verify|approved)
+    _file "$2" >/dev/null || exit 2
+    "$PY" -c "$_LOCK_PY" "$cmd" "$@" ;;
   record)
-    root="$1"; mkdir -p "$root/.claude"
-    [ -f "$root/$WRITES" ] || printf 'ts\tkind\tsha256\tbasis\n' > "$root/$WRITES"
-    printf '%s\t%s\t%s\t%s\n' "$(_now)" "$2" "$3" "$4" >> "$root/$WRITES"
-    rm -f "$root/.claude/baseline-pending/$2" "$root/.claude/baseline-pending/$2.summary" ;;
+    _file "$2" >/dev/null || exit 2
+    "$PY" -c "$_LOCK_PY" record "$@" ;;
   propose)
     root="$1"; kind="$2"; src="$3"; summary="$4"
     d="$root/.claude/baseline-pending"; mkdir -p "$d"
     cp "$src" "$d/$kind" && printf '%s\n' "$summary" > "$d/$kind.summary"
     echo "" >&2
     echo "   Moving this baseline is the user's call, and a flag the agent can type is not their" >&2
-    echo "   answer. Show the user the change above, then ask THEM to run, in their own terminal:" >&2
+    echo "   answer. Show the user the change above, then ask THEM to run, in a separate terminal" >&2
+    echo "   window (not the agent's, and not Claude Code's ! mode, which has no TTY):" >&2
     echo "       bin/baseline-approve.sh $kind" >&2
     echo "   (it shows the proposal and asks them to type 'approve'). Agents: do not run it —" >&2
     echo "   it is denied to you and refuses without a terminal. Then re-run the same command." >&2
     ;;
   *)
-    sed -n '2,45p' "$0"; exit 2 ;;
+    sed -n '2,57p' "$0"; exit 2 ;;
 esac

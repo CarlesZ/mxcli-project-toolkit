@@ -55,6 +55,6 @@ mxtk_sec014_notice() {
   echo "\"none\" (or SEC014 enabled: false) switches this security rule off: only on the user's answer in chat, recorded in"
   echo "PROJECT.md — never to silence this notice. The first configured run raises SEC014 0 -> N, so"
   echo "re-baseline right after: bin/lint-gate.sh --update-baseline --reason \"SEC014 configured\", then the user"
-  echo "runs bin/baseline-approve.sh lint in their own terminal (an agent cannot approve it)"
+  echo "runs bin/baseline-approve.sh lint in a separate terminal (an agent cannot approve it)"
   return 0
 }

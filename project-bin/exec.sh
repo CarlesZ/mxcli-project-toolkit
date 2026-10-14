@@ -860,7 +860,7 @@ run_lint_gate() {
          sed -n '/^FAIL/,$p' "$_lo" | head -60 | sed 's/^/    /'
          echo "    Fix the script and re-run. Accepting the debt is the user's call, not yours:"
          echo "    bin/lint-gate.sh --update-baseline --reason \"<why>\", then the USER runs"
-         echo "    bin/baseline-approve.sh lint in their own terminal. Logged to .claude/lint-acceptances.tsv."
+         echo "    bin/baseline-approve.sh lint in a separate terminal. Logged to .claude/lint-acceptances.tsv."
        fi ;;
     *) LINT_DETAIL="lint could not run (lint-gate exit $LINT_RC)"; echo "  ⚠ $LINT_DETAIL"
        tail -5 "$_lo" | sed 's/^/    /' ;;

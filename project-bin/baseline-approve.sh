@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# baseline-approve.sh — a PERSON approves a ratchet baseline move. Run it in your own terminal.
+# baseline-approve.sh — a PERSON approves a ratchet baseline move. Run it in a separate terminal
+# window of your own — not through the agent, and not via Claude Code's `!` prefix (no TTY there,
+# so it is refused).
 #
 #   bin/baseline-approve.sh lint               # approve the proposal lint-gate.sh just refused
 #   bin/baseline-approve.sh conformance        # same, for conformance-check.sh
@@ -23,11 +25,11 @@ LOCK="$(dirname "${BASH_SOURCE[0]}")/baseline-lock.sh"
 
 KIND="${1:-}"; CURRENT=0
 [ "${2:-}" = "--current" ] && CURRENT=1
-case "$KIND" in lint|conformance) ;; *) sed -n '2,8p' "$0"; exit 2 ;; esac
+case "$KIND" in lint|conformance) ;; *) sed -n '2,10p' "$0"; exit 2 ;; esac
 
 if [ ! -t 0 ]; then
-  echo "baseline-approve: REFUSED — no terminal. This is a person's decision: run it yourself," >&2
-  echo "in your own terminal, not through an agent." >&2
+  echo "baseline-approve: REFUSED — no terminal. This is a person's decision: run it yourself, in a" >&2
+  echo "separate terminal window — not through an agent, and not via Claude Code's ! prefix." >&2
   exit 2
 fi
 
@@ -56,4 +58,10 @@ F="$ROOT/.claude/baseline-approvals.tsv"
 [ -f "$F" ] || printf 'ts\tkind\tsha256\tby\tnote\n' > "$F"
 printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$KIND" "$SHA" "$BY" \
   "$(printf '%s' "$NOTE" | tr '\t\n' '  ')" >> "$F"
-echo "Approved ($(printf '%s' "$SHA" | cut -c1-12)). The agent can now re-run its --update-baseline command."
+if [ "$CURRENT" -eq 1 ]; then
+  # The file on disk is now the accepted state: log it, so later writes are checked against it.
+  bash "$LOCK" record "$ROOT" "$KIND" approved
+  echo "Approved ($(printf '%s' "$SHA" | cut -c1-12)): the $KIND baseline on disk is now the accepted state."
+else
+  echo "Approved ($(printf '%s' "$SHA" | cut -c1-12)). The agent can now re-run its --update-baseline command."
+fi

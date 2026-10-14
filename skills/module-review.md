@@ -323,7 +323,8 @@ the render was broken) becomes mechanically impossible to repeat, not just prohi
 A report may carry addenda: each re-look adds its own `VALID AT:` and its own `PROOF-OF-LOOK:`
 lines below it. Each citation is checked against the nearest stamp above it, and the report is
 stale only when the model has been built past its newest stamp (by commit time). Keep earlier
-sections; do not delete their proof lines.
+sections; do not delete their proof lines. Stamp an addendum with the model commit its shots were
+taken on, never a later commit that only adds the screenshots or the report: that commit postdates the shots.
 Reports dated before 2026-08-23 predate the rule and are left alone.
 
 **A LOOK report expires when the module changes.** Any BUILD/GATE commit that touches the module

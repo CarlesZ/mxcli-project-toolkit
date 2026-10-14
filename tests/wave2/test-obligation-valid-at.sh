@@ -81,6 +81,9 @@ echo "== T5: headline section cites a shot older than ITS stamp -> FAULT (contro
 printf '<p>ModuleX: 2 of 2 pages reviewed</p>\nVALID AT: %s\n<pre>PROOF-OF-LOOK: ModuleX.Home = shots/before.png</pre>\n<h2>Addendum</h2>\nVALID AT: %s\n<pre>PROOF-OF-LOOK: ModuleX.Edit = shots/after.png</pre>\n' "$S1" "$S2" > "$QREP"
 out="$("$OBCHECK" "$Q" 2>&1 | grep -A3 'Obligation look ')"
 case "$out" in *FAULT*ModuleX.Home*) ok "a shot older than its own section's stamp still FAULTs" ;; *) bad "stale shot in section 1 not caught: $out" ;; esac
+# #357: the FAULT names its remedy (append an addendum), or a partial re-take reads as
+# "re-shoot every page" or "accept the FAULT".
+case "$out" in *"append an addendum with its own VALID AT"*"PROOF-OF-LOOK lines for the re-shot pages"*"shots taken after that commit"*) ok "the old-shots FAULT names the addendum remedy" ;; *) bad "old-shots FAULT gives no remedy: $out" ;; esac
 
 echo "== T6: addendum cites a shot older than the addendum's stamp -> FAULT (not judged by the min stamp) =="
 printf '<p>ModuleX: 2 of 2 pages reviewed</p>\nVALID AT: %s\n<pre>PROOF-OF-LOOK: ModuleX.Home = shots/mid.png</pre>\n<h2>Addendum</h2>\nVALID AT: %s\n<pre>PROOF-OF-LOOK: ModuleX.Edit = shots/mid.png</pre>\n' "$S1" "$S2" > "$QREP"

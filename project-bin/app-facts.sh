@@ -341,11 +341,31 @@ log "catalog ok: build_mode=${BUILD_MODE:-unset} modules=$N_MODULES refs=$N_REFS
 # ---------------------------------------------------------------------------------------------
 log "step 2: inventory + dependency facts"
 T2=$(date +%s)
-DB="$DB" FACTS_DIR="$FACTS_DIR" MX_VERSION="$MX_VERSION" MPR_BASE="$MPR_BASE" MAX_LOOPS="$MAX_LOOPS" "$PY" - <<'PY' || exit 2
+# The catalog is opened through mxtk_sqlite_ro_uri (_common.sh): a bare "file:%s?mode=ro" cut the
+# path at a '#' or '?' in a folder name, lost mode=ro, and SQLite created and opened an empty file
+# beside the model folder. A _common.sh older than this script (or none) lacks the helper: build
+# the same URI inline, as require_py and find_mpr fall back above. native_path (when present)
+# turns an MSYS /c/... path into C:/... first, as mxtk_model_version does.
+DB_NATIVE="$DB"
+if type native_path >/dev/null 2>&1; then DB_NATIVE="$(native_path "$DB")"; fi
+if type mxtk_sqlite_ro_uri >/dev/null 2>&1; then
+  DB_URI="$(mxtk_sqlite_ro_uri "$DB_NATIVE")"
+else
+  DB_URI="$("$PY" -c "import os,sys,urllib.request as u
+print('file:'+u.pathname2url(os.path.abspath(sys.argv[1]))+'?mode=ro')" "$DB_NATIVE" | tr -d '\r')"
+fi
+[ -n "$DB_URI" ] || { echo "FAULT: could not build a read-only URI for $DB" >&2; exit 2; }
+DB="$DB" DB_URI="$DB_URI" FACTS_DIR="$FACTS_DIR" MX_VERSION="$MX_VERSION" MPR_BASE="$MPR_BASE" MAX_LOOPS="$MAX_LOOPS" "$PY" - <<'PY' || exit 2
 import json, os, sqlite3, sys, collections
 
-db = sqlite3.connect("file:%s?mode=ro" % os.environ["DB"], uri=True)
+db = sqlite3.connect(os.environ["DB_URI"], uri=True)
 db.row_factory = sqlite3.Row
+# The shell checked the catalog with the sqlite3 CLI on the plain path; this is a second open. If
+# it reached a different file, an empty graph must not be written as the app's facts.
+if db.execute("SELECT count(*) FROM sqlite_master WHERE type='table'").fetchone()[0] == 0:
+    sys.stderr.write("FAULT: %s opened with 0 tables (URI %s), though the catalog check passed. Refusing to write facts.\n"
+                     % (os.environ["DB"], os.environ["DB_URI"]))
+    sys.exit(2)
 F = os.environ["FACTS_DIR"]
 def rows(sql, *a): return [dict(r) for r in db.execute(sql, a)]
 def one(sql, *a):  return db.execute(sql, a).fetchone()[0]

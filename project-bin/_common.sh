@@ -362,6 +362,22 @@ find_mxcli_cache() {
 }
 
 # ---------------------------------------------------------------------------
+# mxtk_sqlite_ro_uri <path> — print a read-only SQLite URI for <path>: absolute, URI-escaped,
+# ending in ?mode=ro. Hand it to Python as sqlite3.connect(uri, uri=True).
+# Escaping is the point: a plain "file:%s?mode=ro" cuts the path at a '#' or '?' in any folder
+# name ("a #2", "b?c"), drops mode=ro with it, and SQLite then CREATES an empty file at the
+# truncated path (a zero-byte "a " beside the model folder) and opens that instead.
+# Uses $PY when set, else resolve_py. Returns 1 when there is no Python. The caller decides
+# whether to pass the path through native_path first; this does no platform conversion.
+# ---------------------------------------------------------------------------
+mxtk_sqlite_ro_uri() {
+  local py="${PY:-$(resolve_py 2>/dev/null || true)}"
+  [ -n "$py" ] || return 1
+  "$py" -c "import os,sys,urllib.request as u
+print('file:'+u.pathname2url(os.path.abspath(sys.argv[1]))+'?mode=ro')" "$1" | tr -d '\r'
+}
+
+# ---------------------------------------------------------------------------
 # mxtk_model_version [mpr] — the model's Mendix version (e.g. 11.12.2), read from the
 # .mpr's own SQLite _MetaData._ProductVersion. v1 and v2 models both carry it (v2's .mpr
 # is still the SQLite index). sqlite3 CLI if present (read-only), else Python's sqlite3.
@@ -379,9 +395,9 @@ mxtk_model_version() {
   fi
   if [ -z "$v" ]; then
     py="${PY:-$(resolve_py 2>/dev/null || true)}"
-    [ -n "$py" ] && v=$("$py" -c "import sqlite3,sys,os,urllib.request as u
-c=sqlite3.connect('file:'+u.pathname2url(os.path.abspath(sys.argv[1]))+'?mode=ro',uri=True)
-print(c.execute('select _ProductVersion from _MetaData').fetchone()[0])" "$(native_path "$mpr")" 2>/dev/null | head -1 | tr -d '\r')
+    [ -n "$py" ] && v=$("$py" -c "import sqlite3,sys
+c=sqlite3.connect(sys.argv[1],uri=True)
+print(c.execute('select _ProductVersion from _MetaData').fetchone()[0])" "$(PY="$py" mxtk_sqlite_ro_uri "$(native_path "$mpr")")" 2>/dev/null | head -1 | tr -d '\r')
   fi
   case "$v" in
     [0-9]*.[0-9]*) printf '%s\n' "$v"; return 0 ;;

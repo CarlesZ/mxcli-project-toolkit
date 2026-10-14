@@ -6973,3 +6973,49 @@ Three forms, as tried (placeholders are the reporter's):
 3. **Workaround (worked in the field):** re-emit the whole page with `create or modify page`, the column carrying the new attribute.
 
 **Rule:** any change to an existing DG2 column — insert, re-attribute, re-sort — is a whole-page re-emit, never `ALTER PAGE` (`skills/learned-dg2-patterns.md` rule 1; `skills/learned-detection-gaps.md` register). Related: BUG-96 (cross-module column insert via `ALTER PAGE`, which corrupts).
+
+## BUG-DRAFT-microflow-header-grammar: a microflow header without `()` fails `check` with three parse errors that point at `returns` and `List of`, not at the missing parentheses (2026-10-14)
+
+> **NOT YET FILED.** The grammar is as designed; the ask upstream is a clearer message.
+
+**Discovered:** 2026-10-14, on an existing-app change project (a connector app), while drafting a small list-transforming microflow: no parameters, returns a list, lives in a sub-folder, loops over the list and sets one attribute.
+**Reproducible:** yes, on every such header. **mxcli version:** v0.26.0. **Mendix:** 11.15.0. macOS.
+
+**What happens.** The natural-language header shape
+
+```
+create microflow M.Name returns List of M.E in '<Folder>' …
+```
+
+fails `mxcli check` with
+
+```
+line 11:2  missing '(' at 'returns'
+line 11:10 missing ':' at 'List of'
+line 12:2  mismatched input 'in' expecting ')'
+```
+
+The parser takes `returns` as the start of a parameter, so the second and third messages describe a parameter list that was never written. The agent spent a check cycle guessing.
+
+**Fix (built clean: check, exec, mxbuild, lint ratchet):**
+
+```
+create microflow M.Name ()
+  returns List of M.E
+  folder '<Folder>'
+begin
+  …
+  loop $M in $L begin
+    change $M (A = <expr>);
+  end loop;
+  …
+end;
+```
+
+1. The parameter parentheses are mandatory even when empty.
+2. Placement is the `folder '…'` clause, not `in`.
+3. A list member is changed inside `loop … begin … end loop;` with `change $var (…)`; there is no `foreach`/`for`.
+
+**Expected:** when `returns` follows the microflow name directly, `check` says "parameter list `()` required before `returns`" instead of three cascading errors.
+
+**Toolkit side:** `learned-microflow-patterns.md` → "Additional MDL Syntax Rules", first bullet.

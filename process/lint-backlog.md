@@ -165,7 +165,7 @@ conventions". The rules are mxcli's own, so any Starlark change waits for fixtur
 | Rule | Issue | Disposition |
 |---|---|---|
 | QUAL004 on a `DS_` Data grid 2 datasource | #360 | baseline with reason; upstream `bug-logs/pending-github-issues/qual004-dg2-datasource-ref.md`; BUG-DRAFT-qual004-dg2-datasource |
-| QUAL004 on `TEST_` helpers; CUSTOM002 on `TEST_`/`GET_`/`PRS_`/`STUB_` | #241 | CUSTOM002 `enabled: false` (user decision) or a local `VALID_PREFIXES` edit; QUAL004 baseline with reason; upstream `lint-naming-prefixes-as-options.md` |
+| QUAL004 on `TEST_` helpers; CUSTOM002 on `TEST_`/`GET_`/`PRS_`/`STUB_` | #241 | CUSTOM002 `enabled: false` (user decision, recorded in `PROJECT.md`) or baseline with reason; QUAL004 baseline with reason; upstream `lint-naming-prefixes-as-options.md` |
 | QUAL002 on import mappings / published REST services (MDL089) | #246 | QUAL002 per-kind options in `lint-config.yaml`; upstream `qual002-skip-mdl089-types.md` |
 
 ## Cheap extras (one afternoon each, when a batch has room)

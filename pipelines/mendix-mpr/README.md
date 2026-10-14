@@ -18,7 +18,10 @@ MXCLI=/path/to/mxcli pipelines/mendix-mpr/rehost-extract.sh <source.mpr> <target
 - The target must exist: `mxcli new <App> --version <same as source> --theme none`. The script
   writes model content only; run the mxbuild gate (`project-bin/exec.sh`, or
   `~/.mxcli/mxbuild/<ver>/modeler/mx check`) afterwards.
-- Modules default to every own module (empty Source column in `list modules`, System excluded).
+- Modules default to every own module (empty Source column in `list modules`, System excluded;
+  parsed by `lib/own-modules.awk`, fixture `tests/wave2/test-rehost-list-modules.sh` over verbatim
+  captures). No own module and no module argument: exit 2. A target that resolves to the source
+  file: exit 2, before anything is written.
   Marketplace modules are recorded by name and version on the ledger, never regenerated.
 - Output: `captures/` (verbatim mxcli output — the golden fixtures), `mdl/` (describe output,
   the topologically ordered file that was executed, the target's describe for the diff),
@@ -52,15 +55,31 @@ source (the read works; the native slice moved into Mendix 11 by MPK, not by reg
 ## The MPK route — `export-module-mpk.py` (moving a module without regenerating it)
 
 ```
-python3 -I pipelines/mendix-mpr/export-module-mpk.py <source.mpr> <Module> <out.mpk> [--no-widgets] [--json]
+python3 -I pipelines/mendix-mpr/export-module-mpk.py <source.mpr> <Module> <out.mpk> [--no-widgets] [--keep-constant-defaults] [--json]
 mxcli marketplace install --file <out.mpk> -p <target.mpr>      # new modules only; no PAT
 ```
 
 The exporter writes a module package in Mendix's own format: a zip with `package.xml` and a
 `project.mpr`. That `project.mpr` holds the source schema and `_MetaData` verbatim, the module's
-unit subtree byte for byte, the project root, the conversion unit and four project documents. Two
-of those documents are **scrubbed of secrets** (demo users, passwords, constants, credentials,
-certificates), and so is navigation. The zip also carries the module's `javasource/`,
+unit subtree byte for byte (constants excepted, below), the project root, the conversion unit and
+four project documents.
+
+**What is scrubbed, exactly** (each scrubbed unit gets a recomputed ContentsHash):
+
+| Unit | Emptied | Kept |
+|---|---|---|
+| Project security | demo users, user roles, admin password, admin and guest role; demo users and guest access switched off; security level set to `CheckNothing` (off) | everything else in the document |
+| Project settings | per-configuration constant values, custom settings, database URL / user / password; certificates; after-startup, before-shutdown and health-check microflow names | other settings |
+| Navigation | every navigation profile | the document shell |
+| The module's own constants | `DefaultValue` of every constant, by default; the run prints how many (`constant defaults emptied: N`). `--keep-constant-defaults` copies them unchanged | every other field |
+
+**Not scrubbed:** string literals inside microflows, pages, Java/JavaScript code, `resources/`
+files and REST/OData locations: a secret written there travels in the package. Read the module
+before handing the `.mpk` on. An emptied non-String constant (Integer, Boolean …) needs a value in
+the target before `mx check` passes.
+
+The script refuses (exit 2) when the output path is the source `.mpr`, before writing anything.
+The zip also carries the module's `javasource/`,
 `javascriptsource/`, `themesource/` and `resources/` folders, the userlib jars that have a
 `.<Module>.RequiredLib` marker, and the widget `.mpk` files its pages reference. The script header
 lists what it cannot know. It refuses MPR v2 sources and schemas that differ from the reference.

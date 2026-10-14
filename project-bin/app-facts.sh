@@ -284,11 +284,26 @@ log "catalog ok: build_mode=${BUILD_MODE:-unset} modules=$N_MODULES refs=$N_REFS
 # ---------------------------------------------------------------------------------------------
 log "step 2: inventory + dependency facts"
 T2=$(date +%s)
-DB="$DB" FACTS_DIR="$FACTS_DIR" MX_VERSION="$MX_VERSION" MPR_BASE="$MPR_BASE" MAX_LOOPS="$MAX_LOOPS" "$PY" - <<'PY' || exit 2
+# The catalog is opened through mxtk_sqlite_ro_uri (_common.sh): a bare "file:%s?mode=ro" cut the
+# path at a '#' or '?' in a folder name, lost mode=ro, and SQLite created and opened an empty file
+# beside the model folder. Without the helper (a _common.sh older than this script) refuse rather
+# than open an unescaped path.
+type mxtk_sqlite_ro_uri >/dev/null 2>&1 || {
+  echo "FAULT: project-bin/_common.sh has no mxtk_sqlite_ro_uri (older than app-facts.sh). Run bin/sync-project.sh." >&2
+  exit 2
+}
+DB_URI="$(mxtk_sqlite_ro_uri "$DB")" && [ -n "$DB_URI" ] || { echo "FAULT: could not build a read-only URI for $DB" >&2; exit 2; }
+DB="$DB" DB_URI="$DB_URI" FACTS_DIR="$FACTS_DIR" MX_VERSION="$MX_VERSION" MPR_BASE="$MPR_BASE" MAX_LOOPS="$MAX_LOOPS" "$PY" - <<'PY' || exit 2
 import json, os, sqlite3, sys, collections
 
-db = sqlite3.connect("file:%s?mode=ro" % os.environ["DB"], uri=True)
+db = sqlite3.connect(os.environ["DB_URI"], uri=True)
 db.row_factory = sqlite3.Row
+# The shell checked the catalog with the sqlite3 CLI on the plain path; this is a second open. If
+# it reached a different file, an empty graph must not be written as the app's facts.
+if db.execute("SELECT count(*) FROM sqlite_master WHERE type='table'").fetchone()[0] == 0:
+    sys.stderr.write("FAULT: %s opened with 0 tables (URI %s), though the catalog check passed. Refusing to write facts.\n"
+                     % (os.environ["DB"], os.environ["DB_URI"]))
+    sys.exit(2)
 F = os.environ["FACTS_DIR"]
 def rows(sql, *a): return [dict(r) for r in db.execute(sql, a)]
 def one(sql, *a):  return db.execute(sql, a).fetchone()[0]

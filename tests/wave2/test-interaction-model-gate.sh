@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Fixture for issue #291 part 2: the Stage-3 interaction-model facts. bin/gate-check.sh <p> 3
 # (via bin/lib/interaction-model-check.sh) FAILs, once design/interaction-model.md exists, on
-#   (a) a BRD role (top-level `actors`) with no row in the "Role homes" table,
-#   (b) a BRD approval/user-task use case with neither an inbox row nor a stated reason,
+#   (b) a BRD approval/review/sign-off/user-task use case not named on any line under an Inbox
+#       heading (table row or bullet),
 #   (c) a design/wireframes/*.html without a valid `Page parameter:` line in its wf-contract block;
+# reports MANUAL (never FAIL) for (a) a BRD actor with no "Role homes" row — BRD actors are not
+# the confirmed role model; a `none — <reason>` row covers one;
 # reports the artifact PENDING (artifact-manifest.tsv row `interaction-model`) when it is absent;
 # honours "Waived artifact interaction-model[/<unit>]" register lines; and reports ADOPTED for a
 # project adopted above stage 3.
@@ -12,6 +14,8 @@
 #
 # Positive control: run it against the base branch's gate-check.sh too — every FAIL case and the
 # PENDING/ADOPTED/WAIVED lines are absent there, so those assertions fail.
+#
+# T9–T12 are the independent review's probe trees for #332, reproduced verbatim.
 #
 # Input shapes are copied from the skills, not invented: the Role homes table and the per-page
 # table from skills/interaction-model.md Steps 1 and 3, the wf-contract block from
@@ -107,7 +111,7 @@ P="$(mkproj t1)"; OUT="$(run "$P")"; RC=$?
 case "$(stage3 "$OUT")" in *": PASS"*) ok "stage 3 passes" ;; *) bad "stage 3 not PASS: $(stage3 "$OUT")" ;; esac
 [ "$RC" -eq 0 ] && ok "exit 0" || bad "exit $RC on a passing project"
 case "$(imline "$OUT")" in
-  *"PASS"*"2 of 2 BRD roles"*"1 of 1 BRD approval"*"2 of 2 wireframes"*) ok "facts PASS, every denominator stated" ;;
+  *"PASS"*"2 of 2 BRD actors"*"1 of 1 BRD approval"*"2 of 2 wireframes"*) ok "facts PASS, every denominator stated" ;;
   *) bad "facts line wrong: $(imline "$OUT")" ;;
 esac
 case "$OUT" in *"Artifact interaction-model"*"PRESENT"*) ok "artifact check sees it PRESENT" ;; *) bad "no PRESENT artifact row" ;; esac
@@ -119,19 +123,26 @@ case "$OUT" in *"Artifact interaction-model"*"PENDING — owed at stage 3"*) ok 
 case "$(imline "$OUT")" in *PENDING*) ok "facts PENDING, not PASS" ;; *) bad "facts line: $(imline "$OUT")" ;; esac
 case "$(stage3 "$OUT")" in *": PASS"*) ok "absence alone does not fail stage 3" ;; *) bad "stage 3: $(stage3 "$OUT")" ;; esac
 
-echo "== T3a: a role with no row in Role homes — FAIL =="
+echo "== T3a: a BRD actor with no row in Role homes — MANUAL, not FAIL =="
 P="$(mkproj t3a)"; B="$(base_of "$P")"
 grep -v '^| Reviewer |' "$B/design/interaction-model.md" > "$B/x" && mv "$B/x" "$B/design/interaction-model.md"
 OUT="$(run "$P")"; RC=$?
-case "$(stage3 "$OUT")" in *": FAIL"*"interaction model"*) ok "stage 3 FAILs" ;; *) bad "stage 3: $(stage3 "$OUT")" ;; esac
-case "$OUT" in *"FAIL   role Reviewer"*) ok "finding names the role" ;; *) bad "no role finding" ;; esac
-[ "$RC" -eq 1 ] && ok "exit 1" || bad "exit $RC"
+case "$(stage3 "$OUT")" in *": MANUAL"*"interaction model"*) ok "stage 3 MANUAL" ;; *) bad "stage 3: $(stage3 "$OUT")" ;; esac
+case "$OUT" in *"MANUAL role Reviewer"*"confirm it is a user role"*"none — <reason>"*) ok "finding names the actor and the remedy" ;; *) bad "no role finding" ;; esac
+case "$OUT" in *"FAIL   role"*) bad "an actor without a home is still a FAIL" ;; *) ok "no role FAIL" ;; esac
+[ "$RC" -eq 2 ] && ok "exit 2 (manual)" || bad "exit $RC"
 
-echo "== T3b: a role row with an empty Home page cell — FAIL =="
+echo "== T3b: a role row with an empty Home page cell — MANUAL =="
 P="$(mkproj t3b)"; B="$(base_of "$P")"
 sed 's/^| Reviewer | `Review_Inbox` |/| Reviewer |  |/' "$B/design/interaction-model.md" > "$B/x" && mv "$B/x" "$B/design/interaction-model.md"
 OUT="$(run "$P")"
-case "$OUT" in *"FAIL   role Reviewer"*) ok "empty home cell is no home" ;; *) bad "empty home accepted: $(imline "$OUT")" ;; esac
+case "$OUT" in *"MANUAL role Reviewer"*) ok "empty home cell is no home" ;; *) bad "empty home accepted: $(imline "$OUT")" ;; esac
+
+echo "== T3c: a 'none — <reason>' row covers a non-user actor — PASS =="
+P="$(mkproj t3c)"; B="$(base_of "$P")"
+sed 's/^| Reviewer | `Review_Inbox` |/| Reviewer | none — merged into Manager |/' "$B/design/interaction-model.md" > "$B/x" && mv "$B/x" "$B/design/interaction-model.md"
+OUT="$(run "$P")"
+case "$(stage3 "$OUT")" in *": PASS"*) ok "none-row discharges the actor" ;; *) bad "stage 3: $(stage3 "$OUT") / $(imline "$OUT")" ;; esac
 
 echo "== T4a: an approval use case with no inbox row — FAIL =="
 P="$(mkproj t4a)"; B="$(base_of "$P")"
@@ -152,6 +163,7 @@ P="$(mkproj t5a)"; wf "$(base_of "$P")/design/wireframes/Review_Inbox.html" NOBL
 OUT="$(run "$P")"
 case "$OUT" in *"FAIL   wireframe Review_Inbox.html — no wf-contract block"*) ok "missing block named" ;; *) bad "$(imline "$OUT")" ;; esac
 case "$(stage3 "$OUT")" in *": FAIL"*) ok "stage 3 FAILs" ;; *) bad "stage 3: $(stage3 "$OUT")" ;; esac
+case "$OUT" in *"remedy: add <p>Page parameter:"*"Waived artifact interaction-model/<file>.html"*) ok "remedy line printed once" ;; *) bad "no remedy line" ;; esac
 
 echo "== T5b: a wf-contract block with no Page parameter line — FAIL =="
 P="$(mkproj t5b)"; wf "$(base_of "$P")/design/wireframes/Review_Inbox.html" '  <p>Parameter: Sales.Order</p>'
@@ -179,12 +191,14 @@ P="$(mkproj t5e)"; wf "$(base_of "$P")/design/wireframes/Review_Inbox.html" '  <
 OUT="$(run "$P")"
 case "$(stage3 "$OUT")" in *": PASS"*) ok "entity em dash accepted" ;; *) bad "$(imline "$OUT")" ;; esac
 
-echo "== T6a: one finding waived in the register — WAIVED line, stage 3 PASS =="
+echo "== T6a: findings waived in the register — WAIVED lines, stage 3 PASS =="
 P="$(mkproj t6a)"; B="$(base_of "$P")"
 grep -v '^| Reviewer |' "$B/design/interaction-model.md" > "$B/x" && mv "$B/x" "$B/design/interaction-model.md"
-printf '\nWaived artifact interaction-model/reviewer: technical role in this fixture, never signs in\n' >> "$P/PROJECT.md"
+wf "$B/design/wireframes/Legacy.html" NOBLOCK
+printf '\nWaived artifact interaction-model/reviewer: technical role in this fixture, never signs in\nWaived artifact interaction-model/legacy.html: drawn before the interaction model\n' >> "$P/PROJECT.md"
 OUT="$(run "$P")"
 case "$OUT" in *"WAIVED role Reviewer — technical role"*) ok "waiver read, case-insensitive, reason printed" ;; *) bad "no WAIVED line: $(imline "$OUT")" ;; esac
+case "$OUT" in *"WAIVED wireframe Legacy.html — drawn before"*) ok "per-wireframe waiver" ;; *) bad "no wireframe WAIVED line" ;; esac
 case "$(stage3 "$OUT")" in *": PASS"*) ok "stage 3 passes with the finding waived" ;; *) bad "stage 3: $(stage3 "$OUT")" ;; esac
 
 echo "== T6b: the whole artifact waived — facts WAIVED =="
@@ -207,7 +221,58 @@ echo "== T8: nested analysis/<name>/ layout — same facts, same FAIL =="
 P="$(mkproj t8 nested)"; B="$(base_of "$P")"
 grep -v '^| Reviewer |' "$B/design/interaction-model.md" > "$B/x" && mv "$B/x" "$B/design/interaction-model.md"
 OUT="$(run "$P")"
-case "$OUT" in *"FAIL   role Reviewer"*) ok "nested layout read" ;; *) bad "nested layout not read: $(imline "$OUT")" ;; esac
+case "$OUT" in *"MANUAL role Reviewer"*) ok "nested layout read" ;; *) bad "nested layout not read: $(imline "$OUT")" ;; esac
+
+echo "== T9: inbox written as bullets (the skill's own Step 2 form) — covered =="
+P="$(mkproj t9)"; B="$(base_of "$P")"
+sed 's/^| UC002 Approve order .*/- **UC002 Approve order** → Reviewer, `Review_Inbox`, grouped by due date, row opens `Order_Review` with its order./' \
+  "$B/design/interaction-model.md" > "$B/x" && mv "$B/x" "$B/design/interaction-model.md"
+grep -q '^- \*\*UC002' "$B/design/interaction-model.md" && ok "fixture: inbox entry is a bullet now" || bad "fixture setup: bullet not written"
+OUT="$(run "$P")"
+case "$(stage3 "$OUT")" in *": PASS"*) ok "bullet line under the Inbox heading covers the task" ;; *) bad "stage 3: $(stage3 "$OUT") / $(imline "$OUT")" ;; esac
+
+echo "== T10: task selection — approval-ish titles that are not user tasks are not demanded =="
+P="$(mkproj t10)"; B="$(base_of "$P")"
+cat > "$B/knowledge-base/brd/F002-admin.brd.json" <<'JSON'
+{ "id": "F002", "title": "Admin", "actors": ["Manager"],
+  "useCases": [
+    { "id": "UC010", "title": "View approval history" },
+    { "id": "UC011", "title": "Configure approval thresholds" },
+    { "id": "UC012", "title": "Disapprove nothing" },
+    { "id": "UC013", "title": "UC013: Review supplier" },
+    { "id": "UC014", "title": "Sign off release" },
+    { "id": "UC015", "title": "Escalate stuck case", "mdlRefs": ["Sales.WF_Case/UserTask_Escalate"] }
+  ],
+  "openQuestions": [] }
+JSON
+OUT="$(run "$P")"
+for u in UC010 UC011 UC012; do
+  case "$OUT" in *"task F002/$u"*) bad "$u demanded an inbox (false positive)" ;; *) ok "$u not demanded" ;; esac
+done
+for u in UC013 UC014 UC015; do
+  case "$OUT" in *"FAIL   task F002/$u"*) ok "$u demanded (id-prefixed review / sign off / mdlRefs user task)" ;; *) bad "$u missed" ;; esac
+done
+
+echo "== T11: wireframe markup variants from the review probe — all valid =="
+P="$(mkproj t11)"; W="$(base_of "$P")/design/wireframes"
+printf '<div class="wf-contract"><p><b>Page parameter:</b> Sales.Order</p></div>\n' > "$W/bold.html"
+printf "<div class='wf-contract'><p>Page parameter: Sales.Order</p></div>\n" > "$W/cls.html"
+printf '<div class="wf-contract"><p>Page parameter: <code>Sales.Order</code></p></div>\n' > "$W/code.html"
+printf '<div class="wf-contract">\r\n<p>Page parameter: none \342\200\224 home</p>\r\n</div>\r\n' > "$W/crlf.html"
+printf '<div class="wf-contract"><p>Page parameter: none &mdash; list page</p></div>\n' > "$W/ent.html"
+printf '<div class="wf-contract"><p>Page parameter: none - list page</p></div>\n' > "$W/hyph.html"
+printf '<div class="wf-contract"><p>Page parameter: none \342\200\223 list page</p></div>\n' > "$W/endash.html"
+printf '<div class="wf-contract">\n  <p>Page parameter:\n     Sales.Order</p></div>\n' > "$W/multi.html"
+printf '<div class="wf-contract"><div class="row"><span>Reached from: menu</span></div><p>Page parameter: Sales.Order</p></div>\n' > "$W/nested.html"
+OUT="$(run "$P")"
+case "$(imline "$OUT")" in *"11 of 11 wireframes"*) ok "11 of 11 wireframes valid" ;; *) bad "$(imline "$OUT"); $(printf '%s\n' "$OUT" | grep 'FAIL   wireframe')" ;; esac
+case "$(stage3 "$OUT")" in *": PASS"*) ok "stage 3 passes" ;; *) bad "stage 3: $(stage3 "$OUT")" ;; esac
+
+echo "== T12: a CRLF interaction model reads like an LF one =="
+P="$(mkproj t12)"; B="$(base_of "$P")"
+sed 's/$/\r/' "$B/design/interaction-model.md" > "$B/x" && mv "$B/x" "$B/design/interaction-model.md"
+OUT="$(run "$P")"
+case "$(stage3 "$OUT")" in *": PASS"*) ok "CRLF artifact passes" ;; *) bad "stage 3: $(stage3 "$OUT") / $(imline "$OUT")" ;; esac
 
 rm -rf "$WORK"
 echo ""

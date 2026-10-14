@@ -17,10 +17,19 @@
 # are not counted. Each line not found is printed for hand review — a line rewritten in place
 # (a sentence kept, its neighbour moved) shows up here, and the PR says why.
 #
+# LIMIT. `grep -F` matches substrings, and a line that occurs twice in the sources is satisfied
+# by one copy in the destination. So a very short line (`|---|`, "```", "---") is found almost
+# anywhere and proves nothing. Lines under 15 characters are listed separately as "trivially
+# found, review by hand"; they count as found, but the reviewer reads them.
+#
+# A named source with no diff (a mistyped path, or a file nothing was removed from) exits 2,
+# and so does a run that removed 0 lines in total: "0 of 0 found" is not a pass.
+#
 # Field run: the T4 stub-diet trim, 2026-10-14 (four baseline skills into
 # process/baseline-incident-history.md).
 #
-# Exit: 0 every removed line found · 1 some not found, listed · 2 could not run.
+# Exit: 0 every removed line found · 1 some not found, listed · 2 could not run, a source with
+#       no diff, or nothing removed at all.
 set -u
 
 BASE="origin/master"
@@ -32,18 +41,24 @@ shift
 MB="$(git merge-base "$BASE" HEAD 2>/dev/null)" || {
   echo "check-moved-text: no merge base with '$BASE' (fetch it first)." >&2; exit 2; }
 
-TOTAL=0; FOUND=0; MISSING=""
+TOTAL=0; FOUND=0; MISSING=""; SHORT=""; NODIFF=""
 for SRC in "$@"; do
   REMOVED="$(git diff --no-color -U0 "$MB" -- "$SRC" | awk '
     /^--- (a\/|\/dev\/null)/ { next }
     /^-/ { print substr($0, 2) }')"
-  [ -n "$REMOVED" ] || continue
+  if [ -z "$(printf '%s' "$REMOVED" | tr -d '[:space:]')" ]; then
+    NODIFF="${NODIFF}  ${SRC}
+"
+    continue
+  fi
   while IFS= read -r line; do
     t="$(printf '%s' "$line" | sed 's/[[:space:]]*$//')"
     [ -n "$(printf '%s' "$t" | tr -d '[:space:]')" ] || continue
     TOTAL=$((TOTAL + 1))
     if grep -F -q -- "$t" "$DEST"; then
       FOUND=$((FOUND + 1))
+      if [ "${#t}" -lt 15 ]; then SHORT="${SHORT}  ${SRC}: ${t}
+"; fi
     else
       MISSING="${MISSING}  ${SRC}: ${t}
 "
@@ -53,7 +68,20 @@ $REMOVED
 LINES
 done
 
+if [ -n "$NODIFF" ]; then
+  echo "check-moved-text: no removed lines in these source(s) — mistyped path, or nothing moved:" >&2
+  printf '%s' "$NODIFF" >&2
+  exit 2
+fi
+if [ "$TOTAL" -eq 0 ]; then
+  echo "check-moved-text: 0 removed lines in total — nothing was checked, which is not a pass." >&2
+  exit 2
+fi
 echo "check-moved-text: $FOUND of $TOTAL removed non-blank line(s) found verbatim in $DEST."
+if [ -n "$SHORT" ]; then
+  echo "Trivially found (under 15 characters, a substring match proves little — review by hand):"
+  printf '%s' "$SHORT"
+fi
 if [ -n "$MISSING" ]; then
   echo "Not found (review by hand; each needs a reason in the PR):"
   printf '%s' "$MISSING"

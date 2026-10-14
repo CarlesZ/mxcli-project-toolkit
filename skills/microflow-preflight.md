@@ -120,7 +120,7 @@ coordinates are relative to the loop box's top-left corner; n = activities in th
 | Next activity after the loop | loop centre + 80·n + 180 |
 | Sequential pitch | 160 |
 
-**`mxcli layout` is a domain-model command.** On v0.24.0 it moves entities only; there is no
+**`mxcli layout` is a domain-model command.** On v0.24.0 (as of 2026-09-25) it moves entities only; there is no
 microflow or nanoflow mode (history: `process/baseline-incident-history.md` § MF1). **Before relying on it for a microflow, probe
 your binary:** `mxcli layout --help` — the capability-probe rule. Until a microflow mode ships,
 the remedy for a bad microflow layout stays the one in this file: no `@position`, and the

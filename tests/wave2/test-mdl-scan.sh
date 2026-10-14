@@ -19,7 +19,9 @@
 #      does not capture the next column's body
 #   U  usage: exit 2 on no script, unreadable script, unknown flag, -p with no model
 #   S  speed: a 2,000-line script scans in under 1 s
-#   E  exec.sh: a hit refuses before the lock and the snapshot; FORCE_EXEC/SKIP_CHECK do not
+#   W  every shipped rule is `warn` (no field run yet); severity is warn|block only
+#   E  exec.sh: a warn hit is printed, noted in BUILD-LOG, and the exec goes on. Through a
+#      test-only rules file with one `block` rule: a hit refuses before the lock and the snapshot; FORCE_EXEC/SKIP_CHECK do not
 #      skip it; MXTK_SCAN_OVERRIDE=1 does not; MXTK_SCAN_OVERRIDE="<reason>" does, and the
 #      BUILD-LOG row says so; a clean script goes through; no toolkit or a scan error (exit 2)
 #      warns and goes on
@@ -64,17 +66,19 @@ $(sed -n 's/^-- evidence: //p' "$b")
 EOF
   [ "$ne" -ge 1 ] && [ -z "$miss" ] && ok "$id: $nk key(s) + $ne evidence line(s) verbatim in the ledger" \
     || bad "$id: not captured (evidence lines: $ne) —$miss"
+  sev="$(awk -F'\t' -v id="$id" '$1 == id { print $3 }' "$RULES")"
+  want=3; [ "$sev" = block ] && want=1
   rc=$(scan "$b")
   ids_hit="$(cut -d' ' -f1 "$WORK/out" | sort -u | tr '\n' ' ')"
-  [ "$rc" = 1 ] && [ "$ids_hit" = "$id " ] && ok "$id fires on the captured bad MDL (exit 1, only $id)" \
-    || bad "$id bad: exit $rc, ids [$ids_hit]"
+  [ "$rc" = "$want" ] && [ "$ids_hit" = "$id " ] && ok "$id fires on the captured bad MDL (exit $rc for $sev, only $id)" \
+    || bad "$id bad: exit $rc (want $want for '$sev'), ids [$ids_hit]"
   # the hit names a line holding code, not a comment line
   ln="$(sed -n "s/^$id [^:]*:\([0-9]*\) .*/\1/p" "$WORK/out" | head -1)"
   case "$(sed -n "${ln:-0}p" "$b")" in
     ""|--*) bad "$id hit points at line '${ln:-?}', which is not code" ;;
     *) ok "$id hit is reported at line $ln, the offending statement" ;;
   esac
-  grep -q "^$id .*:$ln .* → " "$WORK/out" && ok "$id output is 'STOP-<n> <file>:<line> <message> → <fix>'" \
+  grep -q "^$id .*:$ln .* → .* \[$sev\]\$" "$WORK/out" && ok "$id output is 'STOP-<n> <file>:<line> <message> → <fix> [$sev]'" \
     || bad "$id output shape: $(head -1 "$WORK/out")"
   rc=$(scan "$g")
   [ "$rc" = 0 ] && [ ! -s "$WORK/out" ] && ok "$id is silent on the corrected form" \
@@ -87,13 +91,19 @@ MARKED="$(grep -oE '^\| [0-9]+[a-z]? 🔎' "$PREFLIGHT" | sed -E 's/^\| ([0-9a-z
 WANT="$(printf '%s\n' $IDS | sort | tr '\n' ' ')"
 [ "$MARKED" = "$WANT" ] && ok "preflight marks [$MARKED]" || bad "preflight marks [$MARKED], rules file has [$WANT]"
 
+echo "== W: warn-only until a field run (review of #355)"
+NB="$(grep -v '^#' "$RULES" | awk -F'\t' 'NF >= 6 && $3 != "warn"' | wc -l | tr -d ' ')"
+[ "$NB" = 0 ] && ok "every shipped rule is severity warn" || bad "$NB shipped rule(s) not warn — a flip to block needs a cited field run (rules-file header)"
+grep -v '^#' "$RULES" | awk -F'\t' 'NF >= 6 && $3 != "warn" && $3 != "block" { bad = 1 } END { exit bad }' \
+  && ok "severity column holds only warn/block" || bad "unknown severity in the rules file"
+
 echo "== C: clean corpus"
 CLEAN=0; CHITS=0
-for f in "$TOOLKIT"/examples/stylegallery/mdlsource/gallery/*.mdl; do
+for f in "$TOOLKIT"/examples/stylegallery/mdlsource/gallery/*.mdl "$FX"/clean/*.mdl; do
   CLEAN=$((CLEAN+1)); rc=$(scan "$f"); [ "$rc" = 0 ] || CHITS=$((CHITS+1))
 done
-[ "$CLEAN" -ge 10 ] && [ "$CHITS" = 0 ] && ok "StyleGallery: $CLEAN files, 0 hits" \
-  || bad "StyleGallery: $CLEAN files, $CHITS with hits ($(cat "$WORK/out" | head -1))"
+[ "$CLEAN" -ge 10 ] && [ "$CHITS" = 0 ] && ok "StyleGallery + review cases: $CLEAN files, 0 hits" \
+  || bad "clean corpus: $CLEAN files, $CHITS with hits ($(cat "$WORK/out" | head -1))"
 
 echo "== L: lexer"
 cat > "$WORK/l1.mdl" <<'EOF'
@@ -126,6 +136,26 @@ datagrid dg (DataSource: database Module.E) {
 }
 EOF
 rc=$(scan "$WORK/l4.mdl"); [ "$rc" = 0 ] && ok "a body-less customContent column does not capture the next column's body" || bad "pending customContent leaked: $(cat "$WORK/out")"
+printf '%s\n' "dynamictext t (Content:'{1}', ContentParams: [{1} = Name], Visible: [IsActive])" > "$WORK/l5.mdl"
+rc=$(scan "$WORK/l5.mdl"); [ "$rc" = 0 ] && ok "review: ContentParams [{1} = Name], Visible: [...] on one line is clean (list ends at its own ])" || bad "review case 1 flagged: $(cat "$WORK/out")"
+printf '%s\n' "dynamictext t (Content: '{1}', ContentParams: [" "  {1} = Name" "], Visible: [IsActive])" > "$WORK/l6.mdl"
+rc=$(scan "$WORK/l6.mdl"); [ "$rc" = 0 ] && ok "review: multi-line list closed by '], Visible: [...]' is clean" || bad "review case 2 flagged: $(cat "$WORK/out")"
+cat > "$WORK/l7.mdl" <<'EOF'
+datagrid dg (DataSource: database Module.E) {
+  column colA (Caption: 'A')
+  column colB (ShowContentAs: customContent, Caption: 'B')
+}
+container ctnFooter {
+  container c (Visible: [IsOpen])
+}
+EOF
+rc=$(scan "$WORK/l7.mdl"); [ "$rc" = 0 ] && ok "review: a body-less customContent LAST column is forgotten at the grid's }" || bad "last-column pending leaked: $(cat "$WORK/out")"
+cat > "$WORK/l8.mdl" <<'EOF'
+column colB (ShowContentAs: customContent, Caption: 'B') {
+  dynamictext t (Content: 'visible: [never] is just text')
+}
+EOF
+rc=$(scan "$WORK/l8.mdl"); [ "$rc" = 0 ] && ok "customcontent rules ignore text inside string literals" || bad "string literal matched STOP-1: $(cat "$WORK/out")"
 
 echo "== U: usage"
 [ "$(scan)" = 2 ] && ok "no script: exit 2" || bad "no script did not exit 2"
@@ -133,7 +163,7 @@ echo "== U: usage"
 [ "$(scan --bogus "$FX/STOP-1.good.mdl")" = 2 ] && ok "unknown flag: exit 2" || bad "unknown flag did not exit 2"
 [ "$(scan "$FX/STOP-1.good.mdl" -p "$WORK/nope.mpr")" = 2 ] && ok "-p with no model: exit 2" || bad "-p missing model did not exit 2"
 : > "$WORK/App.mpr"
-[ "$(scan "$FX/STOP-26.bad.mdl" -p "$WORK/App.mpr")" = 1 ] && ok "-p with a model: scans as usual" || bad "-p broke the scan"
+[ "$(scan "$FX/STOP-26.bad.mdl" -p "$WORK/App.mpr")" = 3 ] && ok "-p with a model: scans as usual" || bad "-p broke the scan"
 
 echo "== S: speed"
 : > "$WORK/big.mdl"
@@ -181,21 +211,32 @@ xrun() {  # xrun <label> <script> [VAR=value ...]
 }
 snaps() { ls -d "$P/.mpr-snapshots"/[0-9]*/ 2>/dev/null | wc -l | tr -d ' '; }
 
+# warn path: the shipped rules (all warn) print, note and go on
 rm -f "$P/.exec-ran"
-rc=$(xrun hit mdlsource/bad.mdl)
+rc=$(xrun warn mdlsource/bad.mdl)
+[ "$rc" = 0 ] && [ -f "$P/.exec-ran" ] && grep -q '^⚠ STOP-26 mdlsource/bad.mdl:6 .*\[warn\]$' "$WORK/x.warn" \
+  && ok "warn rule: the hit is printed as a warning and the exec goes on" || bad "warn: exit $rc — $(grep -i stop "$WORK/x.warn" | head -2)"
+grep -q 'scan warn: STOP-26' "$LOG" 2>/dev/null && ok "BUILD-LOG row notes the warning" || bad "no 'scan warn' note in BUILD-LOG"
+! grep -q 'blocked.*STOP-row' "$LOG" 2>/dev/null && ok "a warn hit writes no blocked row" || bad "a warn hit was logged as blocked"
+# block path: kept and exercised through a test-only rules file with STOP-26 as block
+awk -F'\t' 'BEGIN { OFS = "\t" } $1 == "STOP-26" { $3 = "block" } { print }' "$RULES" > "$WORK/block-rules.tsv"
+B="MDL_SCAN_RULES=$WORK/block-rules.tsv"
+rm -f "$P/.exec-ran"; ( cd "$P" && git -c user.email=t@t -c user.name=t commit -qam reset ) >/dev/null 2>&1
+S0=$(snaps)
+rc=$(xrun hit mdlsource/bad.mdl "$B")
 [ "$rc" = 1 ] && grep -q '^STOP-26 mdlsource/bad.mdl:6 ' "$WORK/x.hit" && ok "a hit refuses the exec (exit 1) and prints the scan line" \
   || bad "hit: exit $rc — $(tail -3 "$WORK/x.hit")"
-[ "$(snaps)" = 0 ] && [ ! -f "$P/.exec-ran" ] && [ ! -f "$P/.mpr-snapshots/.exec.lock" ] \
-  && ok "refused before the snapshot, the lock and mxcli exec" || bad "something ran before the refusal (snapshots $(snaps))"
-grep -q '🚫 blocked.*STOP-row scan: 1 hit(s), STOP-26' "$LOG" 2>/dev/null && ok "BUILD-LOG row: blocked, names STOP-26" || bad "no blocked BUILD-LOG row"
-rc=$(xrun force mdlsource/bad.mdl FORCE_EXEC=1 SKIP_CHECK=1)
+[ "$(snaps)" = "$S0" ] && [ ! -f "$P/.exec-ran" ] && [ ! -f "$P/.mpr-snapshots/.exec.lock" ] \
+  && ok "refused before the snapshot, the lock and mxcli exec" || bad "something ran before the refusal (snapshots $S0 -> $(snaps))"
+grep -q '🚫 blocked.*STOP-row scan: 1 blocking hit(s), STOP-26' "$LOG" 2>/dev/null && ok "BUILD-LOG row: blocked, names STOP-26" || bad "no blocked BUILD-LOG row"
+rc=$(xrun force mdlsource/bad.mdl "$B" FORCE_EXEC=1 SKIP_CHECK=1)
 [ "$rc" = 1 ] && [ ! -f "$P/.exec-ran" ] && ok "FORCE_EXEC=1 SKIP_CHECK=1 do not skip the scan" || bad "FORCE_EXEC/SKIP_CHECK bypassed the scan (exit $rc)"
-rc=$(xrun one mdlsource/bad.mdl MXTK_SCAN_OVERRIDE=1)
+rc=$(xrun one mdlsource/bad.mdl "$B" MXTK_SCAN_OVERRIDE=1)
 [ "$rc" = 1 ] && [ ! -f "$P/.exec-ran" ] && ok "MXTK_SCAN_OVERRIDE=1 (no reason) does not override" || bad "a bare override went through (exit $rc)"
-rc=$(xrun ovr mdlsource/bad.mdl "MXTK_SCAN_OVERRIDE=user approved | ticket 12")
+rc=$(xrun ovr mdlsource/bad.mdl "$B" "MXTK_SCAN_OVERRIDE=user approved | ticket 12")
 [ "$rc" = 0 ] && [ -f "$P/.exec-ran" ] && grep -q 'STOP-row scan OVERRIDDEN' "$WORK/x.ovr" \
   && ok "MXTK_SCAN_OVERRIDE=\"<reason>\" runs the exec, with a warning" || bad "override: exit $rc — $(tail -3 "$WORK/x.ovr")"
-grep -q 'scan overridden: user approved / ticket 12' "$LOG" && ok "BUILD-LOG row carries the override reason (| escaped)" || bad "override reason not in BUILD-LOG"
+grep -q 'scan overridden (STOP-26): user approved / ticket 12' "$LOG" && ok "BUILD-LOG row carries the override reason (| escaped)" || bad "override reason not in BUILD-LOG"
 rm -f "$P/.exec-ran"; ( cd "$P" && git checkout -q -- . 2>/dev/null; git -c user.email=t@t -c user.name=t commit -qam reset ) >/dev/null 2>&1
 rc=$(xrun clean mdlsource/good.mdl)
 [ "$rc" = 0 ] && [ -f "$P/.exec-ran" ] && ! grep -q '^STOP-' "$WORK/x.clean" && ok "a clean script goes through" || bad "clean: exit $rc — $(tail -3 "$WORK/x.clean")"

@@ -30,7 +30,7 @@ Re-probed on mxcli v0.24.0 / Mendix 11.13.0 (2026-09-30); rules that now work or
 
 ## The checklist — run before writing a single line of MDL
 
-🔎 = `bin/mdl-scan.sh` refuses it in `exec.sh`.
+🔎 = `bin/mdl-scan.sh` flags it in `exec.sh`.
 
 | # | If your script will… | Then… | Root cause |
 |---|---|---|---|

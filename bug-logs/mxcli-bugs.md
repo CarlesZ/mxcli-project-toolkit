@@ -5949,7 +5949,9 @@ service and its callers.
 4. **Doc comments** (`/** */`) set documentation on microflows, entities and Java actions. Before an
    import or export mapping, or a published REST service, they are silently ignored
    ("already in sync"). Before a Java action parameter they are a syntax error. QUAL002 therefore
-   cannot be cleared for those from MDL. Add a baseline entry with the reason.
+   cannot be cleared for those from MDL. Add a baseline entry with the reason, or switch that kind
+   off in QUAL002's options (`check_import_mappings`, `check_published_rest_services`; mxcli
+   >= 0.24.0). The MDL089 warning on v0.25.0 names the case (#246).
 5. **`import from mapping … ($Call/ResponseBody)` is a parse error** ("mismatched input '/'"). The
    source must be a variable: `declare $Body String = $Call/ResponseBody;` then `($Body)`.
 6. **Import mappings, re-run.**
@@ -6950,3 +6952,26 @@ Two related findings from reading the v0.26.0 source (not field-run):
 matching the project. Recipe and the rule-set comparison to run before any diff:
 `skills/lint-that-actually-runs.md` → "Linting a copy of the model". `lint-gate.sh`'s collapse
 guard catches this inside the gate. Nothing catches it when lint is run directly.
+
+## BUG-DRAFT-qual004-dg2-datasource: QUAL004 reports a `DS_` microflow as "not called from anywhere" when its only caller is a Data grid 2 datasource, and the lint ratchet fails a correct script (2026-10-14)
+
+> **NOT YET FILED.** Upstream draft: `bug-logs/pending-github-issues/qual004-dg2-datasource-ref.md`.
+
+**Discovered:** 2026-10-14, on an existing-app change project (a connector app). A build row created a page whose Data grid 2 is driven by a new `DS_<Entity>_<Verb>` microflow, in one script; the navigation entry came in a later script.
+**Reproducible:** seen twice on one model, not yet reduced to a blank app. **mxcli version:** v0.26.0. **Mendix:** 11.15.0. macOS.
+
+**What happens.** `check` and mxbuild were clean. `exec.sh`'s lint ratchet then reported:
+
+```
+[QUAL004] at <Module>.<Module>.DS_<Entity>_GetConfiguration
+✗ lint: rule(s) rose vs baseline — QUAL004 (+1)
+✗ Script applied and mxbuild is clean, but LINT ROSE — this is not a pass.
+```
+
+Both flagged flows are Data grid 2 datasources on pages in the same module and work in the running app. The datasource is the only reference they will ever have, so the finding never clears.
+
+**What is odd.** The v0.26.0 `orphaned_elements.star` that `mxcli init` writes already counts `datasource` as an inbound kind (`MICROFLOW_ENTRY_KINDS`), and its header names a `DS_` page-datasource false positive as fixed. So the gap is most likely in what the catalog records for a **pluggable** widget's datasource (Data grid 2), not in the rule. Not probed: whether a classic data view or list view datasource clears the same finding on the same model.
+
+**Toolkit side:** do not rename the flow or add a fake caller. Accept the rise with `bin/lint-gate.sh --update-baseline --reason "QUAL004 DS_ datasource false positive (BUG-DRAFT-qual004-dg2-datasource)"`. `skills/lint-that-actually-runs.md` → "Stock rules against the toolkit's own conventions".
+
+**Expected:** a `DataSource: microflow X` on any widget, pluggable or not, is an inbound reference to X. `describe page` already prints it.

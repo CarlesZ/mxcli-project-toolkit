@@ -166,22 +166,19 @@ their trigger is.
 | A new script within agreed scope | Re-run its subject set. Extend the suite only for a *behaviour* the coverage checklist doesn't already cover. |
 | A new behaviour / scope change | The coverage checklist changes — the existing drift-sync path. The suite extends with it. |
 | Module close | The full suite, once (`module-review.md` PROVE). |
-| Project close / cutover | The project-wide suite, once. |
+| Release gate (before UAT/production) | The project-wide suite, once. |
 | The user asks for a full run | Run it, that message is the trigger. |
 
-**Check tiers — which checks each of those moments owes.** Fast checks run during development;
+**Check moments — which checks each of those events owes.** Fast checks run during development;
 heavy checks wait for module close or the release gate. This sorts checks by *when*, not what
-testing a module means: the §1 shape and the two lanes are unchanged, and this is not the numbered
-ladder §1 dropped. A row marked *(planned: #N)* is not built yet and claims nothing until it lands.
+testing a module means: the §1 shape and the two lanes are unchanged. A *planned: #N* check is not
+built yet and claims nothing until it lands.
 
-| Tier | Budget | What runs |
+| Moment | Budget | What runs |
 |---|---|---|
-| **Every exec** | seconds | What `exec.sh` already runs: the exec lock, the mxbuild delta gate, the lint ratchet. Static STOP-row scan before the apply (planned: #349, PR #355); Studio Pro warning ratchet (planned: #351); human-locked gate baselines (planned: #348). |
-| **Module close** | minutes | The module's full suite and journey set (row above). Every new page or action has a test (planned: #354); that module's server-side security tests, run as each demo user (planned: #352). |
-| **Release gate** — before UAT or production | as needed | The project-wide suite (row above). Page × role smoke on the production database engine (planned: #353); the full security report (planned: #352); language/RTL layout when the app has several languages (planned: #354). |
-
-A heavy check never moves into the every-exec tier because a change "felt wide" — that is the
-over-testing measured below.
+| **Every exec** | ~1 minute (mxbuild 22–65 s per script, `iterative-build-loop.md` → Gate cost) | `exec.sh` includes: lock → module-brief advisory → `mxcli check` → snapshot → apply → mxbuild delta gate → auto-restore on a new error → lint ratchet. Static STOP-row scan (planned: #349); Studio Pro warning ratchet (planned: #351); human-locked baselines (planned: #348). |
+| **Module close** | minutes | The module's full suite and journeys (row above). New page or action has a test (planned: #354); that module's server-side security tests (planned: #352). |
+| **Release gate** | as needed | The project-wide suite, once (row above). Page × role smoke on the production DB engine (planned: #353); full security report (planned: #352); language/RTL layout, multi-language apps only (planned: #354). |
 
 > **Why scoped (#274):** the old unscoped "re-run the suite as regression" re-proved each UI-only
 > change 5–10× (other modules' journeys, the reviewer re-running them, a full `mxcli test` at every

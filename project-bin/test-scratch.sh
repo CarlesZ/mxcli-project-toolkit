@@ -257,9 +257,9 @@ take_lock "$EXEC_LOCK" "this project's model (an exec.sh is writing it)" || exit
 
 # 2. The copy. Refused over an interrupted exec.sh --on-copy promotion (its leftovers beside the
 #    model; between its two renames there is no mprcontents/ to copy) — #384 review.
-if type mxtk_promote_leftovers >/dev/null 2>&1 && _left="$(mxtk_promote_leftovers "$MODEL_DIR" "$MPR_NAME")"; then
-  printf '%s\n' "$_left" >&2
-  echo "  Nothing was copied or run." >&2
+if type mxtk_promote_leftovers >/dev/null 2>&1 && _left="$(mxtk_promote_leftovers "$MODEL_DIR")"; then
+  echo "✗ test-scratch: an exec.sh --on-copy promotion (PID $_left) was interrupted; the model may be half-swapped." >&2
+  echo "  → ./bin/exec.sh --recover-promote, then re-run. Nothing was copied or run." >&2
   exit 3
 fi
 SCRATCH="$(mktemp -d "${MXTK_SCRATCH_DIR:-${TMPDIR:-/tmp}}/$(basename "$MPR_NAME" .mpr)-test.XXXXXX")" || exit 3

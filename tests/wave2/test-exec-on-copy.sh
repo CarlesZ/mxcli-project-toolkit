@@ -21,7 +21,10 @@
 #   a swap that fails half-way (fixture hook) is renamed back: live byte-identical;
 #   EXEC_ON_COPY=1 is the same as --on-copy; flag unset runs on the live model as before;
 #   kept copies are pruned to MXTK_ON_COPY_KEEP; --on-copy --patch is refused; EXEC_ON_COPY=1
-#   with --patch runs the patch as before; leftovers of an interrupted promotion refuse.
+#   with --patch runs the patch as before;
+#   a kill in each of 8 promotion windows: the default exec and test-scratch refuse, and
+#   `exec.sh --recover-promote` run TWICE leaves the pre-exec or the promoted model, never a mix;
+#   leftovers without a manifest are refused untouched; a side file with an archive mtime is promoted.
 # Stub mxcli and mxbuild record the model path they were given. No real model, mxcli or mxbuild.
 set -uo pipefail
 
@@ -88,6 +91,7 @@ mkdir -p "$d/mprcontents/cd"; echo "new unit" > "$d/mprcontents/cd/new.mxunit"
 [ "${STUB_SIDE:-0}" = 1 ] && { echo "class New {}" > "$d/javasource/m/New.java"; echo "// edited" >> "$d/javasource/m/Old.java"; }
 [ "${STUB_OTHER:-0}" = 1 ] && { mkdir -p "$d/other"; echo x > "$d/other/x.txt"; }
 [ "${STUB_JOURNAL:-0}" = 1 ] && echo j > "$m-journal"
+[ "${STUB_OLDMTIME:-0}" = 1 ] && { echo "class Arch {}" > "$d/javasource/m/Arch.java"; touch -t 200001010000 "$d/javasource/m/Arch.java"; }
 echo "fake mxcli exec ok"; exit 0
 MXCLI
   chmod +x "$P/bin/"*.sh "$P/mxcli"
@@ -201,48 +205,56 @@ for LAYOUT in root app; do
     && ok "L1: the kept copy is whole after the rollback" || bad "L1: kept copy incomplete after rollback"
   hasnt "L1: no 'incomplete' note when the copy is whole" "$OUT" "is incomplete"
 
-  echo "-- M1/M2: killed between the two mprcontents renames"
-  P="$WORK/$LAYOUT-killed"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
-  B="$(fp "$M")"
-  _MXTK_TEST_SWAP_KILL=mprcontents run "$P" --on-copy mdlsource/test.mdl >/dev/null
-  [ ! -d "$M/mprcontents" ] && ok "[setup] the kill left the live model with no mprcontents/" || bad "[setup] kill did not land between the renames"
-  OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
-  [ "$RC" -eq 1 ] && ok "M1: the DEFAULT exec refuses (rc 1)" || bad "M1: default exec rc $RC"
-  [ ! -f "$WORK/log/exec-targets" ] && ok "M1: nothing executed" || bad "M1: exec ran over a half-swapped model"
-  has "M2: says half-swapped" "$OUT" "interrupted part-way"
-  has "M2: prints the rename back" "$OUT" "mv '$M/.mxtk-promote."
-  has "M2: restore-mpr only as last resort" "$OUT" "Last resort only"
-  has "M2: says what restore-mpr drops" "$OUT" "DROPS every model change"
-  OUT2="$(cd "$P" && STUB_LOG="$WORK/log" bash ./bin/test-scratch.sh -- x 2>&1)"; RC=$?
-  [ "$RC" -eq 3 ] && ok "M1: test-scratch refuses the copy (rc 3)" || bad "M1: test-scratch rc $RC: $(printf '%s' "$OUT2" | tail -3)"
-  has "M1: test-scratch names the interrupted promotion" "$OUT2" "interrupted part-way"
-  printf '%s\n' "$OUT" | sed -n 's/^ *\(mv .*\|rm .*\)$/\1/p' > "$WORK/fix.sh"
-  bash "$WORK/fix.sh" 2>"$WORK/fix.err"
-  [ ! -s "$WORK/fix.err" ] && ok "M2: every printed command ran without an error" || bad "M2: printed commands erred: $(cat "$WORK/fix.err")"
-  [ "$(fp "$M")" = "$B" ] && ok "M2: the printed commands put the live model back byte-identical" || bad "M2: live differs after the printed commands"
-  OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
-  [ "$RC" -eq 0 ] && ok "M1: default exec runs again after the fix" || bad "M1: rc $RC after fix: $(printf '%s' "$OUT" | tail -3)"
+  echo "-- kill windows: recovery run TWICE is the pre-exec model (not committed) or the promoted one (committed), never a mix"
+  T="$WORK/$LAYOUT-twin"; mkproj "$T" "$SUB"
+  STUB_SIDE=1 run "$T" --on-copy mdlsource/test.mdl >/dev/null
+  PROMOTED="$(fp "$T${SUB:+/$SUB}")"
+  B0="$(mkproj "$WORK/$LAYOUT-pristine" "$SUB"; fp "$WORK/$LAYOUT-pristine${SUB:+/$SUB}")"
+  [ -n "$PROMOTED" ] && [ "$PROMOTED" != "$B0" ] && ok "[setup] promoted and pre-exec models differ" || bad "[setup] promoted == pre-exec: the window checks prove nothing"
+  for W in manifest staged mprcontents mpr side-ln side committed cleanup; do
+    P="$WORK/$LAYOUT-kill-$W"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+    B="$(fp "$M")"
+    STUB_SIDE=1 _MXTK_TEST_SWAP_KILL="$W" run "$P" --on-copy mdlsource/test.mdl >/dev/null 2>&1
+    [ -n "$(ls -d "$M"/.mxtk-promote.* 2>/dev/null)" ] && ok "[$W] the kill left leftovers" || bad "[$W] [setup] no leftovers — the kill missed its window"
+    if [ "$W" = mprcontents ]; then
+      [ ! -d "$M/mprcontents" ] && ok "[$W] [setup] live model has no mprcontents/" || bad "[$W] [setup] mprcontents/ present"
+      OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
+      [ "$RC" -eq 1 ] && ok "[$W] M1: the DEFAULT exec refuses" || bad "[$W] M1: default exec rc $RC"
+      [ ! -f "$WORK/log/exec-targets" ] && ok "[$W] M1: nothing executed" || bad "[$W] M1: exec ran over a half-swapped model"
+      has "[$W] M2: the refusal names the recovery command" "$OUT" "./bin/exec.sh --recover-promote"
+      hasnt "[$W] M2: no shell commands printed" "$OUT" "mv '"
+      OUT2="$(cd "$P" && STUB_LOG="$WORK/log" bash ./bin/test-scratch.sh -- x 2>&1)"; RC=$?
+      [ "$RC" -eq 3 ] && ok "[$W] M1: test-scratch refuses the copy" || bad "[$W] M1: test-scratch rc $RC: $(printf '%s' "$OUT2" | tail -2)"
+      has "[$W] M1: test-scratch names the recovery command" "$OUT2" "--recover-promote"
+    fi
+    OUT="$(run "$P" --recover-promote)"; RC1=$?
+    OUT2="$(run "$P" --recover-promote)"; RC2=$?
+    [ "$RC1" -eq 0 ] && [ "$RC2" -eq 0 ] && ok "[$W] recovery rc 0, twice" || bad "[$W] recovery rc $RC1 then $RC2: $(printf '%s' "$OUT" | tail -2)"
+    has "[$W] the second run is a no-op" "$OUT2" "Nothing to recover"
+    F="$(fp "$M")"
+    case "$W" in committed|cleanup) EXP="$PROMOTED"; WHAT="promoted" ;; *) EXP="$B"; WHAT="pre-exec" ;; esac
+    [ "$F" = "$EXP" ] && ok "[$W] live model byte-identical to the $WHAT model" \
+      || bad "[$W] live model is $([ "$F" = "$B" ] && echo 'the pre-exec model' || { [ "$F" = "$PROMOTED" ] && echo 'the promoted model' || echo 'A MIX'; }), expected $WHAT"
+    [ -z "$(find "$M" -name '*mxtk-promote*' 2>/dev/null)" ] && ok "[$W] no leftovers anywhere" || bad "[$W] leftovers: $(find "$M" -name '*mxtk-promote*')"
+  done
+  OUT="$(run "$WORK/$LAYOUT-kill-mprcontents" mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 0 ] && ok "default exec runs again after the recovery" || bad "rc $RC after recovery: $(printf '%s' "$OUT" | tail -3)"
+  K="$(ls -d "$WORK/$LAYOUT-kill-mpr/.mpr-snapshots/.on-copy/"*/ 2>/dev/null | head -1)"
+  [ -n "$K" ] && grep -q 'changed by exec' "$K/model/Fixture.mpr" && [ -f "$K/model/mprcontents/cd/new.mxunit" ] \
+    && ok "the kept copy is whole after a rollback by --recover-promote" || bad "kept copy incomplete after the recovery"
 
-  echo "-- M2: killed after a side file was promoted"
-  P="$WORK/$LAYOUT-killside"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
-  B="$(fp "$M")"
-  STUB_SIDE=1 _MXTK_TEST_SWAP_KILL=side run "$P" --on-copy mdlsource/test.mdl >/dev/null
-  OUT="$(run "$P" --on-copy mdlsource/test.mdl)"; RC=$?
-  [ "$RC" -eq 1 ] && ok "refused (rc 1)" || bad "rc $RC"
-  has "M2: names the side-file original to rename back" "$OUT" ".mxtk-promote."
-  printf '%s\n' "$OUT" | sed -n 's/^ *\(mv .*\|rm .*\)$/\1/p' > "$WORK/fix.sh"
-  bash "$WORK/fix.sh" 2>"$WORK/fix.err"
-  [ ! -s "$WORK/fix.err" ] && ok "M2: every printed command ran without an error" || bad "M2: printed commands erred: $(cat "$WORK/fix.err")"
-  [ "$(fp "$M")" = "$B" ] && ok "M2: model AND side files back byte-identical" || bad "M2: live differs after the side-file commands"
-  [ ! -f "$M/javasource/m/New.java" ] && ok "M2: the file the promotion created is removed" || bad "M2: New.java left behind"
-
-  echo "-- M2: only staged leftovers — live intact, delete them"
-  P="$WORK/$LAYOUT-staged"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  echo "-- leftovers without a manifest: ambiguous, nothing touched"
+  P="$WORK/$LAYOUT-nomanifest"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
   mkdir "$M/.mxtk-promote.999.mprcontents"; printf 'x\n' > "$M/.mxtk-promote.999.mpr"
-  OUT="$(run "$P" mdlsource/test.mdl)"; RC=$?
-  [ "$RC" -eq 1 ] && ok "refused (rc 1)" || bad "rc $RC"
-  has "M2: says the live model is intact" "$OUT" "the live model is intact"
-  hasnt "M2: no rename-back for staged-only" "$OUT" "mv '"
+  OUT="$(run "$P" --recover-promote)"; RC=$?
+  [ "$RC" -eq 2 ] && ok "recovery refuses (rc 2)" || bad "rc $RC"
+  has "and says why" "$OUT" "cannot tell what it is"
+  [ -d "$M/.mxtk-promote.999.mprcontents" ] && [ -f "$M/.mxtk-promote.999.mpr" ] && ok "nothing touched" || bad "ambiguous leftovers were touched"
+
+  echo "-- a side file written with an archive mtime is still promoted (by checksum)"
+  P="$WORK/$LAYOUT-archmtime"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
+  OUT="$(STUB_OLDMTIME=1 run "$P" --on-copy mdlsource/test.mdl)"; RC=$?
+  [ "$RC" -eq 0 ] && grep -q 'class Arch' "$M/javasource/m/Arch.java" 2>/dev/null && ok "Arch.java (mtime 2000) promoted" || bad "archive-mtime file not promoted (rc $RC)"
 
   echo "-- M3: a side file changed live during the exec"
   P="$WORK/$LAYOUT-sidechg"; mkproj "$P" "$SUB"; M="$P${SUB:+/$SUB}"
@@ -308,14 +320,6 @@ printf '#!/bin/sh\necho patched >> "$1"\n' > "$P/mdlsource/p.sh"
 OUT="$(EXEC_ON_COPY=1 run "$P" --patch mdlsource/p.sh)"; RC=$?
 has "EXEC_ON_COPY with --patch: note" "$OUT" "does not apply to --patch"
 grep -q patched "$P/Fixture.mpr" && ok "patch ran on the live model" || bad "patch did not run (rc $RC): $(printf '%s' "$OUT" | tail -4)"
-
-echo "-- leftovers of an interrupted promotion refuse"
-P="$WORK/left"; mkproj "$P" ""
-mkdir "$P/.mxtk-promote.999.mprcontents"
-OUT="$(run "$P" --on-copy mdlsource/test.mdl)"; RC=$?
-[ "$RC" -eq 1 ] && ok "refused rc 1" || bad "rc $RC"
-has "names restore-mpr" "$OUT" "restore-mpr.sh"
-[ ! -f "$WORK/log/exec-targets" ] && ok "nothing executed" || bad "exec ran"
 
 echo ""
 echo "== $PASS passed, $FAIL failed"

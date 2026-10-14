@@ -97,7 +97,11 @@ row 8). Before any content section, every non-popup page gets:
 
 ```
 container ctnPageHead (Class: 'page-head spacing-outer-bottom-large') {
-  dynamictext txtCrumb (Content: 'Home / <Area> / <Page>', Class: 'crumb')
+  container ctnCrumb (Class: 'crumb') {
+    linkbutton lnkCrumbHome (Caption: 'Home', Action: SHOW_PAGE <Module>.<HomePage>)
+    linkbutton lnkCrumbArea (Caption: '<Area>', Action: SHOW_PAGE <Module>.<AreaOverview>)
+    dynamictext txtCrumbHere (Content: '<Page>')   // the current page: text, not a link
+  }
   dynamictext txtTitle (Content: '<What this screen is>', RenderMode: H1)
   // optional, when the wireframe has one:
   dynamictext txtSub (Content: '<one-line purpose>', Class: 'page-sub')
@@ -106,6 +110,10 @@ container ctnPageHead (Class: 'page-head spacing-outer-bottom-large') {
 }
 ```
 
+- **A crumb is a link.** Every crumb but the last opens its page, and the wireframe's binding
+  table names that target; only the current page is text. Plain-text crumbs (`'Home / <Area> /
+  <Page>'` in one `dynamictext`) passed every gate on an 81-script build and were found by a
+  user clicking (#232). The same holds for a stepper: say per step whether it is navigable.
 - Exactly one `RenderMode: H1` per page — it is also the a11y "one h1" check in
   `design-audit.js`. Section titles are H2/H3, never a bare `dynamictext` at body size.
 - Use the project design system's header component/class (`.page-head` or equivalent) when one

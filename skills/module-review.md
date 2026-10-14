@@ -138,6 +138,11 @@ For each page, ask and answer in writing:
   heights cover them (`learned-detection-gaps.md`).
 - **Submit every New/Edit form with required fields empty.** A visible validation message must
   appear. A 4xx/5xx with no user-facing feedback is high-severity silent failure, not a pass.
+- **Can I get back?** From each page, return to where you came from without the browser's Back
+  button: every crumb but the current page links to its page, and so does every stepper step the
+  wireframe marks navigable (`design-spacing.md` §3). A crumb shown as plain text is a finding.
+- **Does every tile go somewhere?** Click every crumb, tile, card and menu entry. Each opens
+  what its label says: a "Tasks" menu entry opens a list of tasks, not one record's page.
 - **Does every View/Edit/action button point at the *current* page?** Confirm with
   `DESCRIBE PAGE Module.Page` — superseded pages from an earlier build script survive as live
   targets and nothing mechanical notices.

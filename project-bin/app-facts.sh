@@ -286,13 +286,18 @@ log "step 2: inventory + dependency facts"
 T2=$(date +%s)
 # The catalog is opened through mxtk_sqlite_ro_uri (_common.sh): a bare "file:%s?mode=ro" cut the
 # path at a '#' or '?' in a folder name, lost mode=ro, and SQLite created and opened an empty file
-# beside the model folder. Without the helper (a _common.sh older than this script) refuse rather
-# than open an unescaped path.
-type mxtk_sqlite_ro_uri >/dev/null 2>&1 || {
-  echo "FAULT: project-bin/_common.sh has no mxtk_sqlite_ro_uri (older than app-facts.sh). Run bin/sync-project.sh." >&2
-  exit 2
-}
-DB_URI="$(mxtk_sqlite_ro_uri "$DB")" && [ -n "$DB_URI" ] || { echo "FAULT: could not build a read-only URI for $DB" >&2; exit 2; }
+# beside the model folder. A _common.sh older than this script (or none) lacks the helper: build
+# the same URI inline, as require_py and find_mpr fall back above. native_path (when present)
+# turns an MSYS /c/... path into C:/... first, as mxtk_model_version does.
+DB_NATIVE="$DB"
+if type native_path >/dev/null 2>&1; then DB_NATIVE="$(native_path "$DB")"; fi
+if type mxtk_sqlite_ro_uri >/dev/null 2>&1; then
+  DB_URI="$(mxtk_sqlite_ro_uri "$DB_NATIVE")"
+else
+  DB_URI="$("$PY" -c "import os,sys,urllib.request as u
+print('file:'+u.pathname2url(os.path.abspath(sys.argv[1]))+'?mode=ro')" "$DB_NATIVE" | tr -d '\r')"
+fi
+[ -n "$DB_URI" ] || { echo "FAULT: could not build a read-only URI for $DB" >&2; exit 2; }
 DB="$DB" DB_URI="$DB_URI" FACTS_DIR="$FACTS_DIR" MX_VERSION="$MX_VERSION" MPR_BASE="$MPR_BASE" MAX_LOOPS="$MAX_LOOPS" "$PY" - <<'PY' || exit 2
 import json, os, sqlite3, sys, collections
 

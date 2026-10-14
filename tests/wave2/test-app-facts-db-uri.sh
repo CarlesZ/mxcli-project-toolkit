@@ -22,6 +22,8 @@
 #   3. mxtk_sqlite_ro_uri escapes '#', '?' and ' ' and ends in ?mode=ro
 #   4. a catalog that is empty at the second open is refused with exit 2 and a FAULT line,
 #      never written as facts
+#   5. beside an OLDER _common.sh with no mxtk_sqlite_ro_uri, app-facts falls back to its inline
+#      URI (no refusal) and a folder with a '#' still opens read-only: facts written, no stray file
 #
 # The catalog database is SYNTHETIC: tables and columns are exactly the ones app-facts.sh's
 # step 1 guard and step 2 queries name. The mxcli is a stub that copies the prepared catalog
@@ -111,12 +113,13 @@ esac
 
 echo "== a catalog that is empty at the second open is refused"
 # The state the truncated URI produced, made directly: step 1 checks a good catalog, then a
-# python wrapper ($PYTHON, which resolve_py tries first) replaces it with an empty database just
+# python wrapper ($PYTHON, which _common.sh's resolve_py tries first) replaces it with an empty database just
 # before step 2's program starts reading it from stdin.
 P="$WORK/empty-$RANDOM/m"; mkdir -p "$P"; : > "$P/Shop.mpr"
 mkdir -p "$WORK/bin"
-REAL_PY="$(command -v python3 || command -v python)"
-cat > "$WORK/bin/python3" <<EOF
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/bin/lib/portable.sh"
+require_py; REAL_PY="$PY"
+cat > "$WORK/bin/py-wrap" <<EOF
 #!/usr/bin/env bash
 # empties the catalog just before app-facts' step-2 program reads it from stdin
 if [ "\${1:-}" = - ] && [ -f "$P/.mxcli/catalog.db" ]; then
@@ -124,12 +127,43 @@ if [ "\${1:-}" = - ] && [ -f "$P/.mxcli/catalog.db" ]; then
 fi
 exec "$REAL_PY" "\$@"
 EOF
-chmod +x "$WORK/bin/python3"
-rc="$( ( cd "$P" && PATH="$WORK/bin:$PATH" PY="$WORK/bin/python3" PYTHON="$WORK/bin/python3" PROJECT_ROOT="$P" MXCLI="$WORK/mxcli-stub" bash "$AF" --skip-loops --facts-dir "$P/facts" ) > "$WORK/out" 2>&1; echo $? )"
+chmod +x "$WORK/bin/py-wrap"
+rc="$( ( cd "$P" && PY="$WORK/bin/py-wrap" PYTHON="$WORK/bin/py-wrap" PROJECT_ROOT="$P" MXCLI="$WORK/mxcli-stub" bash "$AF" --skip-loops --facts-dir "$P/facts" ) > "$WORK/out" 2>&1; echo $? )"
 if [ "$rc" = 2 ] && grep -q "opened with 0 tables" "$WORK/out" && [ ! -f "$P/facts/inventory.json" ]; then
   ok "0-table catalog at step 2: exit 2, FAULT line, no inventory.json"
 else
   bad "0-table catalog not refused" "rc=$rc $(out)"
+fi
+
+echo "== older _common.sh without mxtk_sqlite_ro_uri: inline fallback"
+# A consuming project whose bin/_common.sh predates the helper: app-facts.sh copied beside a
+# _common.sh with that one function removed. Everything else (find_mpr, require_py, native_path)
+# is still there, as in a real older copy.
+OLD="$WORK/old-bin"; mkdir -p "$OLD"
+cp "$AF" "$OLD/app-facts.sh"
+"$REAL_PY" - "$(dirname "$AF")/_common.sh" "$OLD/_common.sh" <<'PYEOF'
+import re, sys
+s = open(sys.argv[1]).read()
+s2 = re.sub(r'(?ms)^mxtk_sqlite_ro_uri\(\) \{.*?^\}\n', '', s, count=1)
+assert s2 != s, "mxtk_sqlite_ro_uri not found in _common.sh"
+open(sys.argv[2], "w").write(s2)
+PYEOF
+if ( . "$OLD/_common.sh" >/dev/null 2>&1; type mxtk_sqlite_ro_uri >/dev/null 2>&1 ); then
+  bad "test setup: stripped _common.sh still defines mxtk_sqlite_ro_uri"
+else
+  PARENT="$WORK/old-$RANDOM"; P="$PARENT/a #2"; mkdir -p "$P"; : > "$P/Shop.mpr"
+  rc="$( ( cd "$P" && PROJECT_ROOT="$P" MXCLI="$WORK/mxcli-stub" bash "$OLD/app-facts.sh" --skip-loops --facts-dir "$P/facts" ) > "$WORK/out" 2>&1; echo $? )"
+  if [ "$rc" = 0 ] && grep -q '"Orders"' "$P/facts/inventory.json" 2>/dev/null && grep -q '"Billing"' "$P/facts/inventory.json"; then
+    ok "[older _common.sh, 'a #2'] no refusal; facts written from the real catalog"
+  else
+    bad "[older _common.sh, 'a #2'] fallback did not produce facts" "rc=$rc $(out)"
+  fi
+  stray="$(cd "$PARENT" && ls -A | grep -vxF -- 'a #2')"
+  if [ -z "$stray" ]; then
+    ok "[older _common.sh, 'a #2'] opened read-only: nothing created beside the model folder"
+  else
+    bad "[older _common.sh, 'a #2'] stray file(s) beside the model folder" "$stray"
+  fi
 fi
 
 echo ""

@@ -67,6 +67,7 @@ Migration assessment (`assess-migration`) is **bundled with mxcli** (`.ai-contex
 | OutSystems | `pipelines/outsystems/` | `cd pipelines/outsystems/pipeline && npm install` — see its `README.md` / `pipeline-guide.html` |
 | Java + Angular / Spring Boot | `pipelines/java-angular/` | `cd pipelines/java-angular/pipeline && npm install` — see its `README.md` |
 | Node/Express + React | `pipelines/node-express-react/` — **regex-based, proven on one source shape only; read its README's "Known gap" sections first** | `cd pipelines/node-express-react/pipeline && npm install` |
+| Mendix (an existing `.mpr`, rehost or move a module) | `pipelines/mendix-mpr/` — **build-green on a small app only; read its README's "Field runs" first** | `MXCLI=/path/to/mxcli pipelines/mendix-mpr/rehost-extract.sh <source.mpr> <target.mpr> <out-dir>` — Python 3 stdlib, no `npm install`; see its `README.md` |
 
 `node_modules/` is gitignored — `npm install` locally per pipeline. Set local paths in `pipelines/<x>/pipeline/config.json`; **never commit real local paths**. Curated sample outputs live under each pipeline.
 

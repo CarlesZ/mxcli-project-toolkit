@@ -28,7 +28,7 @@ printf 'test-check-moved-text: %s\n' "$SUT"
 # fresh repo: src.md and other.md at base, dest.md empty-ish
 setup() {
   rm -rf "$TMP/r"; mkdir -p "$TMP/r"; cd "$TMP/r" || exit 2
-  git init -q . && git config user.email t@example.invalid && git config user.name t
+  git init -q . && git config user.email t@t && git config user.name t
   cat > src.md <<'SRC'
 # Skill
 The rule stays here and is long enough.

@@ -4,6 +4,8 @@
 **What it does:** read a model with `mxcli describe`, regenerate it as MDL into a fresh target
 app, and write a **fidelity ledger** (one row per source document; the denominator in the header)
 instead of claiming 100 %.
+The judgement around it lives in the skills: `skills/rehost-app.md` (when to rehost, the
+check/exec loop, reading the ledger, done) and `skills/decompose-app.md` (splitting an app by MPK).
 
 This is the only pipeline whose extractor reads a Mendix model. Downstream of the ledger nothing
 here is Mendix-source-specific: the slice loop of the Decompose track reuses it to move a

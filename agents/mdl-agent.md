@@ -70,7 +70,10 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `project-bin/context-pack.sh` | Dispatching a build step to a helper |
 | `bug-logs/mxcli-bugs.md` | Reading a whole class of tool defects (a retest, a new mxcli release, an audit) |
 | `skills/cloud-dev-environment.md` | Setting up or resuming an mxcli project in a cloud/ephemeral container |
+| `skills/decompose-app.md` | Splitting an existing Mendix monolith into several apps |
+| `skills/mendix-service-seam.md` | Wiring a service seam between two Mendix apps |
 | `skills/microflow-loop-antipatterns.md` | Reading what loop bodies do (LOOP_TQ, deferred commit, nested loop, REST in loop, transaction control per item, scheduled-event reachability) from described MDL; the catalog holds top-level activities only and cannot see inside a loop |
+| `skills/rehost-app.md` | Rehosting an existing Mendix .mpr into a fresh app |
 | `skills/iterative-build-loop.md` | An exec.sh guard refused a write (not a permission prompt), or building a module with mxcli |
 | `skills/mdl-cookbook-microflows.md` | Writing MDL microflow scripts |
 | `skills/build/mdl/oneshot-mdl-method.md` | Writing a single MDL script that takes a project from nothing to a working vertical slice |

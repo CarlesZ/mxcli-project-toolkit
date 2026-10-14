@@ -75,6 +75,7 @@ This table is your whole list. The baseline table in the project's CLAUDE.local.
 | `skills/layering-review.md` | Checking whether an EXISTING app's module boundaries still hold: the layer map (bin/app-layer-map.sh) computes the order the modules would stack in and draws only the edges that point back up, so one tangle of N mutually reachable modules becomes a named list of edges with a weight and a ref kind; Stage 3 in existing-app-change mode, and the honest blast radius for a slice |
 | `skills/assess-migration.md` | Assessing or planning a migration up front, before any pipeline is chosen |
 | `skills/migration-pipeline.md` | Running the extraction pipeline |
+| `skills/rehost-app.md` | Rehosting an existing Mendix .mpr into a fresh app |
 | `skills/migrate-general.md` | Migrating from a stack that has no dedicated pipeline |
 | `skills/migrate-outsystems.md` | Migrating an OutSystems app |
 | `skills/source-os11.md` | Understanding OutSystems 11 source |

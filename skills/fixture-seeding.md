@@ -74,16 +74,14 @@ Before choosing any row, answer three questions from the model itself, not from 
 | Question | Read it from | Failure if skipped |
 |---|---|---|
 | What must be filled, what is unique? | domain model: required/unique validation, defaults, persistent vs non-persistent (never seed non-persistent entities — pages build them from microflows) | insert refused, or `duplicate key value violates unique constraint` on a row the app creates itself |
-| Which association hangs a child on a page? | associations (owner, delete behaviour) + each page's data-source XPath; parent -> child is the direction a page follows | marker, line item or ticket row exists, the page list stays empty |
+| Which association hangs a child on a page? | associations (owner, delete behaviour) + each page's data-source XPath; seed the association the page's data source path names, in the table where it is stored (in Mendix the child usually owns the reference) | marker, line item or ticket row exists, the page list stays empty |
 | Which enum values do pages filter on? | XPath strings in page data sources and access rules, plus the enumerations | an overview filtered on `Status != 'Open'` stays empty because the seed only held `Open` rows |
 
 Technique, in the order that worked: persistent entities -> associations -> enumerations -> access
 rules per role with their XPath -> page data sources with XPath; end with one table,
-`entity | who needs it | state it must be in`. Online: `SHOW ENTITIES`, `DESCRIBE ENTITY`,
-`SHOW ASSOCIATIONS`, the enumeration and access listings (`query-the-model.md`). Offline, with no
-running app: parse the `.mpr` yourself. A reference implementation exists in the upgrade toolkit's
-research notes (a domain-map and a page-needs script, plus two worked data maps); it is an
-example, not a dependency.
+`entity | who needs it | state it must be in`. Read each from the model with `mxcli -p <app>.mpr`:
+`SHOW ENTITIES`, `DESCRIBE ENTITY`, `SHOW ASSOCIATIONS`, the enumeration and access listings
+(`query-the-model.md`). These read the `.mpr` directly; no running app is needed.
 
 ## Choose the data by use case, not by table
 
@@ -92,14 +90,20 @@ Write the use case in three sentences first (who, what they do, what they see). 
 - **One record in every status a page filters on**, and one in each end state of a lifecycle.
 - **Children for list and detail pages**: every "children" list gets at least 2 children.
 - **Role-linked identities**: the test user must own a domain object (an Employee linked to the
-  Account) or a list scoped by `[Employee_Account='[%CurrentUser%]']` is empty for exactly that role.
-  Give that scope 2-3 rows.
+  Account) or a list scoped by `[HR.Employee_Account='[%CurrentUser%]']` is empty for exactly
+  that role. Give that scope 2-3 rows.
 - **Referential integrity**: set every association a page follows. Counters that microflows maintain
   (`NumberOfTickets`) are plain integers to SQL; make them equal their children.
 - **Realistic invented values**: `SI-20261013-001`, mail at example.com, never `Item-001` unless Q3 said so.
 - **5-20 rows per entity**; a dashboard needs a spread, not volume.
-- **Dates relative to now** ("this week" counters read 0 on a fixed date), **ids deterministic**
-  (uuid5 of a stable key) so a rerun yields the same rows; rebuild from an empty frozen copy.
+- **Dates relative to now** ("this week" counters read 0 on a fixed date).
+- **Reruns repeat through a stable business key, never through fixed ids.** A Mendix object id is
+  a bigint `(short_id << 48) | (sequence << 7) | rand7`: `short_id` from
+  `mendixsystem$entityidentifier`, the sequence advanced in the same transaction (`demo-data.md`).
+  Never write an id as a literal or a uuid. A hand-minted id that skips the sequence collides with
+  rows the app creates later, and a stale `short_id` paints blank grid rows (`mxcli-bugs.md`,
+  Platform behaviours D and Methodology lessons #11). Guard each insert with `WHERE NOT EXISTS` on
+  the business key (`e2e-harness-base.md`); rebuild from an empty frozen copy.
 
 ## 4. Interview — a proposal with evidence, then stop and wait
 
@@ -158,8 +162,9 @@ action inventory (buttons, microflow names) for them before the first run. Verba
 generated journey that pressed a "Reset all demodata" button: Administrator passed, then every other
 role reported `login FAIL: The username or password you entered is incorrect` - 104 of 127 journeys,
 and the same on an empty and a seeded database, so before and after looked identical. Administrator
-*delete* journeys do the same through cascades: deleting an Employee deletes the Account linked to it
-(1 account of 3 left, 157 of 183 journeys failing login). Seeds that link Employee to Account are
+*delete* journeys do the same through cascades: deleting an Employee also deleted the Account
+linked to it, because that association's delete behaviour cascades (read it with `DESCRIBE
+ASSOCIATION`; 1 account of 3 left, 157 of 183 journeys failing login). Seeds that link Employee to Account are
 what make it bite; an empty database hides it. Run destructive journeys **last, or on a copy**, and
 count them separately.
 
@@ -167,8 +172,10 @@ count them separately.
 
 | Trap | Symptom |
 |---|---|
-| Port offsets overlap: app = base+off, admin = base+10+off, so off=10 lands on another instance's admin port | `INFRA port 8090 in use by ...`. Use offsets that are multiples of 20 |
-| Container named from a label two apps share | removing one removed the other mid-run: every role `login INVALID`, `Timeout navigating to login.html`. Use app-specific labels, and check the landing text names the right app (a screenshot run once silently hit the old app) |
+| Enum column seeded with the caption | `Status = 'In progress'` matches no value: the cell renders blank and every `Status = 'InProgress'` filter skips the row. Store the value name |
+| Specialization seeded in its own table only | `insert into hr$manager` alone: the object is missing from every `Employee` list. Insert one row per table in the inheritance chain with the same id, and set `submetaobjectname` on each parent row to the specialization's name |
+| Calculated attribute in the insert | `column "fullname" does not exist`: a calculated attribute has no column. Leave it out |
+| View or external entity seeded | `relation ... does not exist`: a view entity is computed by its OQL and an external entity lives in the remote service. Seed the entities the view reads, or the source system |
 | Package snapshot loaded after the app started once | `duplicate key value violates unique constraint` - the app creates some rows itself at first start; waive that table, expect one per self-seeding Marketplace module |
 | Snapshot dates vs "this week" counters | dashboard shows 0 for a snapshot dated months ago. Shift all timestamps *before* any spec using relative dates, or the anchor is the new rows |
 | Removing a user from a role as sole target | the snapshot's own demo users lose the role, and the rows they own are owned by nobody who can log in; re-own a few rows to the test user's object |

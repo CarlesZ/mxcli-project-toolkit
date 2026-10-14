@@ -193,7 +193,7 @@ picks the row up. That is the whole procedure — there is no second list to rem
 | Always relevant for | Load this | Agent(s) | Stage(s) | Tier |
 |---|---|---|---|---|
 | Building a REST integration (consumed or published) for the first time on a project — the checks that avoid a rebuild after the first live call | `skills/rest-integration-first-time-right.md` | mdl | 4,5 | ondemand |
-| Two or more Mendix apps you build that read each other over REST — before the contract, before the first consumer, and before calling an API tested: pull vs push, key+version rule, auth in the operation microflow (BUG-152), honest last-success/stale/"as of", one owner per fact, and the six-rung cross-app test ladder with its per-change/slice/release cadence | `skills/rest-between-mendix-apps.md` | architect,mdl,test,review | 3,4,5,6 | ondemand |
+| App-to-app REST or microservices: two or more Mendix apps you build that read each other over REST — before the contract, before the first consumer, and before calling an API tested: pull vs push, key+version rule, auth in the operation microflow (BUG-152), honest last-success/stale/"as of", one owner per fact, and the six-rung cross-app test ladder with its per-change/slice/release cadence | `skills/rest-between-mendix-apps.md` | architect,mdl,test,review | 3,4,5,6 | ondemand |
 | Adding a constant, installing a marketplace module, deploying to a new environment, or needing a Mendix PAT — where an encryption key, API credential, endpoint or access token gets its value, why a free node has only one channel, and why a token missing from the files you grepped is not missing | `skills/learned-constants-and-secrets.md` | mdl,architect,gate | 4,5,6 | ondemand |
 
 #### Build · Security

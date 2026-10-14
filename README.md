@@ -650,7 +650,7 @@ Every mxcli project has a `.ai-context/skills/` directory (bundled by `mxcli ini
 | Task | Skill to load |
 |---|---|
 | Building a REST integration (consumed or published) for the first time on a project — the checks that avoid a rebuild after the first live call | `skills/rest-integration-first-time-right.md` |
-| Two or more Mendix apps you build that read each other over REST — before the contract, before the first consumer, and before calling an API tested: pull vs push, key+version rule, auth in the operation microflow (BUG-152), honest last-success/stale/"as of", one owner per fact, and the six-rung cross-app test ladder with its per-change/slice/release cadence | `skills/rest-between-mendix-apps.md` |
+| App-to-app REST or microservices: two or more Mendix apps you build that read each other over REST — before the contract, before the first consumer, and before calling an API tested: pull vs push, key+version rule, auth in the operation microflow (BUG-152), honest last-success/stale/"as of", one owner per fact, and the six-rung cross-app test ladder with its per-change/slice/release cadence | `skills/rest-between-mendix-apps.md` |
 | Adding a constant, installing a marketplace module, deploying to a new environment, or needing a Mendix PAT — where an encryption key, API credential, endpoint or access token gets its value, why a free node has only one channel, and why a token missing from the files you grepped is not missing | `skills/learned-constants-and-secrets.md` |
 
 **Verify — does it work**

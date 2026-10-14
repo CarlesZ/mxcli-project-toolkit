@@ -6995,4 +6995,4 @@ end;
 
 **Expected:** when `returns` follows the microflow name directly, `check` says "parameter list `()` required before `returns`" instead of three cascading errors.
 
-**Toolkit side:** `learned-mdl-preflight.md` STOP row 29.
+**Toolkit side:** `learned-microflow-patterns.md` → "Additional MDL Syntax Rules", first bullet.

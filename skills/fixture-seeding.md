@@ -173,9 +173,9 @@ count them separately.
 | Trap | Symptom |
 |---|---|
 | Enum column seeded with the caption | `Status = 'In progress'` matches no value: the cell renders blank and every `Status = 'InProgress'` filter skips the row. Store the value name |
-| Specialization seeded in its own table only | `insert into hr$manager` alone: the object is missing from every `Employee` list. Insert one row per table in the inheritance chain with the same id, and set `submetaobjectname` on each parent row to the specialization's name |
+| Specialization seeded in its own table only | `insert into hr$manager` alone: the object is missing from every `Employee` list. Insert one row per table in the inheritance chain with the same id, minted from the specialization's `short_id` (its own `mendixsystem$entityidentifier` row, not the parent's: a parent short_id gives blank or mistyped rows), and set `submetaobjectname` on each parent row to the specialization's name |
 | Calculated attribute in the insert | `column "fullname" does not exist`: a calculated attribute has no column. Leave it out |
-| View or external entity seeded | `relation ... does not exist`: a view entity is computed by its OQL and an external entity lives in the remote service. Seed the entities the view reads, or the source system |
+| View or external entity seeded | the insert fails (no table, or a database view that refuses inserts): a view entity is computed by its OQL and an external entity lives in the remote service. Seed the entities the view reads, or the source system |
 | Package snapshot loaded after the app started once | `duplicate key value violates unique constraint` - the app creates some rows itself at first start; waive that table, expect one per self-seeding Marketplace module |
 | Snapshot dates vs "this week" counters | dashboard shows 0 for a snapshot dated months ago. Shift all timestamps *before* any spec using relative dates, or the anchor is the new rows |
 | Removing a user from a role as sole target | the snapshot's own demo users lose the role, and the rows they own are owned by nobody who can log in; re-own a few rows to the test user's object |

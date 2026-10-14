@@ -110,6 +110,9 @@ forgotten* — they are on disk, not in working memory.
 3. **Drain the `UNFILED:` lines** from the previous checkpoint — route or delete.
 4. **Checkpoint**: `checkpoint.sh --write`, fill the Narrative, including any new
    `UNFILED:` lines. This file is append-only history.
+   `close-task.sh` prints the full path it found (PATH, then `~/.claude/bin`, then the
+   toolkit's `claude-hooks/bin/`). If it says `checkpoint.sh not installed`: run
+   `<toolkit>/bin/install-claude-hooks.sh --basic`, or skip this step: `RESUME.md` is the resume source.
 5. **`mxcli brain check -p <app.mpr>`** — `capture` and `promote` do not validate anchors;
    only `check` does. Exit 1 means a promoted entry points at something the model no longer
    has: fix the anchor or `brain drop` the entry before anything is committed.

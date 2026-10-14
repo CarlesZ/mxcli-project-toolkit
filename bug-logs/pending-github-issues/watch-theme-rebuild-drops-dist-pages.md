@@ -35,8 +35,8 @@ app's runtime log shows 7 starts in about 90 minutes of theme work.
 
 ## Other changes watch does not apply
 
-In the same run, these edits were not picked up while the app was already running. The app kept
-serving the old model, and nothing in the watch output said so:
+In the same run, these edits were not picked up while the app was already running. The
+implementer saw the old behaviour until the app was restarted:
 
 - a microflow dropped and recreated (the old version kept serving);
 - a new microflow grant;

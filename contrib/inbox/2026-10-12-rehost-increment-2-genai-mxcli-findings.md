@@ -3,7 +3,7 @@
 **From:** MendixMau — Rehost increment 2 on mendix/genai-showcase-app (MIT) (split from #293)
 **Date:** 2026-10-12
 **Kind:** bug
-**Field evidence:** `pipelines/mendix-mpr/samples/genai-showcase-11.12.0/` (CAPTURE.txt, FINDINGS.md, fidelity-ledger.tsv, mx-check-target.txt); Mendix 11.12.0 source, 36 modules regenerated into `mxcli new --version 11.12.0`; Linux container, no Studio Pro
+**Field evidence:** captures not committed (lab run, #293); Mendix 11.12.0 source, 36 modules regenerated into `mxcli new --version 11.12.0`; Linux container, no Studio Pro
 **Proposed target:** `bug-logs/mxcli-bugs.md` (one BUG-n each); upstream drafts in `bug-logs/pending-github-issues/2026-10-12-mxcli-0.26-round-trip-report.md`; extractor items to `pipelines/mendix-mpr/`
 
 ---

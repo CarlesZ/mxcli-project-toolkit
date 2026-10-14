@@ -3,7 +3,7 @@
 **From:** MendixMau — toolkit lab run, Decompose increment 7, strangled (split from #293)
 **Date:** 2026-10-12
 **Kind:** bug
-**Field evidence:** a public Marketplace template (FSM), monolith 10.24 copy (MPR v1) with the Assets modules deleted, slice AssetsApp 11.13 (MPR v2); summary in `pipelines/mendix-mpr/samples/fsm-template-9.24.2/slice-assets-strangled/` (CAPTURE.txt, FINDINGS.md, ledgers). Tools and captures cited below were not shipped. mxcli v0.26.0.
+**Field evidence:** a public Marketplace template (FSM), monolith 10.24 copy (MPR v1) with the Assets modules deleted, slice AssetsApp 11.13 (MPR v2); captures not committed (lab run, #293). Tools and captures cited below were not shipped. mxcli v0.26.0.
 **Proposed target:** `bug-logs/mxcli-bugs.md`; platform bullets to `skills/mendix-service-seam.md`
 
 ---

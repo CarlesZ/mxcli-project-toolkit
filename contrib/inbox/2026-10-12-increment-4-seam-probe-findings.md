@@ -3,7 +3,7 @@
 **From:** MendixMau — toolkit lab run, Decompose increment 4 (split from #293)
 **Date:** 2026-10-12
 **Kind:** bug
-**Field evidence:** a public Marketplace template (FSM) monolith → NativeNote slice (Mendix 11.13.0) over published REST; summary in `pipelines/mendix-mpr/samples/fsm-template-9.24.2/seam-probe/` (CAPTURE.txt, FINDINGS.md). mxcli v0.26.0, Linux cloud container, no Studio Pro.
+**Field evidence:** a public Marketplace template (FSM) monolith → NativeNote slice (Mendix 11.13.0) over published REST; captures not committed (lab run, #293). mxcli v0.26.0, Linux cloud container, no Studio Pro.
 **Proposed target:** `bug-logs/mxcli-bugs.md`; runtime bullets to `skills/mendix-service-seam.md` or a `learned-*` skill
 
 ---

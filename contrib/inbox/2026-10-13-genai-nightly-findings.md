@@ -3,7 +3,7 @@
 **From:** MendixMau — Rehost increment 2 nightly re-run on mendix/genai-showcase-app (MIT) (split from #293)
 **Date:** 2026-10-13
 **Kind:** bug
-**Field evidence:** `pipelines/mendix-mpr/samples/genai-showcase-11.12.0/nightly/` (CAPTURE.txt, FINDINGS.md, fidelity-ledger.tsv, mx-check-target.txt). mxcli `nightly-80-gbd45c47e`, Mendix 11.12.0, 36 modules regenerated into `mxcli new --version 11.12.0` with 5 marketplace modules installed.
+**Field evidence:** captures not committed (lab run, #293). mxcli `nightly-80-gbd45c47e`, Mendix 11.12.0, 36 modules regenerated into `mxcli new --version 11.12.0` with 5 marketplace modules installed.
 **Proposed target:** `bug-logs/mxcli-bugs.md` (one BUG-n each), upstream issues. None is among U1–U53 of `bug-logs/pending-github-issues/2026-10-12-mxcli-0.26-round-trip-report.md` unless a U-id is named.
 
 ---

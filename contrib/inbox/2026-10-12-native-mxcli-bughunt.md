@@ -11,7 +11,7 @@
 ## Defects
 
 - **D3 (confirmed), blocks round trip.** No microflow or nanoflow can be written to a 9.24.2 project: `this Mendix 9.24.2 project cannot store Microflows$Microflow.StableId (Mendix 10.2.0+); Microflows$SequenceFlow.CaseValues (Mendix 10.15.0+)`. An empty `create or modify microflow Repro.MF_Min () begin return; end;` fails on a fresh 9.24.2 app (`D3-…mdl`). 100% of flows tried.
-- **D1 (new), blocks.** `describe entity` prints `index ( desc);` (no column); check: `index on unknown attribute 'desc'`. 23 errors in 10 modules; everything naming the entity cascades (NativeReason: 0 of 45 documents survive check). Repro `D1-…mdl`.
+- **D1 (new), blocks.** `describe entity` prints `index ( desc);` (no column); check: `index on unknown attribute 'desc'`. 23 errors in 10 modules; everything naming the entity cascades (NativeReason: 3 of 45 statements clean in check, 37 rejected). Repro `D1-…mdl`.
 - **D2 (new), blocks.** Native Repeater: `` `content` is not a container of `repeater` — it declares: template [MDL-WIDGET26] ``. 32 errors, 7 modules. Repro `D2-…mdl` (needs the Repeater `.mpk` + `mxcli widget init`). Same family as SafeAreaView (D11).
 - **D4 (new), blocks or drifts.** `nanoflow data source … has no argument for parameter 'NativeInstanceItem' — Mendix rejects this with CE1571` (also nanoflow actions). describe prints the call without the parameter mapping. 70 errors, 7 modules. Not isolated (blocked by D3).
 - **D5 (new).** `Attribute 'Search' is bound but there is no enclosing data container providing entity context` (also date pickers). describe loses or never emits the data view; unverified which. 11.

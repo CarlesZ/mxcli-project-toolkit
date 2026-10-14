@@ -3,7 +3,7 @@
 **From:** MendixMau — toolkit lab run, Decompose increment 3 (split from #293)
 **Date:** 2026-10-12
 **Kind:** bug
-**Field evidence:** a public Marketplace template (FSM 9.24.2), NativeNote slice moved into Mendix 11.13.0; summary in `pipelines/mendix-mpr/samples/fsm-template-9.24.2/slice-nativenote/` (CAPTURE.txt, FINDINGS.md, cut-ledger.tsv). mxcli v0.26.0, Linux cloud container, no Studio Pro.
+**Field evidence:** a public Marketplace template (FSM 9.24.2), NativeNote slice moved into Mendix 11.13.0; captures not committed (lab run, #293). mxcli v0.26.0, Linux cloud container, no Studio Pro.
 **Proposed target:** `bug-logs/mxcli-bugs.md`; last bullet to the Rehost pipeline's topo-order script
 
 ---

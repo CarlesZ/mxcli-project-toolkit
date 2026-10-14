@@ -3,7 +3,7 @@
 **From:** MendixMau — toolkit lab run, Decompose increment 8, Dispatch & Workforce (split from #293)
 **Date:** 2026-10-13
 **Kind:** bug
-**Field evidence:** a public Marketplace template (FSM), monolith 10.24 copy (MPR v1), slice DispatchApp 11.13 (MPR v2); summary in `pipelines/mendix-mpr/samples/fsm-template-9.24.2/slice-dispatch/` (CAPTURE.txt, FINDINGS.md, cut-ledger.tsv). mxcli v0.26.0.
+**Field evidence:** a public Marketplace template (FSM), monolith 10.24 copy (MPR v1), slice DispatchApp 11.13 (MPR v2); captures not committed (lab run, #293). mxcli v0.26.0.
 **Proposed target:** `bug-logs/mxcli-bugs.md`; platform bullets to `skills/mendix-service-seam.md`
 
 ---

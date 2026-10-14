@@ -3,7 +3,7 @@
 **From:** MendixMau — toolkit lab run, Decompose increment 6, core services (split from #293)
 **Date:** 2026-10-12
 **Kind:** bug
-**Field evidence:** a public Marketplace template (FSM), monolith 10.24 publishing its core to the 11.13 Assets slice; summary in `pipelines/mendix-mpr/samples/fsm-template-9.24.2/slice-assets-core/` (CAPTURE.txt, FINDINGS.md, cut-ledger.tsv). Numbered captures and `.mdl` files cited below were not shipped. mxcli v0.26.0.
+**Field evidence:** a public Marketplace template (FSM), monolith 10.24 publishing its core to the 11.13 Assets slice; captures not committed (lab run, #293). Numbered captures and `.mdl` files cited below were not shipped. mxcli v0.26.0.
 **Proposed target:** `bug-logs/mxcli-bugs.md`
 
 ---

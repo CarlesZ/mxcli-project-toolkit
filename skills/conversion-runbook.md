@@ -238,7 +238,7 @@ Note the ruling this encodes, from the user, 2026-08-12: *"At each gate, also gi
 
 A proposal beats a questionnaire because it asks the user to **correct** something rather than supply it cold — and by the time each gate arrives, the agent has read the source and has evidence to put behind its recommendation.
 
-**Unattended mode is opt-in, never inferred.** The "default + record + proceed" behavior (skipping the wait, not the question — questions still get logged in `PROJECT.md` open-questions) is only legal when the user explicitly said to run unattended, recorded at Stage P in `PROJECT.md` (`Interview mode: unattended`). Default is **attended**: every gate question is asked in chat and the turn ends there. (Failure: an attended run reached Stage 3 with zero questions asked, reading "a solo run never stalls" as "never ask" — `process/baseline-incident-history.md` §R5.)
+**Unattended mode is opt-in, never inferred.** The "default + record + proceed" behavior (skipping the wait, not the question — questions still get logged in `PROJECT.md` open-questions) is only legal when the user explicitly said to run unattended, recorded at Stage P in `PROJECT.md` (`Interview mode: auto`, alias `unattended`; modes in `interview-protocol.md`). Default is **steering**: every gate question is asked in chat and the turn ends there. (Failure: an attended run reached Stage 3 with zero questions asked, reading "a solo run never stalls" as "never ask" — `process/baseline-incident-history.md` §R5.)
 
 **Unattended runs keep a Ruling ledger.** Nobody can be asked, so the register alone is not
 enough: an `ASSUMED` line records the decision and sometimes the reason, never the blast

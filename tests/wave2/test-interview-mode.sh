@@ -80,6 +80,64 @@ bash "$SUBJECT" "$P" --explain 2>/dev/null | grep -q '^from:' \
 
 bash "$SUBJECT" 2>/dev/null; [ "$?" -eq 2 ] && ok "no argument exits 2" || bad "no argument did not exit 2"
 
+# --- aliases: the words the docs used to teach ----------------------------------------------
+# CLAUDE.md, the runbook and intake Q9 told users to write `Interview mode: unattended`. The
+# script knew only steering|assist|auto, so a project that opted in exactly as documented was
+# silently run as steering. `unattended` = auto and `attended` = steering, in every source;
+# stdout stays the canonical name so every consumer (interview-gate.sh) keeps working.
+A="$WORK/alias"; mkdir -p "$A/.claude"
+# alias_case <label> <expected> <cmd...>: stdout must be canonical AND stderr must name the alias.
+alias_case() {
+  _lbl="$1"; _want="$2"; shift 2
+  _out=$("$@" 2>"$WORK/alias.err"); _err=$(cat "$WORK/alias.err")
+  [ "$_out" = "$_want" ] && ok "$_lbl resolves to $_want" \
+                         || bad "$_lbl resolved to '$_out', want '$_want'"
+  case "$_err" in *"read as '$_want' (alias)"*) ok "$_lbl prints the alias note" ;;
+    *) bad "$_lbl printed no alias note (stderr: $_err)" ;; esac
+}
+alias_case "env unattended" auto     env CLAUDE_INTERVIEW_MODE=unattended bash "$SUBJECT" "$A"
+alias_case "env attended"   steering env CLAUDE_INTERVIEW_MODE=attended bash "$SUBJECT" "$A"
+printf 'unattended\n' > "$A/.claude/.interview-mode"
+alias_case "file unattended" auto     bash "$SUBJECT" "$A"
+printf 'attended\n' > "$A/.claude/.interview-mode"
+alias_case "file attended"   steering bash "$SUBJECT" "$A"
+rm -f "$A/.claude/.interview-mode"
+# Same parse rules as the canonical values: list bullet, bold key, any case. (Trailing prose
+# after the value is not accepted for canonical values either — not this fixture's subject.)
+printf -- '- **Interview mode:** Unattended\n' > "$A/PROJECT.md"
+alias_case "PROJECT.md bold key, capitalised unattended" auto bash "$SUBJECT" "$A"
+printf 'Interview mode: attended\n' > "$A/PROJECT.md"
+alias_case "PROJECT.md attended" steering bash "$SUBJECT" "$A"
+rm -f "$A/PROJECT.md"
+bash "$SUBJECT" "$A" --set unattended >/dev/null 2>"$WORK/alias.err"
+[ "$(tr -d '[:space:]' < "$A/.claude/.interview-mode" 2>/dev/null)" = "auto" ] \
+  && ok "--set unattended stores the canonical 'auto'" \
+  || bad "--set unattended did not store 'auto'"
+grep -q "read as 'auto' (alias)" "$WORK/alias.err" \
+  && ok "--set unattended prints the alias note" || bad "--set unattended printed no alias note"
+bash "$SUBJECT" "$A" --set attended >/dev/null 2>"$WORK/alias.err"
+[ "$(bash "$SUBJECT" "$A" 2>/dev/null)" = "steering" ] \
+  && ok "--set attended resolves to steering" || bad "--set attended did not resolve to steering"
+grep -q "read as 'steering' (alias)" "$WORK/alias.err" \
+  && ok "--set attended prints the alias note" || bad "--set attended printed no alias note"
+rm -f "$A/.claude/.interview-mode"
+# Typos keep the old rule; canonical values stay quiet.
+[ "$(CLAUDE_INTERVIEW_MODE=unatended bash "$SUBJECT" "$A" 2>/dev/null)" = "steering" ] \
+  && ok "typo 'unatended' still falls back to steering" \
+  || bad "a misspelled alias resolved to something other than steering"
+printf 'Interview mode: unattend\n' > "$A/PROJECT.md"
+[ "$(bash "$SUBJECT" "$A" 2>/dev/null)" = "steering" ] \
+  && ok "typo 'unattend' in PROJECT.md still falls back to steering" \
+  || bad "a misspelled PROJECT.md alias did not fall back to steering"
+printf 'Interview mode: auto\n' > "$A/PROJECT.md"
+[ -z "$(bash "$SUBJECT" "$A" 2>&1 >/dev/null)" ] \
+  && ok "a canonical value prints no alias note" \
+  || bad "a canonical value printed something on stderr"
+[ -z "$(CLAUDE_INTERVIEW_MODE=assist bash "$SUBJECT" "$A" 2>&1 >/dev/null)" ] \
+  && ok "canonical env value prints no alias note" \
+  || bad "canonical env value printed something on stderr"
+rm -f "$A/PROJECT.md"
+
 # --- the hook honours all of it -------------------------------------------------------------
 HOOK="$WORK/hook.sh"
 sed "s|__TOOLKIT_ROOT__|$TOOLKIT|g" "$TOOLKIT/claude-hooks/hooks/interview-gate.sh" > "$HOOK"
@@ -101,6 +159,9 @@ esac
 [ -f "$P/docs/open-questions.html" ] \
   && ok "auto still writes the report (the recording is the safety net)" \
   || bad "auto skipped the report — questions now vanish with nothing to review"
+[ -z "$(fire CLAUDE_INTERVIEW_MODE=unattended)" ] \
+  && ok "the hook reads 'unattended' as auto and does not block" \
+  || bad "the hook blocked on 'unattended' — the documented opt-in is ignored"
 [ -z "$(fire CLAUDE_INTERVIEW_REMOTE=1)" ] \
   && ok "remote does not park the run even in steering" \
   || bad "remote still blocked — a run stalls against a keyboard nobody is at"

@@ -4,7 +4,6 @@
 # Every routing surface in this repo is a VIEW of that table, rendered by this library:
 #   ROUTING.md                     full           (human-readable index)
 #   README.md                      readme-baseline + readme-situational
-#   skills/conversion-runbook.md   readme-baseline
 #   agents/<x>-agent.md            agent:<x>
 #   bin/gate-check.sh              stage-map      (shell case arms)
 #   <project>/CLAUDE.local.md      baseline       (written by init-project.sh / sync-project.sh)
@@ -152,6 +151,19 @@ _routing_stage_arm() {
 #   Optional third argument <role> (lead|ba|architect|mdl|gate|test|review): count only rows
 #   whose agents cell is "all" or names that role — what one helper at that stage is pointed
 #   at. Omitted = every role, the number this function always returned.
+#
+#   One script row IS counted: bin/runbook-slice.sh. Its whole output is read into context —
+#   it replaces the runbook for the helper roles — so it is counted as the words it prints for
+#   <stage> (about 1.5k at Stage 5), not as zero and not as the script's own text. With an
+#   unrecognised <stage> (the "full" pack) it is counted as the whole runbook, the upper bound.
+_ROUTING_READ_SCRIPTS="bin/runbook-slice.sh"
+_routing_slice_words() { # _routing_slice_words <root> <stage> <full>
+  if [ "$3" -eq 1 ]; then
+    LC_ALL=C wc -w < "$1/skills/conversion-runbook.md" 2>/dev/null | tr -d '[:space:]'
+  else
+    bash "$1/$_ROUTING_READ_SCRIPTS" "$2" 2>/dev/null | LC_ALL=C wc -w | tr -d '[:space:]'
+  fi
+}
 routing_baseline_pack() {
   local stage="$1" root="$2" role="${3:-}" words=0 files=0 paths="" p wc_out
   local name path when agents stages tier group
@@ -159,14 +171,18 @@ routing_baseline_pack() {
   case "$known_stages" in *" $stage "*) : ;; *) full=1 ;; esac
   while IFS=$'\t' read -r name path when agents stages tier group; do
     [ "$tier" = "baseline" ] || continue
-    case "$path" in *.md) : ;; *) continue ;; esac
+    case "$path" in *.md|"$_ROUTING_READ_SCRIPTS") : ;; *) continue ;; esac
     _routing_reaches "$agents" "$role" || continue
     if [ "$full" -eq 0 ] && [ "$stages" != "-" ]; then
       _routing_has "$stages" "$stage" || continue
     fi
     p="$root/$path"
     [ -f "$p" ] || continue
-    wc_out="$(LC_ALL=C wc -w < "$p" 2>/dev/null | tr -d '[:space:]')"   # LC_ALL=C: see BASELINE_BUDGET in render-routing.sh
+    if [ "$path" = "$_ROUTING_READ_SCRIPTS" ]; then
+      wc_out="$(_routing_slice_words "$root" "$stage" "$full")"
+    else
+      wc_out="$(LC_ALL=C wc -w < "$p" 2>/dev/null | tr -d '[:space:]')"   # LC_ALL=C: see BASELINE_BUDGET in render-routing.sh
+    fi
     [ -n "$wc_out" ] || wc_out=0
     words=$((words + wc_out))
     files=$((files + 1))

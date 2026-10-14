@@ -188,6 +188,65 @@ has   "bare DynamicClasses (v0.25 DESCRIBE) declares its classes" "$OUT12" "clas
 OUT13=$(cd "$TMP" && node "$SUT" --no-log "$FIX/dynclasses.html" Dyn_Probe "$FIX/dynclasses-script.mdl" 2>&1)
 has   "quoted DynamicClasses (headerless script) still does"      "$OUT13" "classes 2/2"
 
+echo "  -- #158: text is matched against what the page SHOWS, on whole words"
+# The MDL is a REAL capture: mxcli DESCRIBE of Sales.Product_Overview (context-pack fixture).
+# product-overview.html is synthetic and marked; see CAPTURE.md. On master every heading and
+# action below read as present — "Product overview" from the page NAME, "Deactivate product"
+# from the microflow and entity names, "Add" because a label with no >3-char word passed
+# vacuously — and the run printed 89%.
+CAP="$TOOLKIT/tests/wave2/fixtures/context-pack/capture/describe/PAGE__Sales.Product_Overview.out"
+OUT14=$(cd "$TMP" && node "$SUT" --no-log "$FIX/product-overview.html" Product_Overview - < "$CAP" 2>&1)
+echo "$OUT14" | sed 's/^/    | /'
+has   "a heading the page shows (Title/H1 'Catalog') is found"     "$OUT14" "headings 1/2"
+has   "a heading only the page NAME carries is missed"             "$OUT14" "heading: Product overview"
+has   "a button caption is matched on the button, all words"       "$OUT14" "action:  Deactivate product"
+has   "a short label is required, not vacuous"                     "$OUT14" "action:  Add"
+has   "real captions still match (New item, Edit, Delete)"         "$OUT14" "actions 3/5"
+has   "the sub-title paragraph is still found"                     "$OUT14" "content 1/1"
+
+echo "  -- #157: ButtonStyle renders btn + btn-<style>; no ButtonStyle is btn-default"
+has   "btn / btn-primary / btn-danger / btn-default are declared"  "$OUT14" "classes 8/9"
+CLS14=$(printf '%s\n' "$OUT14" | grep '^  classes:' || true)
+hasnt "btn-primary is not missed"                                  "$CLS14" "btn-primary"
+hasnt "btn-default (DESCRIBE omits Default) is not missed"         "$CLS14" "btn-default"
+has   "a class the page really lacks is still missed"              "$CLS14" "row-actions"
+
+echo "  -- #157: chrome comes from the page's layout, or from --chrome"
+# layout-app-default.mdl is upstream mxcli's own layout example (verbatim, see CAPTURE.md);
+# master scored the layout's region classes as classes the page failed to declare (0/2).
+LA="$FIX/layout-app-default.mdl"
+OUT15=$(cd "$TMP" && node "$SUT" --no-log "$FIX/layout-app-default.html" Home "$LA" 2>&1)
+echo "$OUT15" | sed 's/^/    | /'
+has   "the layout's classes leave the denominator"                 "$OUT15" "classes 0/0"
+has   "and are reported as chrome, not dropped silently"           "$OUT15" "chrome (layout-supplied, not scored): region-sidebar region-content"
+has   "the run names the layout it read"                           "$OUT15" "layout LayoutTest.App_Default read from input"
+PAGEONLY=$(sed -n '/^create or modify page/,$p' "$LA")
+OUT16=$(cd "$TMP" && printf '%s\n' "$PAGEONLY" | node "$SUT" --no-log "$FIX/layout-app-default.html" Home - 2>&1)
+has   "without the layout, its classes are owed (unchanged default)" "$OUT16" "classes 0/2"
+OUT17=$(cd "$TMP" && printf '%s\n' "$PAGEONLY" | node "$SUT" --no-log --chrome region-sidebar,region-content "$FIX/layout-app-default.html" Home - 2>&1)
+has   "--chrome names them instead"                                "$OUT17" "classes 0/0"
+has   "--chrome classes are reported as chrome too"                "$OUT17" "chrome (layout-supplied, not scored): region-sidebar region-content"
+
+echo "  -- a multi-line ALTER set, plurals, and a re-styled button (review of #318)"
+# alter-multiline-* is a SYNTHETIC counter-case (see CAPTURE.md). The first cut of the caption
+# match ended an ALTER `set` segment at the first newline and dropped 'Approve order'; and
+# whole-word matching read "Orders" against the title 'Order' as missing.
+AM="$FIX/alter-multiline"
+OUT18=$(cd "$TMP" && node "$SUT" --no-log "$AM.html" Order_Overview "$AM-page.mdl" "$AM-alter.mdl" 2>&1)
+echo "$OUT18" | sed 's/^/    | /'
+hasnt "a caption set by a multi-line ALTER is seen"         "$OUT18" "action:  Approve order"
+hasnt "a plural heading matches its singular title"         "$OUT18" "heading: Orders"
+has   "the multi-line ALTER's ButtonStyle is seen"          "$OUT18" "classes 2/2"
+has   "a different caption is still a miss"                 "$OUT18" "action:  Save changes"
+RESTYLE="$TMP/restyle.mdl"
+printf "create page M.R (Title: 'R', Layout: Atlas_Core.Atlas_Default) {\n  actionbutton bGo (Caption: 'Go', Action: close_page, ButtonStyle: Warning)\n}\nalter page M.R {\n  set ButtonStyle = Success on bGo;\n}\n" > "$RESTYLE"
+printf '<main><h1>R</h1><button class="btn btn-warning">Go</button></main>' > "$TMP/restyle.html"
+OUT19=$(cd "$TMP" && node "$SUT" --no-log "$TMP/restyle.html" R "$RESTYLE" 2>&1)
+has   "an ALTER that re-styles a button drops its old class" "$OUT19" "classes: btn-warning"
+hasnt "no layout hint when no missed class looks like chrome" "$OUT19" "is not in the input"
+hasnt "no layout hint for page classes (seg-tabs, dg-*)"     "$OUT6"  "is not in the input"
+has   "the hint names the layout when region-* is missed"   "$OUT16" "layout LayoutTest.App_Default is not in the input"
+
 echo
 printf 'test-page-fidelity-mocks: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

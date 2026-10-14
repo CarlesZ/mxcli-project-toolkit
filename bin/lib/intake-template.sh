@@ -106,9 +106,11 @@ unprompted. "Nothing further" is a valid answer — but it has to be the user's,
 
 ## 9. Interview mode: attended (default) or unattended?
 
-_Not yet asked._ How to verify: ask the user; default is attended. Attended = every gate
-question is asked in chat and the agent waits for the answer. Unattended (opt-in only, explicit
-request required) = recommended options are applied as ASSUMED and logged for reconciliation.
+_Not yet asked._ How to verify: ask the user; default is `steering`. Record it as
+`Interview mode:` in PROJECT.md: `steering` = every gate question is asked in chat and the agent
+waits; `assist` = questions batched at gates, low-consequence ones assumed and reported; `auto`
+(opt-in only, explicit request required) = nothing blocks, positions recorded as ASSUMED for
+reconciliation. `attended` / `unattended` are accepted aliases for `steering` / `auto`.
 
 ## 10. Is any of this already done outside the toolkit — and where does the pipeline pick up?
 
@@ -136,6 +138,14 @@ only (`.claude/settings.local.json`); force-push, `git reset --hard`, `git clean
 still prompt. Record it as `Permission profile:` in PROJECT.md, then run
 `bin/install-harness-permissions.sh <project> --profile <answer>`; `bin/doctor.sh <project>`
 shows what is in effect.
+
+## 13. Unit tests (`.test.mdl`): project default `no` (default) or `yes`?
+
+_Not yet asked._ How to verify: ask the user; default is `no`. Every module already gets UI
+journeys and data assertions. Unit tests cost a closed Studio Pro and a snapshot per run, and
+agents ran them everywhere when no default was set (toolkit issue #274). With `no`, a module
+still flips to `yes` in its brief when it has calculation, mapping or date/money logic, calls Java or REST, or had a bug fixed in that flow (`testing-shape.md` §2). Record it as
+`Unit tests default:` in PROJECT.md.
 MXTK_INTAKE_EOF
 }
 

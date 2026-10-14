@@ -14,9 +14,45 @@
 # Usage:
 #   bin/lint-gate.sh                    # check against baseline; exit 1 if any rule rose
 #   bin/lint-gate.sh --update-baseline  # accept current counts as the new baseline
+#       --reason "<why>"                # REQUIRED when the update raises any rule's count
+#       --approved-in-chat              # ALSO required when a security-tier rule rises
 #   bin/lint-gate.sh --full             # ignore the vendor exclusion (rarely useful)
 #
-# Exit codes: 0 clean or unchanged · 1 a rule increased · 2 could not run
+# Exit codes: 0 clean or unchanged · 1 a rule increased, or BLIND (a rule inspected nothing,
+#             or the toolkit rules reverted to stock — see below) · 2 could not run (or a
+#             refused update)
+#
+# RULES REVERTED TO STOCK ARE BLIND, NOT A RISE (#264, 2026-10-13). `mxcli init` re-seeds
+# .claude/lint-rules/ and silently overwrites the toolkit's rules with stock ones. Two apps hit
+# it: CONV010 went 26 -> 169 and the next exec — a pages-only script — was logged as the rise;
+# in the other the re-seed sat uncommitted for five days and the baseline absorbed the noisier
+# counts. bin/lib/install-lint-rules.sh already writes .claude/.mxtk-lint-receipt (md5 of each
+# rule AS INSTALLED; it survives `mxcli init`), so before linting this script reads it: a rule
+# whose md5 no longer matches its receipt line AND whose `# mxtk-lint-rule:` header is gone was
+# re-seeded, not edited by a person — checked only for rules the receipt marks `stock` (the file
+# names init seeds; toolkit-only and configurable rules are never seeded, so a headerless copy
+# of one is an edit). A receipt-listed rule whose file is gone is reported for every kind. The run then prints "BLIND — lint
+# rules reverted to stock", names the files, points at sync-project.sh (which restores them and
+# rewrites the receipt, so the next run is clean) and exits 1 without linting; --update-baseline
+# is refused, since baselining stock counts is how the five-day case went in. A rule that still
+# carries the header but differs is a hand edit — install-lint-rules.sh reports those, this does
+# not. No receipt, or a row without a kind = no check (the next sync writes kinds). A non-stock
+# rule the user opted out of is listed, with a reason, in .claude/lint-rules-disabled.txt, and
+# switched off with `enabled: false` in lint-config.yaml (see lint-rules/README.md "Opting out
+# of a rule"; never delete the file). LINT_RULES_REVERTED_OK=1 runs anyway, with
+# the warning (a check run only: --update-baseline stays refused).
+#
+# ACCEPTING DEBT IS RECORDED, NOT SILENT (2026-10-12). Three toolkit-built apps re-baselined
+# 61 times in four days — every acceptance made by the agent whose script caused the rise,
+# with no reason field and nothing that ever summed them: baselines grew 8 -> 757, 440 -> 677
+# and 9 -> 187, and security warnings (CONV006, SEC003) went in in the same batches as naming
+# info. So an update that RAISES any rule now needs --reason, and is appended to
+# .claude/lint-acceptances.tsv (ts, total before/after, per-rule rises, security flag, reason)
+# — commit it with the baseline. A first baseline and a pure ratchet-down need no reason.
+# A rise in a security-tier rule (default SEC* and CONV006; override, one id or glob per line,
+# in .claude/lint-security-rules.txt) also needs --approved-in-chat: a claim on the record that
+# the user was shown the findings and said yes, the same contract as gate-check --ack-protocol.
+# Never set it on your own judgement.
 #
 # PRODUCES .claude/loop/lint-ledger.tsv (append-only, one row per rule per run; read with
 # project-bin/lint-trend.sh) and .claude/loop/lint-last.json on every run that actually gets as far as computing
@@ -87,14 +123,46 @@ trap 'rm -f "$OUT"' EXIT
 
 UPDATE=0
 FULL=0
-for a in "$@"; do
-  case "$a" in
+REASON=""
+APPROVED=0
+while [ $# -gt 0 ]; do
+  case "$1" in
     --update-baseline) UPDATE=1 ;;
     --full) FULL=1 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    *) echo "lint-gate: unknown argument '$a'" >&2; exit 2 ;;
+    --reason) [ $# -ge 2 ] || { echo "lint-gate: --reason needs a value" >&2; exit 2; }
+              REASON="$2"; shift ;;
+    --reason=*) REASON="${1#--reason=}" ;;
+    --approved-in-chat) APPROVED=1 ;;
+    -h|--help) sed -n '2,64p' "$0"; exit 0 ;;
+    *) echo "lint-gate: unknown argument '$1'" >&2; exit 2 ;;
   esac
+  shift
 done
+SECURITY_FILE="$ROOT/.claude/lint-security-rules.txt"
+ACCEPT_LOG="$ROOT/.claude/lint-acceptances.tsv"
+
+# SEC014 not decided yet (#268 review): with no `external_roles` under SEC014 in
+# lint-config.yaml the rule reports nothing, by design (a `_rule` finding would fail every exec
+# of every synced project, the #229 pattern). Say so on every run, on stderr, uncounted: no
+# exit-code change, no lint row. Same test as bin/lib/sec014-notice.sh (inline: a project has
+# no bin/lib); `enabled: false` there is the same user decision as "none".
+if [ -f "$ROOT/.claude/lint-rules/sec014_external_role_write.star" ]; then
+  _sec014_cfg="$ROOT/.claude/lint-config.yaml"
+  if [ ! -f "$_sec014_cfg" ] || ! awk '
+    /^[[:space:]]*#/ { next }
+    { match($0, /^ */); ind = RLENGTH }
+    insec && NF && ind <= secind { insec = 0 }
+    /^[[:space:]]*"?SEC014"?[[:space:]]*:/ {
+      insec = 1; secind = ind
+      if ($0 ~ /external_roles[[:space:]]*:/ || $0 ~ /enabled[[:space:]]*:[[:space:]]*false/) found = 1
+      next
+    }
+    insec && /^[[:space:]]*external_roles[[:space:]]*:/ { found = 1 }
+    insec && /^[[:space:]]*enabled[[:space:]]*:[[:space:]]*false/ { found = 1 }
+    END { exit found ? 0 : 1 }' "$_sec014_cfg"; then
+    echo "note: SEC014 not configured — set .claude/lint-config.yaml rules: SEC014: options: external_roles (ask the user; 'none' is their decision)" >&2
+  fi
+fi
 
 # This script does not source _common.sh (see header); resolve the binary the same way it
 # does — mxcli.exe first on Git Bash, since the Dev Container may have left a Linux `mxcli`.
@@ -108,6 +176,91 @@ case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) [ -x ./mxcli.exe ] && MX
 EXCLUDE=""
 if [ "$FULL" -eq 0 ] && [ -f "$VENDOR_FILE" ]; then
   EXCLUDE="$(grep -v '^[[:space:]]*#' "$VENDOR_FILE" | grep -v '^[[:space:]]*$' | paste -sd, -)"
+fi
+
+# Receipt check (#264, see header). Runs before lint, on check AND update runs, and also under
+# LINT_JSON so fixtures exercise it. Reads the receipt bin/lib/install-lint-rules.sh writes;
+# never writes it — only the installer does, and that is the remedy named below.
+RECEIPT="$ROOT/.claude/.mxtk-lint-receipt"
+if [ -f "$RECEIPT" ]; then
+  # Read into a variable first: a heredoc inside $(...) does not parse on bash 3.2.
+  IFS= read -r -d '' _RCHK <<'PY' || true
+import hashlib, os, re, sys
+rec, d, dis = os.environ["RECEIPT"], os.environ["RULES_DIR"], os.environ["DISABLED"]
+# Receipt rows: <rule-file> <md5> <kind>. kind (stock | toolkit | configurable) is written by
+# bin/lib/install-lint-rules.sh from install-manifest.sh, which a project does not have. A row
+# with no kind predates kinds and is not checked; the next sync writes it.
+rows = []
+for line in open(rec, encoding="utf-8", errors="replace"):
+    parts = line.split()
+    if len(parts) < 3 or parts[0].startswith("#"):
+        continue
+    rows.append((parts[0], parts[1], parts[2]))
+kind = {n: k for n, _, k in rows}
+# Opt-out: `<rule>  # reason: <text>` — the same rule the installer applies. No reason, or a
+# stock-seeded rule (init writes a stock copy back that passes clean while inspecting nothing):
+# the line is ignored, with a warning.
+disabled = set()
+if os.path.isfile(dis):
+    for line in open(dis, encoding="utf-8", errors="replace"):
+        w = line.split(None, 1)
+        if not w or w[0].startswith("#"):
+            continue
+        rest = w[1] if len(w) > 1 else ""
+        m = re.search(r"#\s*reason:\s*(\S.*)", rest)
+        if kind.get(w[0]) == "stock":
+            print("lint-gate: lint-rules-disabled.txt: %s is stock-seeded and cannot be disabled — ignored" % w[0], file=sys.stderr)
+        elif not m:
+            print("lint-gate: lint-rules-disabled.txt: %s has no '# reason: ...' — ignored" % w[0], file=sys.stderr)
+        else:
+            disabled.add(w[0])
+HEADER = re.compile(rb"^# mxtk-lint-rule:", re.M)   # the installer's test: grep '^# mxtk-lint-rule:'
+for name, want, k in rows:
+    if name in disabled:
+        continue
+    path = os.path.join(d, name)
+    if not os.path.isfile(path):
+        print("%s\tgone (installed per the receipt, missing now)" % name)
+        continue
+    if k != "stock":
+        continue  # init never seeds toolkit-only or configurable rules: an edit, the installer reports it
+    data = open(path, "rb").read()
+    got = hashlib.md5(data).hexdigest()
+    if got == want or HEADER.search(data):
+        continue  # unchanged, or header kept: a hand edit, which install-lint-rules.sh reports
+    print("%s\theader gone, md5 %s != receipt %s" % (name, got[:8], want[:8]))
+PY
+  REVERTED="$(RECEIPT="$RECEIPT" RULES_DIR="$ROOT/.claude/lint-rules" DISABLED="$ROOT/.claude/lint-rules-disabled.txt" "$PY" -c "$_RCHK")"
+  if [ -n "$REVERTED" ]; then
+    TKR=""
+    type find_toolkit_root >/dev/null 2>&1 && TKR="$(PROJECT_ROOT="$ROOT" find_toolkit_root 2>/dev/null || true)"
+    echo "!! LINT RULES REVERTED TO STOCK (mxcli init?) — this run's delta is not attributable:"
+    printf '%s\n' "$REVERTED" | while IFS="$(printf '\t')" read -r _f _why; do
+      printf '   %s: %s\n' "$_f" "$_why"; done
+    echo ""
+    echo "   Restore the toolkit rules (rewrites .claude/.mxtk-lint-receipt), then re-run:"
+    echo "     ${TKR:-<toolkit-root>}/bin/sync-project.sh $ROOT"
+    echo "   If sync reports a rule LOCALLY MODIFIED instead of restoring it:"
+    echo "     ${TKR:-<toolkit-root>}/bin/sync-project.sh $ROOT --upgrade-lint-rules all"
+    if [ "$UPDATE" -eq 1 ]; then
+      # Refused even under LINT_RULES_REVERTED_OK: the override is for looking at counts, and
+      # baselining stock counts is exactly how the five-day field case went in.
+      echo "lint-gate: REFUSED — --update-baseline over reverted rules would baseline stock counts." >&2
+      exit 2
+    elif [ "${LINT_RULES_REVERTED_OK:-}" = "1" ]; then
+      echo "   LINT_RULES_REVERTED_OK=1 — linting anyway; counts below are from the files on disk."
+      echo ""
+    else
+      echo "BLIND — lint rules reverted to stock; lint not run, nothing compared against the baseline."
+      # lint-last.json gets the verdict but no total: lint did not run, and a stale total from
+      # the previous run would be read as this run's by metrics-ledger.sh. No ledger row either.
+      mkdir -p "$ROOT/.claude/loop" 2>/dev/null &&
+        printf '{\n  "timestamp": "%s",\n  "verdict": "BLIND-RULES-REVERTED",\n  "reverted": "%s"\n}\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(printf '%s\n' "$REVERTED" | cut -f1 | paste -sd, -)" \
+          > "$ROOT/.claude/loop/lint-last.json" 2>/dev/null || true
+      exit 1
+    fi
+  fi
 fi
 
 # LINT_JSON=<file> skips mxcli entirely and reads pre-captured lint output. This makes
@@ -129,8 +282,9 @@ else
 fi
 [ -s "$OUT" ] || { echo "lint-gate: lint produced no output" >&2; exit 2; }
 
-BASELINE="$BASELINE" OUT="$OUT" UPDATE="$UPDATE" "$PY" - <<'PY'
-import json, os, sys, collections, datetime
+BASELINE="$BASELINE" OUT="$OUT" UPDATE="$UPDATE" REASON="$REASON" APPROVED="$APPROVED" \
+  SECURITY_FILE="$SECURITY_FILE" ACCEPT_LOG="$ACCEPT_LOG" "$PY" - <<'PY'
+import json, os, sys, collections, datetime, fnmatch
 
 out_path  = os.environ["OUT"]
 base_path = os.environ["BASELINE"]
@@ -223,14 +377,69 @@ if crashed:
     viol = [v for v in viol if v["ruleId"] not in crashed]
     counts = collections.Counter(v["ruleId"] for v in viol)
 
-# Self-reported blindness (module "_rule") is likewise never baselined: a rule that said it
-# inspected nothing would otherwise be ratcheted as accepted debt (#229). Later runs still
-# report it as PASS-BLIND via `blind` above, which was computed before this filter.
-if update:
-    viol = [v for v in viol if v.get("module") != "_rule"]
-    counts = collections.Counter(v["ruleId"] for v in viol)
+# Self-reported blindness (module "_rule") is likewise never counted: a rule that said it
+# inspected nothing would otherwise be ratcheted as accepted debt (#229). It is reported as
+# PASS-BLIND via `blind` above, which was computed before this filter. The filter applies to
+# check runs too, not only --update-baseline: when it ran on updates alone, the blind finding
+# was missing from the baseline but present in every check, so each later run reported it as
+# "CONV020 0 -> 1 (+1)" — a rise — and exec.sh logged LINT ROSE for an instrument fault.
+viol = [v for v in viol if v.get("module") != "_rule"]
+counts = collections.Counter(v["ruleId"] for v in viol)
 
 if update:
+    # Accepting a rise is a decision; record it. See the header ("ACCEPTING DEBT ...").
+    reason   = os.environ.get("REASON", "").strip()
+    approved = os.environ.get("APPROVED") == "1"
+    sec_pats = ["SEC*", "CONV006"]
+    sec_file = os.environ.get("SECURITY_FILE", "")
+    if sec_file and os.path.exists(sec_file):
+        sec_pats = [l.strip() for l in open(sec_file)
+                    if l.strip() and not l.lstrip().startswith("#")]
+    is_sec = lambda r: any(fnmatch.fnmatchcase(r, p) for p in sec_pats)
+    old_base = None
+    if os.path.exists(base_path):
+        try:
+            old_base = json.load(open(base_path)).get("counts", {})
+        except ValueError:
+            old_base = None
+    raised = []
+    if old_base is not None:
+        raised = [(r, old_base.get(r, 0), c) for r, c in sorted(counts.items())
+                  if c > old_base.get(r, 0)]
+    sec_raised = [x for x in raised if is_sec(x[0])]
+    if raised and not reason:
+        print("lint-gate: REFUSED — this update raises %d rule(s): %s" % (len(raised),
+              ", ".join("%s %d->%d" % x for x in raised)), file=sys.stderr)
+        print("           Accepting debt needs a reason on the record:", file=sys.stderr)
+        print("           bin/lint-gate.sh --update-baseline --reason \"<why each rise is acceptable>\"",
+              file=sys.stderr)
+        sys.exit(2)
+    if sec_raised and not approved:
+        print("lint-gate: REFUSED — security-tier rule(s) rose: %s" % ", ".join(
+              "%s %d->%d" % x for x in sec_raised), file=sys.stderr)
+        print("           Show the user these findings in chat. Only after they say yes, re-run with", file=sys.stderr)
+        print("           --approved-in-chat (a claim on the record). Otherwise fix the grant.", file=sys.stderr)
+        for v in [x for x in viol if x["ruleId"] in {r for r, _, _ in sec_raised}][:10]:
+            print("             %s | %s | %s" % (v["ruleId"], v.get("document") or v.get("module") or "",
+                  (v.get("message") or "")[:110]), file=sys.stderr)
+        sys.exit(2)
+    if raised:
+        log = os.environ.get("ACCEPT_LOG", "")
+        try:
+            new_log = not os.path.exists(log)
+            with open(log, "a") as f:
+                if new_log:
+                    f.write("ts\ttotal_before\ttotal_after\trises\tsecurity_approved_in_chat\treason\n")
+                f.write("%s\t%d\t%d\t%s\t%s\t%s\n" % (
+                    datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    sum(old_base.values()), len(viol),
+                    " ".join("%s+%d" % (r, n - w) for r, w, n in raised),
+                    "yes" if sec_raised else "-",
+                    reason.replace("\t", " ").replace("\n", " ")))
+            print("==> acceptance recorded in %s — commit it with the baseline" % os.path.relpath(log))
+        except OSError as e:
+            print("lint-gate: could not append %s: %s" % (log, e), file=sys.stderr)
+            sys.exit(2)
     json.dump({"counts": dict(sorted(counts.items())),
                "total": len(viol),
                "note": "Per-rule finding counts on OUR modules. Gate fails when any rises."},
@@ -260,7 +469,7 @@ print("==> %d findings on our modules (baseline %d)" % (len(viol), sum(base.valu
 if blind:
     print("\n!! A RULE COULD NOT READ THE MODEL — a clean result here means nothing:")
     for v in blind:
-        print("   %s" % v["message"][:160])
+        print("   %s: %s" % (v["ruleId"], v["message"][:160]))
 
 if fell:
     print("\n   improved:")

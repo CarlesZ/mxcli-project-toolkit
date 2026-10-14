@@ -1,0 +1,40 @@
+{
+ "widgets": [
+  {
+   "id": "lv",
+   "name": "wlv",
+   "widget_type": "Forms$ListView",
+   "container_qualified_name": "Sales.P2",
+   "container_type": "Page",
+   "module_name": "Sales",
+   "parent_widget_id": ""
+  },
+  {
+   "id": "tpl",
+   "name": "wtpl",
+   "widget_type": "Forms$ListViewTemplate",
+   "container_qualified_name": "Sales.P2",
+   "container_type": "Page",
+   "module_name": "Sales",
+   "parent_widget_id": "lv"
+  },
+  {
+   "id": "dv",
+   "name": "wdv",
+   "widget_type": "Forms$DataView",
+   "container_qualified_name": "Sales.P2",
+   "container_type": "Page",
+   "module_name": "Sales",
+   "parent_widget_id": "tpl"
+  },
+  {
+   "id": "f",
+   "name": "wf",
+   "widget_type": "com.mendix.widget.web.datagridtextfilter.DatagridTextFilter",
+   "container_qualified_name": "Sales.P2",
+   "container_type": "Page",
+   "module_name": "Sales",
+   "parent_widget_id": "dv"
+  }
+ ]
+}

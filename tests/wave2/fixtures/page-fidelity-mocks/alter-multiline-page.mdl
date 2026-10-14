@@ -1,0 +1,19 @@
+-- SYNTHETIC (review counter-case for #318): a page whose button captions differ from the
+-- wireframe's, a snippet heading, and a title in the singular. See CAPTURE.md.
+create page Shop.Order_Overview (
+  Title: 'Order',
+  Layout: Atlas_Core.Atlas_Default
+) {
+  snippetcall sc1 (Snippet: Shop.SNIPPET_CustomerHeader)
+  groupbox gbShip (Caption: 'Shipping') {
+    dynamictext t2 (Content: 'Recent {1}', ContentParams: [{1} = Activity])
+  }
+  dynamictext intro (Content: 'Here you can review every open order for this customer')
+  actionbutton btnSave (Caption: 'Save', Action: save_changes, ButtonStyle: Primary)
+  actionbutton btnCancel (Caption: 'Cancel', Action: cancel_changes)
+  actionbutton btnEdit (Caption: '', Icon: 'pencil', Action: show_page Shop.Order_NewEdit(Order: $currentObject))
+  actionbutton btnApprove (Caption: 'Approve', Action: microflow Shop.ACT_Order_Approve(Order: $currentObject))
+}
+create snippet Shop.SNIPPET_CustomerHeader {
+  dynamictext h (Content: 'Customer details', RenderMode: H2)
+}

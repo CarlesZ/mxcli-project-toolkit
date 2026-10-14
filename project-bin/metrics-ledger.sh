@@ -18,12 +18,12 @@
 #   ts  script  gate  result  elapsed_s  mxbuild_errors  lint_rc  lint_total  restored
 #   score  security  quality  architecture  performance  naming  design  other  violations  model_commit
 #
-# `result` is a short class, not the BUILD-LOG wording: applied · applied-lint-rose ·
+# `result` is a short class, not the BUILD-LOG wording: applied · applied-lint-rose · applied-lint-blind ·
 # applied-dirty · applied-unverified · partial · gate-failed · gate-not-run · rolled-back ·
 # blocked · refused · patch-failed · other. Score columns are empty when `score` did not run
 # this exec (a failed or blocked write is not scored — the model was restored or never written).
 # `lint_total` is read from .claude/loop/lint-last.json, which lint-gate.sh rewrites every run,
-# only when the caller says lint ran (--lint-rc 0|1); otherwise empty, never 0.
+# only when the caller says lint ran (--lint-rc 0|1|3); otherwise empty, never 0.
 #
 # Usage:
 #   bin/metrics-ledger.sh score            runs ./mxcli report --format json (≈7 s on an 876-flow
@@ -147,13 +147,14 @@ def classify(s):
     if "refused" in t: return "refused"
     if "partial" in t: return "partial"
     if "lint rose" in t: return "applied-lint-rose"
+    if "lint blind" in t: return "applied-lint-blind"   # a rule inspected nothing: not a clean pass
     if "dirty" in t: return "applied-dirty"
     if "unverified" in t: return "applied-unverified"
     if "applied" in t: return "applied"
     return "other"
 
 lint_total = ""
-if lint_rc in ("0", "1") and os.path.exists(lint_last):
+if lint_rc in ("0", "1", "3") and os.path.exists(lint_last):   # 3 = ran, a rule was blind
     try:
         lint_total = str(json.load(open(lint_last)).get("total", ""))
     except (OSError, ValueError):

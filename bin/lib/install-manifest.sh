@@ -110,7 +110,11 @@ MXTK_AGENTS_STAGE_BUILD="mdl-agent.md gate-agent.md test-agent.md review-agent.m
 # own sibling, and the PostToolUse(Read) hook install-claude-permissions.sh writes runs
 # `bash bin/look-ledger.sh seen`. Two unattended builds built every page and opened no
 # screenshot of one; the Stage 5 gate now joins what this script records.
-MXTK_PROJECT_BIN="assemble-prototype.js prototype-route.js check-prototype-links.js wf-add-path-terminators.py wf-set-call-captions.py mxunit_bson.py _common.sh app-facts.sh _claims.sh snapshot-mpr.sh restore-mpr.sh exec.sh look-ledger.sh save-sp.sh restart-sp.sh check-sp-health.sh verify-module.sh test-stack-up.sh fixture-manifest.sh check-root-clean.sh lint-gate.sh lint-trend.sh metrics-ledger.sh metrics-trend.sh close-task.sh conformance-check.sh coverage-preflight.sh graph-sweep.sh review-module.sh coherence-cadence.sh build-plan-status.sh done-drift-check.sh page-scope.sh render-improvement-register.sh check-design-portability.sh check-design-reaches-app.sh check-page-shell.sh page-fidelity.js model-stamp.sh verify-model.sh install-project-hooks.sh mx-metadata-note.py session-check.sh constants-audit.sh context-pack.sh"
+# app-restart.sh and test-scratch.sh joined on 2026-10-13 (#289, #278): the one restart an implementer
+# may run itself (stops only the pid run --local recorded for THIS project), and `mxcli test` on a
+# scratch copy under the test-port lock. exec.sh names app-restart.sh in its watch advisory, so
+# it has to be installed beside it.
+MXTK_PROJECT_BIN="app-restart.sh test-scratch.sh assemble-prototype.js prototype-route.js check-prototype-links.js wf-add-path-terminators.py wf-set-call-captions.py mxunit_bson.py _common.sh app-facts.sh _claims.sh snapshot-mpr.sh restore-mpr.sh exec.sh look-ledger.sh save-sp.sh restart-sp.sh check-sp-health.sh verify-module.sh test-stack-up.sh fixture-manifest.sh check-root-clean.sh lint-gate.sh lint-trend.sh metrics-ledger.sh metrics-trend.sh close-task.sh conformance-check.sh coverage-preflight.sh graph-sweep.sh review-module.sh coherence-cadence.sh build-plan-status.sh done-drift-check.sh page-scope.sh render-improvement-register.sh check-design-portability.sh check-design-reaches-app.sh check-page-shell.sh page-fidelity.js model-stamp.sh verify-model.sh install-project-hooks.sh mx-metadata-note.py session-check.sh constants-audit.sh context-pack.sh"
 
 # Files in project-bin/ that are deliberately NOT installed into projects. The reverse check
 # below flags anything named by NEITHER list, so a new file in project-bin/ has to be either
@@ -127,7 +131,7 @@ MXTK_PROJECT_BIN_NOINSTALL="report-disposition-check.sh"  # gate-check.sh runs i
 # Copied from toolkit lint-rules/ into <project>/.claude/lint-rules/. Two lists, because the
 # rules divide on one question: may a project edit this file?
 #
-# MXTK_LINT_RULES — toolkit-owned. Fixes to rules `mxcli init` seeds. Three of them, and two
+# MXTK_LINT_RULES — toolkit-owned. Fixes to rules `mxcli init` seeds. Four of them, and two
 # are dead on arrival as shipped: data_change_microflows (ARCH002) and entity_business_key
 # (ARCH003) compare entity_type to "PERSISTENT" when the model returns "Persistent", so they
 # skip every entity and report a clean pass forever. Measured on TestCLIApp 2026-08-18,
@@ -135,8 +139,10 @@ MXTK_PROJECT_BIN_NOINSTALL="report-disposition-check.sh"  # gate-check.sh runs i
 # nothing more: all 38 are `System` entities, because ARCH002 has no module skip. See
 # lint-rules/README.md. conv010 (CONV010) is the top rule by
 # volume everywhere it runs; the de-noised version here took PROJECT-C 399 -> 51.
+# conv009 (CONV009, issue #267) hard-codes 15 and never calls get_option(), so the
+# `maxObjects` example in the lint-config.yaml init writes does nothing; ours reads it.
 #
-# The toolkit repairs ONLY these three of mxcli's ~29 (MXTK_LINT_RULES_STOCK below); rules
+# The toolkit repairs ONLY these four of mxcli's ~29 (MXTK_LINT_RULES_STOCK below); rules
 # after them in the list are toolkit-authored, never seeded by init. Copying the rest would pin every project
 # to whatever mxcli shipped the day someone copied them.
 #
@@ -151,14 +157,14 @@ MXTK_PROJECT_BIN_NOINSTALL="report-disposition-check.sh"  # gate-check.sh runs i
 # project that re-runs init loses these fixes and its lint gate goes quietly blind. Re-running
 # sync-project.sh restores them; lint-rules/STOCK-HASHES.txt is what lets it tell a
 # reverted-to-stock file (safe to restore) from one a project deliberately tuned (hands off).
-MXTK_LINT_RULES="conv010_act_microflow_content.star data_change_microflows.star entity_business_key.star ux001_confirm_before_destructive.star ux002_decisions_captioned.star err001_error_swallowed.star loop001_expensive_action_in_loop.star"
+MXTK_LINT_RULES="conv010_act_microflow_content.star data_change_microflows.star entity_business_key.star conv009_max_microflow_objects.star ux001_confirm_before_destructive.star ux002_decisions_captioned.star err001_error_swallowed.star loop001_expensive_action_in_loop.star perf001_generalization_depth.star perf002_nested_data_widgets.star perf004_npe_system_user_assoc.star txt001_build_words_in_user_text.star txt002_non_iso_date_in_user_text.star ui001_widget_layout_traps.star sec014_external_role_write.star"
 # MXTK_LINT_RULES_STOCK — the subset of MXTK_LINT_RULES that `mxcli init` ALSO seeds, i.e. the
 # only files lint-rules/STOCK-HASHES.txt can ever hold a hash for. The ux001/ux002 rules are
 # toolkit-authored: init never writes them, so no stock hash can exist and a coverage check
 # that demanded one (tests/wave2/test-stock-hashes.sh, until 2026-10-08) went red on every
 # version the day a non-stock rule joined MXTK_LINT_RULES. Every name here must also be in
 # MXTK_LINT_RULES; the fixture asserts it.
-MXTK_LINT_RULES_STOCK="conv010_act_microflow_content.star data_change_microflows.star entity_business_key.star"
+MXTK_LINT_RULES_STOCK="conv010_act_microflow_content.star data_change_microflows.star entity_business_key.star conv009_max_microflow_objects.star"
 MXTK_LINT_RULES_CONFIGURABLE="conv020_action_user_feedback.star"
 
 # Files in lint-rules/ deliberately NOT installed. Same contract as MXTK_PROJECT_BIN_NOINSTALL:

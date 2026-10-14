@@ -631,44 +631,160 @@ async function computedStyles(page, checks) {
 // This project runs natively under Studio Pro, so `mxcli oql -p` would route
 // through `docker compose exec` and fail. --direct talks HTTP to the admin API.
 //
-// Two shapes come back depending on mxcli version: {rows:[[v]]} (positional) or
-// a bare array of column-keyed objects [{n: "30"}]. Normalise both to
-// {rows:[[v]]} so callers only deal with one shape. Note OQL requires every
-// select column to be aliased — `SELECT COUNT(*) AS n`, never `SELECT COUNT(*)`.
+// What `mxcli oql --direct --json` prints (captured from the released v0.26.0 binary, see
+// tests/wave2/fixtures/oql-json/): a bare array of objects keyed by column alias, keys in
+// ALPHABETICAL order (Go map encoding), a column that is null in every row LEFT OUT, a view
+// entity's `ID` key added beside the aliases, and "(n rows)" on stderr. So a row is never
+// read by position: oql() keys every row by the SELECT list's aliases, in SELECT order,
+// with an explicit null for an absent key (#154 — `Object.values(r)` read `ID` for a view's
+// count and shifted every column after a null one place left). OQL requires every select
+// column to be named — `SELECT COUNT(*) AS n`, never `SELECT COUNT(*)`.
+// The mxcli binary to spawn. Git Bash maps `mxcli` -> `mxcli.exe` transparently; Node does
+// not, so on Windows a configured './mxcli' that only exists as './mxcli.exe' is probed here
+// (CLAUDE.md "Shipping an instrument" rule 3). Shared by oql() and journey-runner's preflight
+// probe so the two cannot spawn different binaries.
+function mxcliBin() {
+  if (process.platform !== 'win32') return cfg.mxcli;
+  const abs = path.resolve(cfg.root, cfg.mxcli);
+  if (!fs.existsSync(abs) && fs.existsSync(abs + '.exe')) return cfg.mxcli + '.exe';
+  return cfg.mxcli;
+}
+
+// Returns { columns, rows, objects } (see parseOqlOutput) or null when the query did not run.
 function oql(sql) {
   try {
-    const out = execFileSync(cfg.mxcli, [
+    const out = execFileSync(mxcliBin(), [
       'oql', '--direct',
       '--host', cfg.adminHost, '--port', String(cfg.adminPort), '--token', cfg.adminToken,
       '--json', sql,
     ], { cwd: cfg.root, encoding: 'utf8', timeout: 20000 });
-
-    // mxcli prints a "Using project:" banner and a trailing "(n rows)" line
-    // around the JSON — slice out the JSON body before parsing.
-    const start = out.search(/[[{]/);
-    if (start < 0) return null;
-    let depth = 0, end = -1;
-    for (let i = start; i < out.length; i++) {
-      const c = out[i];
-      if (c === '[' || c === '{') depth++;
-      else if (c === ']' || c === '}') { depth--; if (depth === 0) { end = i + 1; break; } }
-    }
-    if (end < 0) return null;
-    const parsed = JSON.parse(out.slice(start, end));
-
-    if (Array.isArray(parsed)) {
-      return { rows: parsed.map((r) => (r && typeof r === 'object' ? Object.values(r) : [r])) };
-    }
-    if (parsed && parsed.rows !== undefined) return parsed;
+    return parseOqlOutput(out, sql);
   } catch (_) {}
   return null;
 }
 
-// Convenience: first cell of the first row, or null.
-function oqlScalar(sql) {
+// The SELECT list's column names, in SELECT order: `AS <alias>` where given, else the last
+// segment of a bare attribute path (`c.Name` → Name). null for an item that has neither
+// (an expression the runtime would refuse as unnamed); null for the whole list when it
+// cannot be read (no SELECT, `*`). Commas inside parentheses and quoted strings are not
+// separators, so `COALESCE(a, b) AS x` and `'a, b' AS y` are one item each.
+function oqlAliases(sql) {
+  const s = String(sql || '');
+  const head = s.match(/^\s*SELECT\s+(?:DISTINCT\s+)?/i);
+  if (!head) return null;
+  const items = [];
+  let depth = 0, quote = null, cur = '';
+  for (let i = head[0].length; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      cur += c;
+      if (c === quote) { if (s[i + 1] === quote) { cur += s[++i]; } else quote = null; }
+      continue;
+    }
+    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    if (depth === 0) {
+      if (c === ',') { items.push(cur); cur = ''; continue; }
+      if (/\s/.test(c) && /^FROM\b/i.test(s.slice(i + 1))) { items.push(cur); cur = null; break; }
+    }
+    cur += c;
+  }
+  if (cur !== null && cur.trim()) items.push(cur);   // no FROM: SELECT 1 AS n
+  if (!items.length) return null;
+  const names = items.map((raw) => {
+    const it = raw.trim();
+    const as = it.match(/\bAS\s+(?:"([^"]+)"|([A-Za-z_]\w*))\s*$/i);
+    if (as) return as[1] || as[2];
+    const bare = it.match(/^(?:[A-Za-z_][\w]*[./])*([A-Za-z_]\w*)$/);
+    return bare ? bare[1] : null;
+  });
+  return names.some((n) => n === '*') ? null : names;
+}
+
+// The first JSON value in mxcli's stdout, sliced string-aware: a `]` or `}` inside a string
+// value (a label such as "a]b}c") is not a bracket. The old depth counter ended the slice
+// there and JSON.parse failed, so the helper returned null — "no measurement" — on a real
+// answer (#154).
+function sliceJson(out) {
+  const start = out.search(/[[{]/);
+  if (start < 0) return null;
+  let depth = 0, inStr = false;
+  for (let i = start; i < out.length; i++) {
+    const c = out[i];
+    if (inStr) {
+      if (c === '\\') i++;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '[' || c === '{') depth++;
+    else if (c === ']' || c === '}') { depth--; if (depth === 0) return out.slice(start, i + 1); }
+  }
+  return null;
+}
+
+// Look a column up in one row object: exact key first, then case-insensitively. An absent
+// key is null — the runtime leaves null columns out, it does not mean "no such column".
+function pick(obj, name) {
+  if (!obj || typeof obj !== 'object') return null;
+  if (Object.prototype.hasOwnProperty.call(obj, name)) return obj[name] ?? null;
+  const k = Object.keys(obj).find((x) => x.toLowerCase() === String(name).toLowerCase());
+  return k === undefined ? null : (obj[k] ?? null);
+}
+
+// The parsing half of oql(), split out so journey-runner's admin preflight reads a probe's
+// stdout with the same code the data rungs use (one parser, so the probe cannot pass on a
+// shape the rungs then reject). mxcli prints a banner and "(n rows)" around the JSON —
+// slice out the JSON body before parsing.
+//
+// Returns { columns, rows, objects, keyed }:
+//   columns — the SELECT aliases (keyed: true), or, when `sql` is absent or unreadable, the
+//             union of the answer's keys (keyed: false — positions then mean nothing)
+//   rows    — [[v…]] in `columns` order, explicit null where a key was absent
+//   objects — one { alias: value } per row, every alias present
+// A legacy {rows:[[…]]} body passes through unchanged (keyed: false).
+function parseOqlOutput(out, sql) {
+  try {
+    const body = sliceJson(String(out || ''));
+    if (body === null) return null;
+    const parsed = JSON.parse(body);
+    if (Array.isArray(parsed)) {
+      const aliases = oqlAliases(sql);
+      const keyed = !!(aliases && aliases.every((a) => a));
+      let columns = keyed ? aliases : [];
+      if (!keyed) for (const r of parsed) {
+        if (r && typeof r === 'object') for (const k of Object.keys(r)) if (!columns.includes(k)) columns.push(k);
+      }
+      if (!keyed && !columns.length) columns = ['value'];
+      const objects = parsed.map((r) => Object.fromEntries(columns.map((c) =>
+        [c, r && typeof r === 'object' ? pick(r, c) : (columns.length === 1 ? r : null)])));
+      return { columns, rows: objects.map((o) => columns.map((c) => o[c])), objects, keyed };
+    }
+    if (parsed && parsed.rows !== undefined) return { keyed: false, ...parsed };
+  } catch (_) {}
+  return null;
+}
+
+// Rows as alias-keyed objects ([{ n: "3", label: null }]), or null when the query did not run.
+function oqlRows(sql) {
   const r = oql(sql);
-  return r && r.rows && r.rows[0] !== undefined && r.rows[0][0] !== undefined
-    ? String(r.rows[0][0]) : null;
+  return r && r.objects ? r.objects : null;
+}
+
+// The FIRST SELECT alias of the first row, or null (no row, a null value, or no measurement).
+// Never `rows[0][0]` of whatever order the keys came back in: over a view entity the answer
+// carries `ID` too, and that sorts before a lower-case alias. When the SELECT list cannot be
+// read, a single-key answer is still unambiguous; anything wider is null — a guess between
+// columns is exactly the defect this replaces.
+function oqlScalar(sql) {
+  return scalarOf(oql(sql));
+}
+function scalarOf(r) {
+  if (!r || !r.rows || r.rows[0] === undefined) return null;
+  if (r.keyed === false && r.columns && r.columns.length !== 1) return null;
+  const v = r.rows[0][0];
+  return v === undefined || v === null ? null : String(v);
 }
 
 // ── Reporter ────────────────────────────────────────────────────────────────
@@ -712,6 +828,6 @@ module.exports = {
   humanMove, humanClick, humanType, humanTypeKeys, humanScroll,
   navTo, ensureSidebar, copilotText, askCopilot, approveConfirmCard,
   login, logout, assertIdentity, dismissModal, gotoTarget,
-  screenshotEl, fullPageShot, computedStyles, oql, oqlScalar, makeReporter,
+  screenshotEl, fullPageShot, computedStyles, oql, oqlRows, oqlScalar, oqlAliases, parseOqlOutput, scalarOf, mxcliBin, makeReporter,
   ensureDirs, parseTokens, path, fs,
 };

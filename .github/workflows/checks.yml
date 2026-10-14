@@ -94,3 +94,9 @@ jobs:
         run: bash tests/lint-rules/test-ux-rules.sh
       - name: Lint-rule unit suite (tests/lint-rules/test-batch1-rules.sh)
         run: bash tests/lint-rules/test-batch1-rules.sh
+      - name: Lint-rule unit suite, batch 2 (tests/lint-rules/test-batch2-rules.sh)
+        run: bash tests/lint-rules/test-batch2-rules.sh
+      - name: Lint-rule unit suite, batch 3 (tests/lint-rules/test-batch3-rules.sh)
+        run: bash tests/lint-rules/test-batch3-rules.sh
+      - name: Lint-rule unit suite, batch 4 (tests/lint-rules/test-batch4-rules.sh)
+        run: bash tests/lint-rules/test-batch4-rules.sh

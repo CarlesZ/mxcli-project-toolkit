@@ -12,25 +12,67 @@
 // casing). That is the field calibration, still owed per lint-rules/README.md.
 //
 // Usage:
-//   go run ./tests/lint-rules/starrun -rule lint-rules/x.star -fixture f.json [-strip-fields a,b]
+//
+//	go run ./tests/lint-rules/starrun -rule lint-rules/x.star -fixture f.json [-strip-fields a,b]
+//
 // Prints a JSON array of {module,document_type,document_name,message,suggestion}.
 // Exit 0 on success, 1 on a load/eval error (message on stderr).
 //
 // Fixture schema (every key optional, missing struct fields default to ""/false/0):
-//   {"widgets":[{...}], "microflows":[{...}], "pages":[{...}],
-//    "activities":{"Mod.Flow":[{...}]}, "refs_from":{"Mod.Flow":[{...}]}}
+//
+//	{"widgets":[{...}], "microflows":[{...}], "pages":[{...}],
+//	 "entities":[{...}], "associations":[{...}], "strings":[{...}],
+//	 "activities":{"Mod.Flow":[{...}]}, "refs_from":{"Mod.Flow":[{...}]},
+//	 "permissions":[{...}], "attributes":{"Mod.Entity":[{...}]},
+//	 "user_roles":[{...}], "role_mappings":[{...}], "options":{"key":value}}
+//
+// "options" is what .claude/lint-config.yaml `rules: <ID>: options:` passes; get_option()
+// converts it the way mxcli 0.26.0's goValueToStarlark does: bool, int (a whole JSON
+// number), float, string — and a list, map or null becomes None.
+//
 // Field names are the mxcli Starlark projection names (mdl/linter/starlark.go):
 // widget: id name widget_type container_id container_qualified_name container_type
-//   module_name entity_ref attribute_ref microflow_ref nanoflow_ref page_ref
-//   parent_widget_id depth class_name style dynamic_classes action_type has_confirmation
+//
+//	module_name entity_ref attribute_ref microflow_ref nanoflow_ref page_ref
+//	parent_widget_id depth class_name style dynamic_classes action_type has_confirmation
+//
 // microflow: id name qualified_name module_name folder microflow_type description
-//   return_type parameter_count activity_count total_activity_count complexity
+//
+//	return_type parameter_count activity_count total_activity_count complexity
+//
 // activity: id name caption activity_type action_type microflow_id
-//   microflow_qualified_name module_name entity_ref service_ref action_ref
-//   use_request_timeout timeout_expression auto_generate_caption description
-//   parent_loop_id loop_depth condition_expression condition_rule error_handling_type
-//   log_level log_node_expression log_message commit_type with_events retrieve_source queue_ref
+//
+//	microflow_qualified_name module_name entity_ref service_ref action_ref
+//	use_request_timeout timeout_expression auto_generate_caption description
+//	parent_loop_id loop_depth condition_expression condition_rule error_handling_type
+//	log_level log_node_expression log_message commit_type with_events retrieve_source queue_ref
+//
+// entity: id name qualified_name module_name folder entity_type description generalization
+//
+//	attribute_count access_rule_count validation_rule_count has_event_handlers is_external
+//	has_created_date has_changed_date has_owner has_changed_by
+//
+// association: name qualified_name module_name from_entity to_entity type owner storage_format
+//
+//	description to_delete_behavior from_delete_behavior
+//
 // reference: source_type source_id source_name target_type target_id target_name ref_kind module_name
+//
+// catalog_string (strings(language=None)): qualified_name object_type value context language
+//
+//	element_id module_name
+//
+// entity_permission (permissions_for(entity), fixture "permissions" filtered on entity_name):
+//
+//	module_role_name module_name entity_name access_type member_name xpath_constraint
+//	is_constrained default_member_access_rights
+//
+// attribute (attributes_for(entity)): id name entity_id entity_qualified_name module_name
+//
+//	data_type length is_unique is_required default_value is_calculated description
+//
+// user_role: name is_anonymous module_roles (list of strings)
+// role_mapping: user_role_name module_role_name module_name
 package main
 
 import (
@@ -46,11 +88,19 @@ import (
 )
 
 type fixture struct {
-	Widgets    []map[string]any            `json:"widgets"`
-	Microflows []map[string]any            `json:"microflows"`
-	Pages      []map[string]any            `json:"pages"`
-	Activities map[string][]map[string]any `json:"activities"`
-	RefsFrom   map[string][]map[string]any `json:"refs_from"`
+	Widgets      []map[string]any            `json:"widgets"`
+	Microflows   []map[string]any            `json:"microflows"`
+	Pages        []map[string]any            `json:"pages"`
+	Activities   map[string][]map[string]any `json:"activities"`
+	RefsFrom     map[string][]map[string]any `json:"refs_from"`
+	Entities     []map[string]any            `json:"entities"`
+	Associations []map[string]any            `json:"associations"`
+	Strings      []map[string]any            `json:"strings"`
+	Permissions  []map[string]any            `json:"permissions"`
+	Attributes   map[string][]map[string]any `json:"attributes"`
+	UserRoles    []map[string]any            `json:"user_roles"`
+	RoleMappings []map[string]any            `json:"role_mappings"`
+	Options      map[string]any              `json:"options"`
 }
 
 // Projection field lists with their zero values. Order does not matter to Starlark.
@@ -177,10 +227,77 @@ func main() {
 	}
 
 	predeclared := starlark.StringDict{
-		"struct":     starlark.NewBuiltin("struct", starlarkstruct.Make),
-		"widgets":    noArgs("widgets", list("widget", widgetFields, fx.Widgets)),
-		"microflows": noArgs("microflows", list("microflow", microflowFields, fx.Microflows)),
-		"pages":      noArgs("pages", list("page", pageFields, fx.Pages)),
+		"struct":       starlark.NewBuiltin("struct", starlarkstruct.Make),
+		"widgets":      noArgs("widgets", list("widget", widgetFields, fx.Widgets)),
+		"microflows":   noArgs("microflows", list("microflow", microflowFields, fx.Microflows)),
+		"pages":        noArgs("pages", list("page", pageFields, fx.Pages)),
+		"entities":     noArgs("entities", list("entity", entityFields, fx.Entities)),
+		"associations": noArgs("associations", list("association", associationFields, fx.Associations)),
+		"permissions_for": starlark.NewBuiltin("permissions_for", func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var q string
+			if err := starlark.UnpackArgs(b.Name(), args, kwargs, "entity_qualified_name", &q); err != nil {
+				return nil, err
+			}
+			keep := []map[string]any{}
+			for _, r := range fx.Permissions {
+				if v, _ := r["entity_name"].(string); v == q {
+					keep = append(keep, r)
+				}
+			}
+			return list("entity_permission", permissionFields, keep), nil
+		}),
+		"attributes_for": starlark.NewBuiltin("attributes_for", func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var q string
+			if err := starlark.UnpackArgs(b.Name(), args, kwargs, "entity_qualified_name", &q); err != nil {
+				return nil, err
+			}
+			return list("attribute", attributeFields, fx.Attributes[q]), nil
+		}),
+		"user_roles":    noArgs("user_roles", userRoles(fx.UserRoles)),
+		"role_mappings": noArgs("role_mappings", list("role_mapping", roleMappingFields, fx.RoleMappings)),
+		"get_option": starlark.NewBuiltin("get_option", func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var key string
+			var def starlark.Value = starlark.None
+			if err := starlark.UnpackArgs(b.Name(), args, kwargs, "key", &key, "default?", &def); err != nil {
+				return nil, err
+			}
+			v, ok := fx.Options[key]
+			if !ok {
+				return def, nil
+			}
+			switch x := v.(type) {
+			case bool:
+				return starlark.Bool(x), nil
+			case float64:
+				if x == float64(int(x)) {
+					return starlark.MakeInt(int(x)), nil
+				}
+				return starlark.Float(x), nil
+			case string:
+				return starlark.String(x), nil
+			default:
+				return starlark.None, nil
+			}
+		}),
+		// strings(language=None) mirrors mxcli 0.25.0+: every catalog string, optionally
+		// filtered to one language.
+		"strings": starlark.NewBuiltin("strings", func(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var lang starlark.Value = starlark.None
+			if err := starlark.UnpackArgs(b.Name(), args, kwargs, "language?", &lang); err != nil {
+				return nil, err
+			}
+			rows := fx.Strings
+			if l, ok := lang.(starlark.String); ok && string(l) != "" {
+				keep := make([]map[string]any, 0, len(rows))
+				for _, r := range rows {
+					if v, _ := r["language"].(string); v == string(l) {
+						keep = append(keep, r)
+					}
+				}
+				rows = keep
+			}
+			return list("catalog_string", stringFields, rows), nil
+		}),
 		// activities_for(q, nested=False) mirrors mxcli 0.25.0: the fixture lists every
 		// object of a flow, loop bodies included (with parent_loop_id / loop_depth), and the
 		// default call returns only the rows whose loop_depth is 0 or absent, exactly as the
@@ -288,4 +405,67 @@ func main() {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", " ")
 	_ = enc.Encode(rows)
+}
+
+var entityFields = fields{
+	s: []string{"id", "name", "qualified_name", "module_name", "folder", "entity_type", "description", "generalization"},
+	b: []string{"has_event_handlers", "is_external", "has_created_date", "has_changed_date", "has_owner", "has_changed_by"},
+	i: []string{"attribute_count", "access_rule_count", "validation_rule_count"},
+}
+var associationFields = fields{
+	s: []string{"name", "qualified_name", "module_name", "from_entity", "to_entity", "type", "owner",
+		"storage_format", "description", "to_delete_behavior", "from_delete_behavior"},
+}
+var stringFields = fields{
+	s: []string{"qualified_name", "object_type", "value", "context", "language", "element_id", "module_name"},
+}
+var permissionFields = fields{
+	s: []string{"module_role_name", "module_name", "entity_name", "access_type", "member_name",
+		"xpath_constraint", "default_member_access_rights"},
+	b: []string{"is_constrained"},
+}
+var attributeFields = fields{
+	s: []string{"id", "name", "entity_id", "entity_qualified_name", "module_name", "data_type",
+		"default_value", "description"},
+	b: []string{"is_unique", "is_required", "is_calculated"},
+	i: []string{"length"},
+}
+var roleMappingFields = fields{
+	s: []string{"user_role_name", "module_role_name", "module_name"},
+}
+
+// userRoles builds user_role structs; module_roles is a list of strings, which the generic
+// toStruct does not handle.
+func userRoles(rows []map[string]any) *starlark.List {
+	out := make([]starlark.Value, 0, len(rows))
+	for _, r := range rows {
+		d := starlark.StringDict{}
+		for k := range r {
+			if k != "name" && k != "is_anonymous" && k != "module_roles" {
+				fmt.Fprintf(os.Stderr, "starrun: fixture user_role has unknown field %q (not in the mxcli projection)\n", k)
+				os.Exit(1)
+			}
+		}
+		name, _ := r["name"].(string)
+		anon, _ := r["is_anonymous"].(bool)
+		mrs := []starlark.Value{}
+		if xs, ok := r["module_roles"].([]any); ok {
+			for _, x := range xs {
+				if s, ok := x.(string); ok {
+					mrs = append(mrs, starlark.String(s))
+				}
+			}
+		}
+		if !strip["name"] {
+			d["name"] = starlark.String(name)
+		}
+		if !strip["is_anonymous"] {
+			d["is_anonymous"] = starlark.Bool(anon)
+		}
+		if !strip["module_roles"] {
+			d["module_roles"] = starlark.NewList(mrs)
+		}
+		out = append(out, starlarkstruct.FromStringDict(starlark.String("user_role"), d))
+	}
+	return starlark.NewList(out)
 }

@@ -16,8 +16,11 @@ Regressions round 1 introduced (N1–N4 are lintable):
 N1 `page-column` class landing on the layout root (shell detached); N2 Atlas `.d-none` loses to
 `.pill`; N3 Data Grid 2 autoFit starving columns to 32 px; N4 dashed focus ring on the rail.
 
-Proposed (hypotheses):
-- UI agents apply directly, one mx check per batch — roughly halves calls.
-- Cross-cutting fixes first, as SCSS, once; then re-review only changed pages.
-- N1–N4 as a pre-apply lint in check-page-shell / learned-css-that-never-applied.
-- Autocompact/bundle cap for UI drafters (see 2026-09-29-subagent-context-cost.md).
+Promoted 2026-10-14: the round order (SCSS first, apply directly, re-look only changed pages)
+and the N1–N4 pre-apply checks are in `skills/learned-page-patterns.md` → "UI fix rounds";
+N4's fix was already in `learned-css-that-never-applied.md`.
+
+Still open (not promoted):
+- N1–N3 as a mechanical pre-apply check in `project-bin/check-page-shell.sh` (today a prose
+  checklist only); needs captured page MDL / SCSS showing each regression as golden input.
+- Bundle cap for UI drafters (see 2026-09-29-subagent-context-cost.md).

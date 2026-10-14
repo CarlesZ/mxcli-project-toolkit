@@ -98,6 +98,12 @@ git --git-dir=.git commit -qm x 2>/dev/null && bad "--git-dir commit waved an un
 git reset -q
 cd "$WORK/q-wt" && printf u1c > app/mprcontents/a.mxunit && git add app
 git commit -qm x 2>/dev/null && bad "worktree commit waved an unverified model through" || ok "worktree commit refused the unverified model"
+# The same change left UNSTAGED, committed the two other ways git builds a temporary index
+# (GIT_INDEX_FILE = .git/worktrees/<name>/index.lock or next-index-*.lock).
+git reset -q
+git commit -qam x 2>/dev/null && bad "worktree commit -a waved an unverified model through" || ok "worktree commit -a refused the unverified model"
+git commit -qm x -- app 2>/dev/null && bad "worktree commit -- app waved an unverified model through" || ok "worktree commit -- app refused the unverified model"
+git add app
 ./bin/model-stamp.sh write pass "fixture" >/dev/null
 git commit -qm x 2>/dev/null && ok "worktree commit of the verified model accepted" || bad "worktree refused its verified model"
 

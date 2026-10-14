@@ -1,0 +1,86 @@
+{
+ "activities": {
+  "Sales.A": [
+   {
+    "activity_type": "StartEvent",
+    "microflow_qualified_name": "Sales.A"
+   },
+   {
+    "activity_type": "EndEvent",
+    "microflow_qualified_name": "Sales.A"
+   }
+  ],
+  "Sales.B": [
+   {
+    "activity_type": "StartEvent",
+    "microflow_qualified_name": "Sales.B"
+   },
+   {
+    "activity_type": "EndEvent",
+    "microflow_qualified_name": "Sales.B"
+   }
+  ],
+  "Sales.C": [
+   {
+    "activity_type": "StartEvent",
+    "microflow_qualified_name": "Sales.C"
+   },
+   {
+    "activity_type": "EndEvent",
+    "microflow_qualified_name": "Sales.C"
+   }
+  ],
+  "Sales.D": [
+   {
+    "activity_type": "StartEvent",
+    "microflow_qualified_name": "Sales.D"
+   },
+   {
+    "activity_type": "EndEvent",
+    "microflow_qualified_name": "Sales.D"
+   }
+  ]
+ },
+ "microflows": [
+  {
+   "activity_count": 0,
+   "document_noun": "microflow",
+   "document_noun_title": "Microflow",
+   "microflow_type": "MICROFLOW",
+   "module_name": "Sales",
+   "name": "A",
+   "qualified_name": "Sales.A",
+   "total_activity_count": 0
+  },
+  {
+   "activity_count": 0,
+   "document_noun": "microflow",
+   "document_noun_title": "Microflow",
+   "microflow_type": "MICROFLOW",
+   "module_name": "Sales",
+   "name": "B",
+   "qualified_name": "Sales.B",
+   "total_activity_count": 0
+  },
+  {
+   "activity_count": 0,
+   "document_noun": "microflow",
+   "document_noun_title": "Microflow",
+   "microflow_type": "MICROFLOW",
+   "module_name": "Sales",
+   "name": "C",
+   "qualified_name": "Sales.C",
+   "total_activity_count": 0
+  },
+  {
+   "activity_count": 0,
+   "document_noun": "microflow",
+   "document_noun_title": "Microflow",
+   "microflow_type": "MICROFLOW",
+   "module_name": "Sales",
+   "name": "D",
+   "qualified_name": "Sales.D",
+   "total_activity_count": 0
+  }
+ ]
+}

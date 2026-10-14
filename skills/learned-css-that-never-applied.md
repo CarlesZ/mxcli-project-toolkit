@@ -199,6 +199,40 @@ in the file, unreferenced, the whole time.
 
 ---
 
+## The opposite case: a focus ring that paints on every page landing
+
+Added 2026-10-12 from a 20-task UX-fix run over three apps. **On page load Mendix focuses the
+first navigation item from script, and Chrome counts that as `:focus-visible`.** So a plain
+`:focus-visible { outline: … }` ring, added for accessibility, paints on every landing. A mouse
+user sees one tab ringed as if selected. In the field run that was 3 of 3 roles on one app (two
+tabs looked selected for one role) and 5 of 5 roles on another, where an earlier task had ruled it
+"correct a11y". Every journey stayed green, because each one clicked the page body before
+counting, and the count looked at `inset` box-shadows, not outlines.
+
+The fix: draw the ring only after the user has used the keyboard. A small script loaded from
+`theme/web/index.html` (or wherever the theme loads its own scripts):
+
+```js
+// set html.kbd-nav on the first Tab/arrow key; clear it on any pointer press
+(function () {
+  var KEYS = { Tab: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1 };
+  var el = document.documentElement;
+  document.addEventListener('keydown', function (e) { if (KEYS[e.key]) el.classList.add('kbd-nav'); }, true);
+  document.addEventListener('pointerdown', function () { el.classList.remove('kbd-nav'); }, true);
+})();
+```
+
+```css
+:focus-visible { outline: none; }
+html.kbd-nav :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+```
+
+**Check every focus style twice, in this order, and before any click:** sign in with the mouse
+and read the computed `outline-style` of the focused element (expect `none`), then press Tab once
+and read it again (expect your ring). A check that clicks first has already cleared the state it
+is supposed to see, and a check that counts box-shadows cannot see an outline. Completion line:
+"N of N roles: no ring on landing, ring after Tab".
+
 ## Related
 
 - `ui-loop.md` — the per-script look. Tells you *that* a page is wrong. This skill starts where

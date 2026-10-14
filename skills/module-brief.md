@@ -150,7 +150,7 @@ all, and never looks at a page.
 |------|-------------|-----|
 | UI (Playwright) | **always** | — |
 | Data (source of truth) | **always** — say which: OQL count delta \| upstream REST response \| documented n/a + the query proving it | `testing-shape.md` §1: "Data" means check the source of truth, not always query a database |
-| Unit (`.test.mdl`) | yes / no | the project default from intake, unless this module has fiddly calculation or mapping logic |
+| Unit (`.test.mdl`) | **no** (default) / yes | **no** unless this module has calculation, mapping or date/money logic, calls a Java action or REST, or had a bug fixed in that flow — name which. The project default is intake Q13 (`Unit tests default:` in PROJECT.md), itself `no` unless the user chose otherwise (`testing-shape.md` §2) |
 | Trace (OTel) | yes / no | **yes if this module calls out** to REST, an import mapping, or external data — that is where failures get swallowed, and it overrides the project default |
 
 ### Base set — the trigger  (`testing-shape.md` §3)

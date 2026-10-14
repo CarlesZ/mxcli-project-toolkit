@@ -825,13 +825,13 @@ check_stage_0() {
     }' "$f")
   if [ -z "$signer" ]; then
     echo "FAIL|no non-empty 'Confirmed by:' line inside the '## Sign-off' section of $f — anything the user actually said is enough (\"confirmed in chat\", \"agreed, move on\"); it only has to not be the shipped placeholder"
-  elif printf '%s' "$signer" | grep -q '\[' && [ "$ENTRY_MODE" = "existing-app-change" ] \
+  elif grep -q '\[' <<<"$signer" && [ "$ENTRY_MODE" = "existing-app-change" ] \
        && [ -s "$PROJECT_DIR/analysis/app-report.json" ]; then
     # Mapped and waiting for a change is a normal state in this mode (existing-app-change.md
     # §"Map the app first"): there is nothing to sign off yet, so this is not-started, not wrong.
     # Without it a parked project read "needs attention" forever (existing-app field run, 2026-09-22).
     echo "PENDING|app mapped (analysis/app-report.html), waiting on the change — triage.md is signed off at Stage 0b, once the user says what to work on and what it touches is written ($f, ## Sign-off)"
-  elif printf '%s' "$signer" | grep -q '\['; then
+  elif grep -q '\[' <<<"$signer"; then
     echo "FAIL|'Confirmed by:' still holds the shipped placeholder: \"$signer\" — replace it with whatever the user actually said (\"confirmed in chat 2026-08-20\" is fine; a full name is not required) ($f, ## Sign-off)"
   else
     echo "PASS|triage.md signed off by \"$signer\" [$f]"
@@ -1208,7 +1208,7 @@ stage4_closing_rows() {
   rows="$(tr -d '\r' < "$plan" | grep -E '^\|[[:space:]]*[0-9]+[A-Za-z.]*[[:space:]]*\|')"
   # Rows with a Kind cell are the plan's steps; a numbered question or decision table elsewhere
   # in the file is not. Plans written before the Kind column keep every numbered row.
-  printf '%s\n' "$rows" | grep -qE '\|[[:space:]]*`?(BRIEF|BUILD|PROVE|RUN|HARNESS)`?[[:space:]]*\|' \
+  grep -qE -- '\|[[:space:]]*`?(BRIEF|BUILD|PROVE|RUN|HARNESS)`?[[:space:]]*\|' <<<"$rows" \
     && rows="$(printf '%s\n' "$rows" | grep -E '\|[[:space:]]*`?(BRIEF|BUILD|PROVE|RUN|HARNESS)`?[[:space:]]*\|')"
   if [ -z "$rows" ]; then
     echo "OK|no numbered rows (closing rows not counted)"
@@ -1221,7 +1221,7 @@ stage4_closing_rows() {
             | sed -nE 's/.*verify-module\.sh[`"[:space:]]+([A-Za-z0-9_]+).*/\1/p' | sort -u)"
   if [ -n "$declared" ]; then
     for m in $declared; do
-      printf '%s\n' "$rows" | grep 'verify-module\.sh' | grep -qw -- "$m" || missing="$missing $m"
+      grep -qw -- "$m" <<<"$(grep 'verify-module\.sh' <<<"$rows")" || missing="$missing $m"
     done
     n="$(printf '%s\n' "$declared" | wc -l | tr -d ' ')"
   else
@@ -1235,7 +1235,7 @@ stage4_closing_rows() {
   local why=""
   [ -n "$missing" ] && why="no \`verify-module.sh <Module>\` close row for:$missing"
   [ "$ncoh" -lt "$need" ] && why="${why:+$why; }$ncoh of $need coherence-pass row(s) for $n modules"
-  printf '%s' "$last" | grep -qE 'gate-check\.sh[^|]*[[:space:]]5([^0-9]|$)' \
+  grep -qE -- 'gate-check\.sh[^|]*[[:space:]]5([^0-9]|$)' <<<"$last" \
     || why="${why:+$why; }the last numbered row is not \`gate-check.sh <project> 5\`"
   if [ -n "$why" ]; then
     echo "FAIL|build-plan.md is missing its closing rows (brd-to-build-plan.md, \"three closing rows\"): $why — add them; nothing that walks the plan does a step it does not list"
@@ -1765,15 +1765,15 @@ stage_protocol_paths() {
   # every stage as "(unmapped)" — noisy by design, but only after someone hits it.
   case "$1" in
 # <!-- ROUTING:BEGIN stage-map -->
-    P)  echo "skills/interview-protocol.md skills/grill-mode.md skills/agent-roles.md skills/bootstrap-project.md skills/cloud-dev-environment.md skills/existing-app-change.md skills/app-analysis.md skills/mendix-epics-api.md skills/corpus-extraction-integrity.md skills/platform-link.md" ;;
+    P)  echo "skills/interview-protocol.md skills/grill-mode.md skills/agent-roles.md skills/dispatching.md skills/bootstrap-project.md skills/cloud-dev-environment.md skills/existing-app-change.md skills/app-analysis.md skills/mendix-epics-api.md skills/corpus-extraction-integrity.md skills/platform-link.md" ;;
     0)  echo "skills/interview-protocol.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-scope.md skills/source-triage.md skills/image-transcription.md skills/small-project-tier.md skills/existing-app-change.md skills/app-analysis.md skills/layering-review.md skills/module-dependency-review.md skills/microflow-loop-antipatterns.md skills/assess-migration.md skills/migration-pipeline.md skills/migrate-general.md skills/migrate-outsystems.md skills/source-os11.md skills/os-xml-schema.md skills/source-node-express-react.md skills/document-discovery.md skills/extractor-quality-loop.md skills/qa-loop-goal-pattern.md skills/mendix-epics-api.md skills/corpus-extraction-integrity.md skills/gate-check-file-locations.md" ;;
-    1)  echo "skills/interview-protocol.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-extraction.md skills/image-transcription.md skills/small-project-tier.md skills/migration-pipeline.md skills/source-os11.md skills/os-xml-schema.md skills/source-node-express-react.md skills/document-discovery.md skills/extractor-quality-loop.md skills/kb-generation.md skills/corpus-extraction-integrity.md" ;;
-    2)  echo "skills/interview-protocol.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-brd.md skills/checkpoints/checkpoint-architecture.md skills/image-transcription.md skills/small-project-tier.md skills/kb-generation.md skills/brd-generation.md skills/brd-validation.md" ;;
-    3)  echo "skills/interview-protocol.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-design.md skills/small-project-tier.md skills/mendix-best-practices-index.md skills/layering-review.md skills/architecture-blueprint.md skills/modularize-domain.md skills/design-artifacts.md skills/brd-to-build-plan.md skills/workflow-structure-rules.md skills/learned-mdl-cannot-express.md" ;;
-    4)  echo "skills/interview-protocol.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-build.md skills/agent-roles.md skills/small-project-tier.md skills/module-brief.md skills/module-folder-convention.md skills/brd-to-build-plan.md skills/coverage-ledger.md skills/workflow-structure-rules.md skills/rest-integration-first-time-right.md skills/learned-constants-and-secrets.md" ;;
-    5|build-ready) echo "skills/interview-protocol.md skills/grill-mode.md skills/agent-roles.md skills/module-brief.md skills/learned-mdl-preflight.md skills/module-folder-convention.md skills/learned-microflow-patterns.md skills/microflow-preflight.md skills/mendix-best-practices-index.md skills/ui-preflight-pages.md skills/design-spacing.md skills/learned-stylegallery.md skills/ui-loop.md skills/module-review.md skills/testing-shape.md skills/microflow-loop-antipatterns.md skills/iterative-build-loop.md skills/mdl-cookbook-microflows.md skills/build/mdl/oneshot-mdl-method.md skills/learned-page-patterns.md skills/oneshot-page-structure-patterns.md skills/mendix-agents.md skills/mendix-agent-ui.md skills/mendix-agent-setup.md skills/fixture-seeding.md skills/journey-proof.md skills/unhappy-path-testing.md skills/monkey-test.md skills/e2e-locators-that-lie.md skills/report-schema.md skills/harness-architecture.md skills/process-coherence-pass.md skills/lint-that-actually-runs.md skills/improvement-register.md skills/journey-examples.md skills/wiring-sweep.md skills/learned-workflow-patterns.md skills/workflow-structure-rules.md skills/rest-integration-first-time-right.md skills/bug-submission-checklist.md skills/empty-widget-triage.md skills/learned-sidebar-collapse-icons.md skills/learned-popup-navigation.md skills/learned-datagrid-customcontent-binding.md skills/learned-popup-feedback-pattern.md skills/learned-mdl-cannot-express.md skills/learned-css-that-never-applied.md skills/learned-detection-gaps.md skills/learned-dg2-patterns.md skills/learned-file-upload-widget.md skills/security-is-not-a-later-script.md skills/learned-local-db-confusion.md skills/full-harness-audit.md skills/test-result-audit.md skills/finding-disposition.md skills/preview-over-hub-tunnel.md skills/walking-skeleton.md skills/platform-link.md skills/teamserver-alignment.md skills/learned-constants-and-secrets.md" ;;
-    6)  echo "skills/interview-protocol.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-cutover.md skills/mendix-best-practices-index.md skills/module-review.md skills/testing-shape.md skills/existing-app-assurance.md skills/app-analysis.md skills/module-dependency-review.md skills/microflow-loop-antipatterns.md skills/qa-loop-goal-pattern.md skills/mendix-agent-setup.md skills/e2e-harness-base.md skills/learned-db-assertions.md skills/fixture-seeding.md skills/journey-proof.md skills/unhappy-path-testing.md skills/monkey-test.md skills/e2e-locators-that-lie.md skills/learned-skill-ux-audit.md skills/learned-skill-scope-delta.md skills/report-schema.md skills/harness-architecture.md skills/process-coherence-pass.md skills/e2e-evidence-report.md skills/record-demo-video.md skills/share-demo-package.md skills/lint-that-actually-runs.md skills/improvement-register.md skills/journey-examples.md skills/wiring-sweep.md skills/workflow-structure-rules.md skills/bug-submission-checklist.md skills/empty-widget-triage.md skills/anonymize-client-app-for-demo.md skills/learned-css-that-never-applied.md skills/learned-detection-gaps.md skills/learned-local-db-confusion.md skills/full-harness-audit.md skills/test-result-audit.md skills/finding-disposition.md skills/handoff-to-studio-pro.md skills/preview-over-hub-tunnel.md skills/platform-link.md skills/teamserver-alignment.md skills/learned-constants-and-secrets.md" ;;
-    7)  echo "skills/interview-protocol.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-cutover.md skills/close-the-loop.md skills/share-demo-package.md skills/handoff-to-studio-pro.md skills/platform-link.md skills/teamserver-alignment.md skills/deploy-to-sandbox.md" ;;
+    1)  echo "skills/interview-protocol.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-extraction.md skills/dispatching.md skills/image-transcription.md skills/small-project-tier.md skills/migration-pipeline.md skills/source-os11.md skills/os-xml-schema.md skills/source-node-express-react.md skills/document-discovery.md skills/extractor-quality-loop.md skills/kb-generation.md skills/corpus-extraction-integrity.md" ;;
+    2)  echo "skills/interview-protocol.md skills/change-intake.md skills/change-intake-detail.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-brd.md skills/checkpoints/checkpoint-architecture.md skills/dispatching.md skills/image-transcription.md skills/small-project-tier.md skills/kb-generation.md skills/brd-generation.md skills/brd-validation.md" ;;
+    3)  echo "skills/interview-protocol.md skills/change-intake.md skills/change-intake-detail.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-design.md skills/dispatching.md skills/small-project-tier.md skills/mendix-best-practices-index.md skills/layering-review.md skills/architecture-blueprint.md skills/modularize-domain.md skills/design-artifacts.md skills/interaction-model.md skills/brd-to-build-plan.md skills/workflow-structure-rules.md skills/learned-mdl-cannot-express.md" ;;
+    4)  echo "skills/interview-protocol.md skills/change-intake.md skills/change-intake-detail.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-build.md skills/agent-roles.md skills/dispatching.md skills/small-project-tier.md skills/module-brief.md skills/module-folder-convention.md skills/brd-to-build-plan.md skills/coverage-ledger.md skills/workflow-structure-rules.md skills/rest-integration-first-time-right.md skills/learned-constants-and-secrets.md" ;;
+    5|build-ready) echo "skills/interview-protocol.md skills/change-intake.md skills/change-intake-detail.md skills/grill-mode.md skills/agent-roles.md skills/dispatching.md skills/module-brief.md skills/learned-mdl-preflight.md skills/module-folder-convention.md skills/learned-microflow-patterns.md skills/microflow-preflight.md skills/mendix-best-practices-index.md skills/ui-preflight-pages.md skills/design-spacing.md skills/learned-stylegallery.md skills/ui-loop.md skills/module-review.md skills/testing-shape.md skills/microflow-loop-antipatterns.md skills/iterative-build-loop.md skills/mdl-cookbook-microflows.md skills/build/mdl/oneshot-mdl-method.md skills/learned-page-patterns.md skills/oneshot-page-structure-patterns.md skills/mendix-agents.md skills/mendix-agent-ui.md skills/mendix-agent-setup.md skills/fixture-seeding.md skills/journey-proof.md skills/unhappy-path-testing.md skills/monkey-test.md skills/e2e-locators-that-lie.md skills/report-schema.md skills/harness-architecture.md skills/process-coherence-pass.md skills/lint-that-actually-runs.md skills/improvement-register.md skills/journey-examples.md skills/wiring-sweep.md skills/learned-workflow-patterns.md skills/workflow-structure-rules.md skills/rest-integration-first-time-right.md skills/bug-submission-checklist.md skills/empty-widget-triage.md skills/learned-sidebar-collapse-icons.md skills/learned-popup-navigation.md skills/learned-datagrid-customcontent-binding.md skills/learned-popup-feedback-pattern.md skills/learned-mdl-cannot-express.md skills/learned-css-that-never-applied.md skills/learned-detection-gaps.md skills/learned-dg2-patterns.md skills/learned-file-upload-widget.md skills/security-is-not-a-later-script.md skills/learned-local-db-confusion.md skills/full-harness-audit.md skills/test-result-audit.md skills/finding-disposition.md skills/preview-over-hub-tunnel.md skills/walking-skeleton.md skills/platform-link.md skills/teamserver-alignment.md skills/learned-constants-and-secrets.md" ;;
+    6)  echo "skills/interview-protocol.md skills/change-intake.md skills/change-intake-detail.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-cutover.md skills/dispatching.md skills/mendix-best-practices-index.md skills/module-review.md skills/testing-shape.md skills/existing-app-assurance.md skills/app-analysis.md skills/module-dependency-review.md skills/microflow-loop-antipatterns.md skills/qa-loop-goal-pattern.md skills/mendix-agent-setup.md skills/e2e-harness-base.md skills/learned-db-assertions.md skills/fixture-seeding.md skills/journey-proof.md skills/unhappy-path-testing.md skills/monkey-test.md skills/e2e-locators-that-lie.md skills/learned-skill-ux-audit.md skills/learned-skill-scope-delta.md skills/report-schema.md skills/harness-architecture.md skills/process-coherence-pass.md skills/e2e-evidence-report.md skills/record-demo-video.md skills/share-demo-package.md skills/lint-that-actually-runs.md skills/improvement-register.md skills/journey-examples.md skills/wiring-sweep.md skills/workflow-structure-rules.md skills/bug-submission-checklist.md skills/empty-widget-triage.md skills/anonymize-client-app-for-demo.md skills/learned-css-that-never-applied.md skills/learned-detection-gaps.md skills/learned-local-db-confusion.md skills/full-harness-audit.md skills/test-result-audit.md skills/finding-disposition.md skills/handoff-to-studio-pro.md skills/preview-over-hub-tunnel.md skills/platform-link.md skills/teamserver-alignment.md skills/learned-constants-and-secrets.md" ;;
+    7)  echo "skills/interview-protocol.md skills/change-intake.md skills/change-intake-detail.md skills/grill-mode.md skills/checkpoints/checkpoint-template.md skills/checkpoints/checkpoint-cutover.md skills/close-the-loop.md skills/share-demo-package.md skills/handoff-to-studio-pro.md skills/platform-link.md skills/teamserver-alignment.md skills/deploy-to-sandbox.md" ;;
     *)  echo "" ;;
 # <!-- ROUTING:END -->
   esac
@@ -2321,6 +2321,52 @@ else
     DRIFT_NOTE="$DRIFT_COUNT decision(s) touch a BRD/wireframe not yet re-synced (see '[sync: … UNSYNCED]' in $REGISTER) — ba-agent must update the BRD/wireframe, then flip the marker to 'synced <date>', before this gate passes"
   fi
 fi
+
+# Change log — feedback the user gave mid-project, captured in PROJECT.md "## Change log" BEFORE
+# any edit (skills/change-intake.md; template + parser: bin/lib/change-log.sh). This counts the
+# rows that still owe something: open / refined / agreed (not yet applied), and applied or
+# proven with an empty Closed-by. It reads the same $REGISTER the drift check above reads, so a
+# nested register is graded where it lives (bug02).
+#
+# WARN-ONLY, never blocking, never a FAIL. Why (2026-10-13): across 12 real mid-build changes,
+# 12 went straight into MDL and 0 reached a BRD, plan or wireframe — the drift marker was
+# never written once, and a gate cannot see a marker nobody wrote. A change log makes the ask
+# countable; whether its counts are right on real projects is not yet known, and a blocking
+# guard built on an unproven count is how this repo has shipped false FAILs before.
+# change-intake.md names the condition under which this becomes blocking.
+CR_STATUS="PASS"; CR_NOTE=""; CR_ROWS=""
+if [ "$REG_AMBIGUOUS" = "1" ] || [ -z "$REGISTER" ] || [ ! -f "$REGISTER" ]; then
+  CR_STATUS="MANUAL"
+  CR_NOTE="no single decision register to read (see the Drift line)"
+elif [ ! -r "$TOOLKIT_DIR/bin/lib/change-log.sh" ]; then
+  CR_STATUS="MANUAL"
+  CR_NOTE="bin/lib/change-log.sh missing from $TOOLKIT_DIR — cannot evaluate, which is not a pass"
+else
+  # shellcheck source=lib/change-log.sh
+  . "$TOOLKIT_DIR/bin/lib/change-log.sh"
+  if ! mxtk_change_log_has_section "$REGISTER"; then
+    CR_STATUS="WARN"
+    CR_NOTE="no '## Change log' section in $(basename "$REGISTER") — run bin/sync-project.sh to add it; until then mid-build feedback has nowhere to be logged (skills/change-intake.md)"
+  else
+    _cr_scan="$(mxtk_change_log_scan "$REGISTER")"
+    IFS=$'\t' read -r _ _cr_total _cr_open _cr_ref _cr_agr _cr_noev _cr_unk <<< "$(printf '%s\n' "$_cr_scan" | head -n 1)"
+    CR_ROWS="$(printf '%s\n' "$_cr_scan" | sed -n '2,$p')"
+    _cr_total=${_cr_total:-0}; _cr_open=${_cr_open:-0}; _cr_ref=${_cr_ref:-0}
+    _cr_agr=${_cr_agr:-0}; _cr_noev=${_cr_noev:-0}; _cr_unk=${_cr_unk:-0}
+    _cr_pending=$((_cr_open + _cr_ref + _cr_agr))
+    if [ "$_cr_total" -eq 0 ]; then
+      CR_NOTE="0 change requests logged (a change made with no row is invisible here — log every ask first, skills/change-intake.md)"
+    elif [ "$_cr_pending" -eq 0 ] && [ "$_cr_noev" -eq 0 ] && [ "$_cr_unk" -eq 0 ]; then
+      CR_NOTE="$_cr_total change request(s); every one applied with evidence, proven, or rejected"
+    else
+      CR_STATUS="WARN"
+      CR_NOTE="$_cr_pending of $_cr_total change request(s) not yet applied (open $_cr_open, refined $_cr_ref, agreed $_cr_agr)"
+      [ "$_cr_noev" -gt 0 ] && CR_NOTE="$CR_NOTE; $_cr_noev applied/proven with no Closed-by"
+      [ "$_cr_unk" -gt 0 ] && CR_NOTE="$CR_NOTE; $_cr_unk with an unrecognised status"
+      CR_NOTE="$CR_NOTE — warn-only (skills/change-intake.md)"
+    fi
+  fi
+fi
 # ---------------------------------------------------------------------------
 # Read for this gate — the runbook lines this stage actually needs.
 #
@@ -2392,6 +2438,14 @@ else
 fi
 
 printf "Drift (BRD sync): %s — %s\n" "$DRIFT_STATUS" "$DRIFT_NOTE"
+printf "Change log: %s — %s\n" "$CR_STATUS" "$CR_NOTE"
+if [ -n "$CR_ROWS" ]; then
+  printf '%s\n' "$CR_ROWS" | head -n 10 | while IFS=$'\t' read -r _ _id _st _why _ask; do
+    printf '  %s  %-8s %s%s\n' "$_id" "$_st" "$_why" "${_ask:+ — $_ask}"
+  done
+  _cr_more=$(( $(printf '%s\n' "$CR_ROWS" | grep -c .) - 10 ))
+  [ "$_cr_more" -gt 0 ] && echo "  … and $_cr_more more in the register"
+fi
 
 # ---------------------------------------------------------------------------
 # Open questions — has the project actually ASKED what it wrote down?
@@ -2956,6 +3010,8 @@ HTML_HEAD
     "$SYNC_STATUS" "$SYNC_STATUS" "$SYNC_NOTE"
   printf '<tr><td>⇄</td><td>BRD drift-sync</td><td><span class="status %s">%s</span></td><td>%s</td></tr>\n' \
     "$DRIFT_STATUS" "$DRIFT_STATUS" "$DRIFT_NOTE"
+  printf '<tr><td>Δ</td><td>Change log (warn-only)</td><td><span class="status %s">%s</span></td><td>%s</td></tr>\n' \
+    "$CR_STATUS" "$CR_STATUS" "$(printf '%s' "$CR_NOTE" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')"
   printf '<tr><td>?</td><td>Open questions raised</td><td><span class="status %s">%s</span></td><td>%s</td></tr>\n' \
     "$OQ_STATUS" "$OQ_STATUS" "$(printf '%s' "$OQ_NOTE" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')"
   printf '<tr><td>~</td><td>Source sufficiency assessed</td><td><span class="status %s">%s</span></td><td>%s</td></tr>\n' \

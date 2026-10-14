@@ -29,6 +29,7 @@ would have taken four minutes to find at Stage 3, when the design was still chea
 | The **browser tab title** (`<AppTitle> - <page title>`) | nothing: the client takes AppTitle from the navigation profile, and `create navigation` has no title clause (`describe navigation` does not print it). A theme `index.html` `<title>` changes only the pre-boot title | ⚠️ **workaround**: set AppTitle in Studio Pro, or bridge `document.title` from a script in `theme/web/index.html` |
 | **Always-open menu groups** in a sidebar navigation tree | nothing: `create navigation` has no expanded/collapsed flag, and Mendix renders groups collapsed | ⚠️ **workaround**: CSS only — `li.mx-navigationtree-has-items > ul { display: flex }`, parent anchor restyled as the group heading (it keeps `aria-expanded="false"`) |
 | A **sidebar toggle button**, a **page-load nanoflow**, or a button added to a **Marketplace module's layout** | nothing: no `SidebarToggleButton`, no nanoflow data source or on-load event, and `alter layout` refuses a Marketplace layout (so an app copy of `Atlas_Default` loses its toggle) | ⚠️ **workaround**: an own layout (move pages with `alter pages … where layout =`), an action button calling a JS action that toggles a class on `<html>`, and a pre-boot script in `theme/web/index.html` for on-load work |
+| A widget **visible to one role and not another** | nothing: `visible:` takes an expression, and there is no module-role clause on any widget | ⚠️ **workaround** for an action button only — see "One role sees the button" below; it has three traps |
 | A **pluggable widget you want to configure** | only its scalar properties, and **case-sensitively** — `ItemSelectionMode` fails where `itemSelectionMode` works, even though the rest of MDL is case-insensitive | ⚠️ works, read the widget's own doc |
 
 ## The probe — four minutes, at Stage 3
@@ -101,6 +102,28 @@ Three rules for the blocked case:
 3. **Say what IS built.** Both field blockers had everything behind them finished and proven —
    validation, storage, access checks, the file bytes actually in Mendix's file store. Recording
    "blocked" without that reads as "not started", and the next person rebuilds it.
+
+## One role sees the button — the recipe, and the three traps that make it lie
+
+Added 2026-10-12 from a 20-task UX-fix run over three apps. A requirement said "show this button
+to role A, not to role B". MDL cannot say that (the row above).
+
+**The recipe.** Put the action behind a microflow, and grant `execute` on that microflow only to
+the module roles that should see the button. With project security on, Mendix does not render an
+action button whose microflow the signed-in user may not run. So the visibility comes from the
+grant, and the grant is MDL you can write and `SHOW ACCESS ON MICROFLOW` can read back.
+
+The recipe works. In the field run, three things around it went wrong:
+
+| Trap | What went wrong | Do this instead |
+|---|---|---|
+| **The sentence that names the button** | A helper line ("Use *Reopen* to send it back") cannot be role-gated the same way. Role B saw instructions for a button that wasn't there | Remove or reword the sentence for every role, or put it inside something already gated by the same grant. Grep the page for the button's caption before you call it done |
+| **An admin session proves nothing** | A check run as an admin sees the button whatever the grant says. A runner that silently falls back to an admin login when a role's demo user fails is the same thing | Assert the button is **absent** for each role that must not see it, signed in as that role. Assert the login landed as that role before you count anything. The completion line is "N of N roles checked": present for the granted ones, absent for the rest |
+| **The wrong cause hides it** | Demo data in a terminal state (a record already closed) hid the button for a reason that had nothing to do with roles. The absence check passed for the wrong reason, and a later step that needed the button broke | Each absence step names the cause it tests. Run it against a record in a state where the button *would* show for a granted role, and check that the granted role really does see it on that same record |
+
+Before (passes, proves nothing): `sign in as admin → open record 12 (status Closed) → expect no
+Reopen button`. After: `sign in as Reviewer → assert role Reviewer → open record 7 (status Open)
+→ expect no Reopen button`, paired with `sign in as Owner → open record 7 → expect Reopen`.
 
 ## When MDL cannot set a class, CSS often can — check before you go looking for the property
 

@@ -73,8 +73,9 @@ is green, the page renders, the list is simply empty. Trace is the only instrume
 
 ## §2 — Who chooses the optional parts: the customer, at intake
 
-**Ask once, at project intake — not once per module.** Record the answer in `PROJECT.md` as a
-CONFIRMED decision like any other.
+**Ask once, at project intake — not once per module.** It is intake question 13 (`intake.md`,
+written by `bin/init-project.sh`, appended to older projects by `bin/sync-project.sh
+--repair-intake`). Record the answer in `PROJECT.md` as a CONFIRMED decision like any other.
 
 > **The intake question.** Every module gets UI tests and database assertions as standard. There are
 > two optional additions, both with a real cost:
@@ -82,16 +83,22 @@ CONFIRMED decision like any other.
 > - **Unit tests** — check a microflow's logic on its own. Worth it where a module has fiddly
 >   calculation or mapping logic. **Cost:** the runner temporarily writes to your project file, so
 >   Studio Pro must be closed and the file snapshotted first. It also has two confirmed parsing
->   defects (§4) that have to be worked around.
+>   defects (§4) that have to be worked around. **Project default: no.**
 > - **Trace (OpenTelemetry)** — see inside the running app: which microflow fired, and whether a step
 >   errored even though the screen looked fine. Worth it where a module **calls out** to something —
 >   a REST call, an import mapping, external data — because that is where failures get swallowed.
 >   **Cost:** someone must switch it on by hand in Studio Pro's settings (there is no command for it)
 >   and start the trace collector by hand. Neither is scriptable today.
 
-**Then one rule on top, and only one:** a module that **calls out** to something external may add
-Trace even when the project default is off. That is where swallowed failures live, and it is the only
-place Trace reliably earns its setup cost.
+**Then two rules on top, and only two:**
+
+- **Unit flips to yes per module** only when the module has calculation, mapping, or date/money
+  logic; calls a Java action or a REST service; or a bug was fixed in that flow (the unit test pins
+  the fix). Otherwise Unit stays **no**. With no default set, agents read "optional" as "yes"
+  (what that cost: §3, "Why scoped").
+- **Trace may be added** by a module that **calls out** to something external, even when the
+  project default is off. That is where swallowed failures live, and it is the only place Trace
+  reliably earns its setup cost.
 
 **A module may declare its shape; it may never leave it blank.** Same discipline as "a step may say
 *not built*; it may never be *absent*".
@@ -121,16 +128,54 @@ added later do not move the goalpost, because the goalpost was placed before the
 definition of done (`iterative-build-loop.md`). Without this anchor someone declares two scripts
 "base", earns a green suite, and the module isn't built.
 
-**After the base set: re-run, don't re-propose.**
+**After the base set: re-run what the change touched — once — and nothing else.**
+
+> **Before any test run after the base set, ask:** *does this run prove something the artifact in
+> hand (journey report, screenshot, diff) does not?* If you cannot name what it would show, do not run it.
+
+**The subject set.** A re-run covers the tests whose *subject* the exec'd script(s) changed — the
+script is the change list; `bin/exec.sh` tags each run `ui-only` or `logic` and prints its lane:
+
+| Changed in this exec | Its subject set — re-run these, only these |
+|---|---|
+| A microflow | the tests that call it, plus the tests of its callers (`SHOW CALLERS OF <Mod.Flow>`) |
+| A page, snippet or layout | the journeys of every page the change reaches: the page itself, and every page that embeds a changed snippet or uses a changed layout, in any module |
+| An entity, association, enum or access rule | the tests and journeys of the module that owns it |
+
+Anything outside that set was not at risk from this change and is not re-run.
+
+**Two lanes, by change class:**
+
+| Change class | What re-runs | What does not |
+|---|---|---|
+| **UI-only** — `ALTER PAGE`/`ALTER SNIPPET`, styling, captions, visibility, layout; **no** microflow, entity, association, enum, security or navigation change (`exec.sh` tag `ui-only`) | The journeys of every page the change reaches (embedders of a changed snippet/layout included), **once**, plus a **LOOK** (screenshot, actually opened — `module-review.md` stage 4) | No `.test.mdl`. No journeys of pages the change does not reach. No full `mxcli test`. |
+| **Logic** — anything else (`exec.sh` tag `logic`; a mixed script is logic) | The subject set above: the changed microflows' tests and their callers' tests, the changed pages' journeys | Tests whose subject this change did not touch. |
+
+**Who re-runs:** the implementer, once per gate. **Reviewers verify artifacts** — the diff, the
+screenshots, the journey report — and **never re-run** what the implementer already ran and
+recorded. A reviewer who doubts an artifact says which claim it fails to prove; that is a finding,
+not a second run.
+
+**The full suite (and the module's whole journey set) runs on the last three rows below only** — **never at batch close**, never after
+an individual fix, never because the change "felt wide". The e2e instruments are unchanged; only
+their trigger is.
 
 | Event | What happens |
 |---|---|
-| A fix to an existing script | **Re-run** the suite as regression. No questions, no re-authoring. |
-| A new script within agreed scope | Re-run. Extend the suite only for a *behaviour* the coverage checklist doesn't already cover. |
+| A fix to an existing script | **Re-run its subject set**, in its lane. No questions, no re-authoring. |
+| A new script within agreed scope | Re-run its subject set. Extend the suite only for a *behaviour* the coverage checklist doesn't already cover. |
 | A new behaviour / scope change | The coverage checklist changes — the existing drift-sync path. The suite extends with it. |
+| Module close | The full suite, once (`module-review.md` PROVE). |
+| Project close / cutover | The project-wide suite, once. |
+| The user asks for a full run | Run it, that message is the trigger. |
 
-So the authoring conversation happens **once per module**; everything after is cheap re-running. That
-is what makes this affordable on a module under active development.
+> **Why scoped (#274):** the old unscoped "re-run the suite as regression" re-proved each UI-only
+> change 5–10× (other modules' journeys, the reviewer re-running them, a full `mxcli test` at every
+> batch close), and with no Unit default set, **143 minutes** of microflow tests found stale strings,
+> not one logic bug. A caption change owes one journey and one look.
+
+So the authoring conversation happens **once per module**; everything after is a scoped re-run.
+That is what makes this affordable on a module under active development.
 
 **The loop, once per module:**
 
@@ -184,13 +229,10 @@ is measured and wrong (the feature is broken), `INVALID` means **the instrument 
 absent, not green. "The test could not run" and "the feature is broken" send you to different
 people; blending them is how a week gets spent debugging a page that was never reached. In the
 report/exit-code dialect these become `pass` / `fail` / `fault`, and **`fault` is never amber** —
-amber means "ran, degraded". Corollary, applied everywhere in this toolkit: an empty result set is
-never a pass — guard non-emptiness first, then assert (`[].every()` is `true`).
+amber means "ran, degraded".
 
-**Two verdicts, never collapsed.** When a §4 shape is present the correct report is ***the test is
-invalid***, not *the feature failed*. Collapsing them is what sends people diagnosing the wrong
-subsystem. Refuse to report green on a zero-span trace assertion, an unguarded navigation, or a
-bare-existence DB assertion — regardless of what the runner printed.
+**A §4 shape means the test is *invalid*, not that the feature *failed*** — never report green on
+a zero-span trace assertion, an unguarded navigation or a bare-existence DB assertion.
 
 **An assertion is also too weak if it lacks a fixture, an observable, and an exact expected value.**
 Not "correct", not "as specified". The register says how a part lies; this says when the assertion
@@ -365,6 +407,15 @@ journey across one.** `--attach` avoids the second build but hot-applies into th
 against its database, so restart before any journey that counts rows.
 (Field case: existing app, mxcli v0.25, Mendix 11.15, 2026-10-07.)
 
+**The remedy: `./bin/test-scratch.sh -- <test files> --local`.** It takes this project's exec lock
+while it copies (so it never copies a half-written model), copies the model tree to a scratch dir
+without `.git`, `deployment/` or `.mxcli/` (the live app's run --local record), takes a machine-wide
+lock on the test ports 8081/8091 (a live holder refuses, a dead one is taken over), runs `mxcli test`
+there with `-p` on the copy, and deletes the copy. The live model, its `deployment/` and the running
+app are never touched, so no restart is owed afterwards. It refuses `--attach`, which by design runs
+against the live app. (Field case: 2026-10-12, one unlocked `mxcli test` in the live repo broke the
+running app with `NoClassDefFoundError`, .mpr unchanged; #278.)
+
 > ### 🔴 Docker is NOT a safe default if the app calls host services by `localhost`
 >
 > **Confirmed the hard way, 2026-08-06, on the first real run of this skill.** Inside a container,
@@ -440,6 +491,9 @@ Data:   <ran | n/a>  — delta-not-existence: <y/n>                             
 Unit:   <ran | n/a>  — --list count matches file: <y/n>    every @expect visible: <y/n>
 Trace:  <ran | n/a>  — non-empty span check: <y/n>         activity granularity: <y/n>
 Stack:  docker | sp-local, APP_URL=<url>, docker status verified: <y/n>
+Refusals: <N of N> restricted pairs probed server-side (not a hidden menu item)
+HTTP:   undeclared 4xx/5xx: <0 of M> requests — each fails its step
+Final:  one clean-DB run <id>: <N of N> scenarios incl. timers, not stitched
 Invalid tests: <any §4 shape found — reported separately from feature failures, or "none">
 ```
 

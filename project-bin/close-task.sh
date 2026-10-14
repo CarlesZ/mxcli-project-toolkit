@@ -151,12 +151,16 @@ for _c in "${HOME:-/nonexistent}/.claude/bin/checkpoint.sh" "$MXTK_ROOT/claude-h
   [ -n "$CKPT_BIN" ] && break
   [ -f "$_c" ] && CKPT_BIN="$_c"
 done
+# Single-quote a path so the printed command survives copy-paste with spaces (e.g. a HOME such as
+# "John Doe"); an embedded ' becomes '\''. sed, not ${x//}, for bash 3.2.
+shq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 echo "### Then"
 if [ -n "$CKPT_BIN" ]; then
-  echo "    $CKPT_BIN --write     # and fill the Narrative  (append-only history)"
+  echo "    $(shq "$CKPT_BIN") --write     # and fill the Narrative  (append-only history)"
 else
-  _tk="$MXTK_ROOT"; [ -d "$_tk" ] || _tk="<toolkit>"
-  echo "    # checkpoint.sh not installed — run $_tk/bin/install-claude-hooks.sh --basic, or skip: RESUME.md is the resume source"
+  if [ -d "$MXTK_ROOT" ]; then _inst=$(shq "$MXTK_ROOT/bin/install-claude-hooks.sh")
+  else _inst="<toolkit>/bin/install-claude-hooks.sh"; fi
+  echo "    # checkpoint.sh not installed — run $_inst --basic, or skip: RESUME.md is the resume source"
 fi
 cat <<'TABLE'
     OVERWRITE docs/progress/RESUME.md   # <= 60 lines: where we are, next actions,

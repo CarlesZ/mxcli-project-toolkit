@@ -6950,3 +6950,26 @@ Two related findings from reading the v0.26.0 source (not field-run):
 matching the project. Recipe and the rule-set comparison to run before any diff:
 `skills/lint-that-actually-runs.md` → "Linting a copy of the model". `lint-gate.sh`'s collapse
 guard catches this inside the gate. Nothing catches it when lint is run directly.
+
+## BUG-DRAFT-dg2-replace-column-attribute-passes-check: `ALTER PAGE … REPLACE` of a DataGrid 2 column with a new `Attribute:` passes `check --references`, then fails mxbuild (2026-10-14)
+
+**Severity:** Low. No damage: `exec.sh`'s mxbuild gate fails and auto-restores the snapshot. The cost is one wasted exec/mxbuild cycle, and the form is tempting because `check` approves it.
+**mxcli version:** v0.26.0. **Mendix version:** 11.15.0, macOS.
+**Discovered:** 2026-10-14, an Ollama connector app (existing-app mode): one build row swapped the `Attribute` of an existing DG2 column (raw bytes → a formatted String attribute on the same entity, same module). Reported by joshuamoesa (#356).
+**Reproducible:** yes, by the reporter: against a snapshot copy, `mxcli check -p <copy>.mpr --references <script>` rejects the SET form and passes the REPLACE form. Not re-probed here.
+**Upstream candidate (not filed):** `check --references` should reject a `REPLACE … column` whose `Attribute:` it cannot bind, the same way it already rejects the SET form.
+
+Three forms, as tried (placeholders are the reporter's):
+
+1. `ALTER PAGE … { SET (Attribute: <Attr>) ON <grid> column(<Col>); }` — `check --references` rejects it:
+   ```
+   column property "Attribute" holds a value of kind Attribute, which ALTER cannot set from a plain value — rewrite the column with CREATE OR REPLACE PAGE instead
+   ```
+2. `ALTER PAGE … { REPLACE <grid> column(<Col>) WITH { column (Attribute: <Attr>, Caption: '…') }; }` — `check` prints `Check passed!`, `exec` applies it, and mxbuild fails with two errors on `Property 'Columns/3/Attribute'` of the grid:
+   ```
+   An attribute is required when 'Show' is set to 'Attribute'. Select the 'Attribute' property for column (<Col>)
+   ```
+   plus the sorting variant of the same error. `exec.sh` reported `Auto-restored from: .mpr-snapshots/<ts>/`.
+3. **Workaround (worked in the field):** re-emit the whole page with `create or modify page`, the column carrying the new attribute.
+
+**Rule:** any change to an existing DG2 column — insert, re-attribute, re-sort — is a whole-page re-emit, never `ALTER PAGE` (`skills/learned-dg2-patterns.md` rule 1; `skills/learned-detection-gaps.md` register). Related: BUG-96 (cross-module column insert via `ALTER PAGE`, which corrupts).

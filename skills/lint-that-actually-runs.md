@@ -135,10 +135,31 @@ the ratchet is the *only* mechanism available. `project-bin/lint-gate.sh` implem
 re-baselined 61 times, every time by the agent whose script caused the rise; baselines grew
 8 -> 757, 440 -> 677 and 9 -> 187, with security warnings accepted in the same batches as naming
 info. So an update that raises any rule needs `--reason "<why>"` and is appended to
-`.claude/lint-acceptances.tsv` (commit it with the baseline); a rise in a security-tier rule
-(default `SEC*` and `CONV006`, override in `.claude/lint-security-rules.txt`) also needs
-`--approved-in-chat`, set only after the user saw the findings and said yes. A first baseline
-and a ratchet-down need neither.
+`.claude/lint-acceptances.tsv` (commit it with the baseline). A first baseline and a
+ratchet-down need nothing more.
+
+**A rise moves only on the user's own command (#348).** `--approved-in-chat` was the agent's
+claim that the user said yes, and the agent could type it unasked. Now the refused update saves
+the proposal and prints `bin/baseline-approve.sh lint`. Show the user the rise (security-tier
+rules, default `SEC*` and `CONV006`, are flagged in it); **the user** runs that command in their
+own terminal, reads the diff and types `approve`; then re-run the same update. The approval is
+the sha256 of exactly that content, so a count that moves in between is refused again.
+
+```
+agent:  bin/lint-gate.sh --update-baseline --reason "x" --approved-in-chat   -> exit 0   (before: the agent approved itself)
+agent:  bin/lint-gate.sh --update-baseline --reason "x"                      -> REFUSED, prints the user's command
+user:   bin/baseline-approve.sh lint     (their terminal; types approve)
+agent:  bin/lint-gate.sh --update-baseline --reason "x"                      -> written
+```
+
+Never run `baseline-approve.sh` yourself and never edit `.claude/baseline-approvals.tsv`.
+Claude Code denies both (`bin/install-claude-permissions.sh`), and the command refuses to run
+without a terminal. `conformance-check.sh --update-baseline` follows the same rule when it
+would accept a regression. `gate-check.sh` prints `Baselines (human-approved?)`: FAIL when a
+baseline matches neither an approval nor a recorded write (a hand edit; this blocks Stages 5
+and 6), and MANUAL when a baseline predates the lock. Commit `.claude/baseline-*.tsv` with the
+baseline. What the lock does not stop, an agent deliberately evading the deny rules, is listed
+in `project-bin/baseline-lock.sh`.
 
 **The ratchet remembers one number per rule; the ledger remembers every run.** Every gate run
 appends one row per rule to `.claude/loop/lint-ledger.tsv` (timestamp, verdict, rule, count,

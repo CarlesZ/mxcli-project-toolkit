@@ -43,6 +43,10 @@
 # runs the same mxcli underneath. A skill that genuinely needs the bare form runs it from a
 # script (the rule matches the top-level command only).
 #
+# THE SECOND DENY (2026-10-14, #348): `*baseline-approv*` in Bash and edits of
+# baseline-approvals.tsv. Approving a ratchet baseline move is the user's act; the agent could
+# type `--approved-in-chat` itself. See project-bin/baseline-lock.sh.
+#
 # THE ONE HOOK: `bash bin/session-check.sh || true` on SessionStart — the project-local check
 # that says at the top of every session whether the model on disk is verified, whether the
 # mxbuild gate can run here, and whether the installed guard scripts are stale. It never blocks.
@@ -184,6 +188,11 @@ DENY=(
   "Bash(./mxcli exec:*)"
   "Bash(mxcli exec:*)"
   "Bash(./mxcli.exe exec:*)"
+  # #348: approving a ratchet baseline move is the user's act. Denies the approve command and
+  # any Bash line naming the approvals file, plus file-tool edits of it. The user runs it in
+  # their own terminal; see project-bin/baseline-lock.sh for what this does not stop.
+  "Bash(*baseline-approv*)"
+  "Edit(**/baseline-approvals.tsv)"
 )
 ASK=()
 

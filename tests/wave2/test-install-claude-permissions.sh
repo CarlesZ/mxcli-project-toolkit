@@ -79,6 +79,8 @@ EXPECTED_DENY=(
   "Bash(./mxcli exec:*)"
   "Bash(mxcli exec:*)"
   "Bash(./mxcli.exe exec:*)"
+  "Bash(*baseline-approv*)"
+  "Edit(**/baseline-approvals.tsv)"
 )
 SESSION_HOOK="bash bin/session-check.sh || true"
 
@@ -403,6 +405,10 @@ PY
   printf '%s\n' "$AA" | grep -qxF "$(printf 'bin/exec.sh\ttrue')" \
     && ok "T6: Copilot autoApprove has bin/exec.sh: true" \
     || bad "T6: Copilot autoApprove missing bin/exec.sh: true"
+  # #348: approving a baseline move is the user's act — Copilot must ask, never auto-run it.
+  printf '%s\n' "$AA" | grep -qxF "$(printf '/baseline-approv/\tfalse')" \
+    && ok "T6: Copilot autoApprove has /baseline-approv/: false" \
+    || bad "T6: Copilot autoApprove missing /baseline-approv/: false"
   printf '%s\n' "$AA" | grep -q "$TOOLKIT_ROOT" \
     && bad "T6: Copilot .vscode/settings.json leaked the absolute toolkit-root path" \
     || ok "T6: Copilot .vscode/settings.json carries no absolute toolkit-root path"

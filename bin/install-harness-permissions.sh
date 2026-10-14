@@ -106,14 +106,16 @@ echo "=== copilot ==="
 require_py
 VSCODE_SETTINGS="$PROJECT_DIR/.vscode/settings.json"
 COPILOT_SIDECAR="$PROJECT_DIR/.vscode/.mxtk-autoapprove-added.json"
-# Only relative, committable entries — see the header note above for why the two absolute
+# `/baseline-approv/: false` (#348): approving a baseline move is the user's act — Copilot must
+# ask, never auto-run it. Only relative, committable entries — see the header note above for why the two absolute
 # $TOOLKIT_ROOT entries Claude gets are deliberately not mirrored here.
 COPILOT_ENTRIES_JSON='{
   "./mxcli": true,
   "mxcli": true,
   "./bin/exec.sh": true,
   "bin/exec.sh": true,
-  "/^\\.?\\/?bin\\/[^ ]+\\.sh$/": true
+  "/^\\.?\\/?bin\\/[^ ]+\\.sh$/": true,
+  "/baseline-approv/": false
 }'
 "$PY" - "$VSCODE_SETTINGS" "$COPILOT_SIDECAR" "$MODE" "$COPILOT_ENTRIES_JSON" <<'PY' || { ec=$?; [ "$ec" -gt "$RC" ] && RC=$ec; }
 import json, os, shutil, sys

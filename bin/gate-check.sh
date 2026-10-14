@@ -2545,6 +2545,37 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Baselines — did a ratchet baseline move without a person's approval? (#348)
+#
+# lint-gate.sh and conformance-check.sh record every baseline they write, and a loosening write
+# only lands against a row bin/baseline-approve.sh wrote (a person, in a terminal). A baseline
+# whose content matches neither record moved some other way — a hand edit, or a write by a
+# script that skipped the lock: FAIL. A baseline with no record at all predates the lock:
+# MANUAL, since nothing can say who moved it. The toolkit's own baseline-lock.sh reads the
+# project, whichever version the project installed. BLOCKS Stages 5 and 6 on FAIL (below); the
+# remedy, a person running `bin/baseline-approve.sh <kind> --current`, is never blocked.
+BASE_STATUS="PASS"; BASE_NOTE=""
+BASE_LOCK="$TOOLKIT_DIR/project-bin/baseline-lock.sh"
+if [ -f "$BASE_LOCK" ]; then
+  for _bk in lint conformance; do
+    _bv="$(bash "$BASE_LOCK" verify "$PROJECT_DIR" "$_bk" 2>/dev/null)"
+    _bs="$(printf '%s' "$_bv" | cut -f1)"
+    case "$_bs" in
+      NONE) continue ;;
+      FAIL|GONE) BASE_STATUS="FAIL" ;;
+      MANUAL) [ "$BASE_STATUS" = PASS ] && BASE_STATUS="MANUAL" ;;
+      PASS) ;;
+      *) [ "$BASE_STATUS" = PASS ] && BASE_STATUS="MANUAL"; _bv="$_bk	could not be verified" ;;
+    esac
+    BASE_NOTE="$BASE_NOTE${BASE_NOTE:+; }$_bk: $(printf '%s' "$_bv" | cut -f2-)"
+  done
+  [ -n "$BASE_NOTE" ] || { BASE_STATUS="PASS"; BASE_NOTE="no ratchet baseline in this project yet"; }
+else
+  BASE_STATUS="MANUAL"; BASE_NOTE="project-bin/baseline-lock.sh missing from $TOOLKIT_DIR — cannot evaluate, which is not a pass"
+fi
+printf "Baselines (human-approved?): %s — %s\n" "$BASE_STATUS" "$BASE_NOTE"
+
+# ---------------------------------------------------------------------------
 # Source sufficiency — was the source actually characterised, or did Stage 0
 # pass on nobody having looked?
 #
@@ -3265,6 +3296,15 @@ if [ -n "$REQUESTED_STAGE" ]; then
   # skills/close-the-loop.md was written to retire, and a warning shown once per key
   # (advise()'s own semantics) is too easy to have already been shown and forgotten by the time
   # a report goes un-filed again.
+  # No Stage-5/6 gate passes on a ratchet baseline that moved without a person's approval:
+  # a rise baselined away is a FAIL nobody was shown. See the Baselines block above.
+  if { [ "$REQUESTED_STAGE" = "5" ] || [ "$REQUESTED_STAGE" = "6" ]; } && [ "$BASE_STATUS" = "FAIL" ]; then
+    echo "" >&2
+    echo "Gate BLOCKED by a baseline that moved without approval: $BASE_NOTE" >&2
+    echo "Show the user the change (git log -p on the baseline file). If they accept it, THEY run" >&2
+    echo "bin/baseline-approve.sh <kind> --current in their own terminal; otherwise restore it from git." >&2
+    exit 1
+  fi
   if { [ "$REQUESTED_STAGE" = "5" ] || [ "$REQUESTED_STAGE" = "6" ]; } && [ "$DISP_STATUS" = "FAIL" ]; then
     echo "" >&2
     echo "Gate BLOCKED by report-disposition-check: $DISP_NOTE" >&2

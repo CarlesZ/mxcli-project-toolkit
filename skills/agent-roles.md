@@ -71,9 +71,10 @@ This mirrors `iterative-build-loop.md`'s gate discipline (0 CE errors + happy pa
    journey directory and nowhere else, and the never-`exec`/never-`.mpr` rule binds it exactly
    as it binds the others. Nothing fills `{{TEST_DIR}}` for you: set it to the directory the
    project's specs actually live in (`tests/e2e/` where `install-tests.sh` installed the engine;
-   check, don't assume). Journeys go to `${JOURNEY_DIR}` (default `journeys/`), never under
-   `{{TEST_DIR}}`: a test-agent that wrote them to `tests/e2e/journeys/` left the Stage-6
-   journey row owed until the project symlinked `journeys/` (#359).
+   check, don't assume). Journeys go to `journeys/` at the project root, never under
+   `{{TEST_DIR}}` and never relocated (`fixture-manifest.sh` reads only `journeys/`): a
+   test-agent that wrote them to `tests/e2e/journeys/` left the Stage-6 journey row owed until
+   the project symlinked `journeys/` (#359).
    Do not widen any other agent's tools by analogy — this one is scoped by what it produces.
 4. **Report back** which files you wrote, and flag any assumption you had to make because the project didn't document something (e.g. "assumed the demo user is X — couldn't find one specified, confirm").
 

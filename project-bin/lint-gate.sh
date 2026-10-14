@@ -441,6 +441,8 @@ if update:
         why.append("re-creates a baseline that was deleted")
     if prior == "FAIL":
         why.append("follows a baseline that moved without approval")
+    if prior == "MANUAL":
+        why.append("follows a baseline with no verifiable record (predates the lock, or came in by a merge)")
     basis = "first" if old_base is None else "tighten"
     if why:
         basis = "approved"

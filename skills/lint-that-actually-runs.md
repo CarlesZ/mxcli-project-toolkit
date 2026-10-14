@@ -160,9 +160,12 @@ regression.
 
 `gate-check.sh` prints `Baselines (human-approved?)`. It replays each recorded write against
 its saved content, so a forged record is caught too. It reports:
-- FAIL: the baseline is looser than its last recorded write with no approval. This blocks
-  Stages 5 and 6.
-- MANUAL: the baseline predates the lock, or the looser content came in through git (a merge).
+- FAIL: the baseline is looser than its last recorded write with no approval. Committed
+  records that have gone missing also FAIL.
+- MANUAL: the baseline predates the lock, or the looser content came in through a git merge.
+
+Both block Stages 5 and 6, and the instruments refuse to write until the user approves. The
+remedy for either is `baseline-approve.sh <kind> --current`, run by the user.
 
 A CRLF checkout compares equal. Commit `.claude/baseline-*` with the baseline. What the lock does not stop, an agent deliberately evading the deny rules, is listed
 in `project-bin/baseline-lock.sh`.

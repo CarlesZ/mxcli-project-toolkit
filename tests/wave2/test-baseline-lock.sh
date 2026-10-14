@@ -20,8 +20,16 @@
 #   F1  forge: hand-edit the baseline looser, then run `baseline-lock.sh record … tighten`
 #       directly → gate-check still FAIL (the record is checked against its content)
 #   X1  a CRLF checkout of a recorded baseline (Windows autocrlf) → PASS, not FAIL
-#   X2  a looser baseline that is exactly git HEAD's blob → MANUAL; the same edit uncommitted → FAIL
-#   X3  a real merge of two branches that each ratcheted a different rule down → not FAIL
+#   X2  a looser baseline, uncommitted → FAIL; committed in a one-parent commit → still FAIL
+#   X3  a real merge of two branches that each ratcheted a different rule down → MANUAL (blocks)
+#   --- #375 confirmation review ---
+#   M2  after that merge, the user's approve --current clears it → PASS
+#   H1  rm the log + snapshots, or truncate a committed row, then hand-edit → FAIL, and
+#       lint-gate refuses to re-record over it
+#   M1  a forged mid-log row: the user's approve --current supersedes it → PASS (rule 7)
+#   M3  an old approval does not cover a return to its state after a tighter write → FAIL
+#   L1  a missing snapshot: the user's approve --current re-anchors → PASS
+#   G4  a baseline that predates the lock: lint-gate refuses even a ratchet-down until approved
 #
 # Synthetic lint JSON and a stub mxcli, as in test-lint-gate-accept.sh and
 # test-conformance-baseline-scope.sh: nothing here parses tool output; the assertions are
@@ -172,7 +180,7 @@ if command -v git >/dev/null 2>&1; then
   case "$l" in *FAIL*) ok "X2 uncommitted looser edit: FAIL" ;; *) bad "X2 uncommitted looser edit not FAIL" "$l" ;; esac
   gx commit -q -am "loosen in git"
   l="$(gline "$X")"
-  case "$l" in *MANUAL*) ok "X2 the same content committed (HEAD blob): MANUAL" ;; *) bad "X2 committed content not MANUAL" "$l" ;; esac
+  case "$l" in *FAIL*) ok "X2 the same content in a one-parent commit: still FAIL" ;; *) bad "X2 a plain git commit laundered the loosening" "$l" ;; esac
   gx reset -q --hard HEAD~1
   gx checkout -q -b a; lintjson CONV009=3 SEC003=5; xgate --update-baseline >/dev/null; gx add -A; gx commit -q -m a
   gx checkout -q main; gx checkout -q -b b; lintjson CONV009=5 SEC003=2; xgate --update-baseline >/dev/null; gx add -A; gx commit -q -m b
@@ -186,10 +194,71 @@ if command -v git >/dev/null 2>&1; then
   gx add -A; gx commit -q -m merge
   [ "$(git -C "$X" rev-list --count HEAD)" -ge 4 ] || bad "X3 the merge was not built" "$(git -C "$X" log --oneline | head -5)"
   l="$(gline "$X")"
-  case "$l" in *FAIL*|"") bad "X3 a committed two-branch merge read as tampering" "${l:-<no Baselines line>}" ;; *) ok "X3 merged baselines: not FAIL ($(printf '%s' "$l" | sed 's/^Baselines (human-approved?): //' | cut -c1-6))" ;; esac
+  case "$l" in *MANUAL*) ok "X3 merged baselines: MANUAL, not FAIL" ;; *) bad "X3 a committed two-branch merge not MANUAL" "${l:-<no Baselines line>}" ;; esac
+  human_approve "$X" lint --current
+  l="$(gline "$X")"
+  case "$l" in *PASS*) ok "M2 the user's approve --current clears the merge" ;; *) bad "M2 merge MANUAL did not clear" "$l" ;; esac
+
+  echo "H1 removing or truncating committed records does not launder a loosening"
+  H="$WORK/h"; newproj "$H"; cp "$P/mxcli" "$H/mxcli"
+  hgate() { (cd "$H" && LINT_JSON="$WORK/lint.json" bash bin/lint-gate.sh "$@") 2>&1; }
+  gh() { git -C "$H" -c user.name=t -c user.email=fixture "$@" >/dev/null 2>&1; }
+  lintjson CONV009=5; hgate --update-baseline >/dev/null
+  lintjson CONV009=3; hgate --update-baseline >/dev/null
+  gh init -q; gh add -A; gh commit -q -m base
+  rm -rf "$H/.claude/baseline-writes.tsv" "$H/.claude/baseline-history"
+  printf '{\n  "counts": {"CONV009": 9}\n}\n' > "$H/.claude/lint-baseline.json"
+  l="$(gline "$H")"
+  case "$l" in *FAIL*) ok "H1 rm of the log: FAIL (committed records missing)" ;; *) bad "H1 rm of the log read as 'predates the lock'" "$l" ;; esac
+  lintjson CONV009=9; out="$(hgate --update-baseline --reason x)"; rc=$?
+  [ "$rc" -ne 0 ] && ok "H1 lint-gate refuses to re-record over it (rc $rc)" || bad "H1 lint-gate re-recorded a laundered log" "$out"
+  gh checkout -q -- .
+  "$PY" -c 'import sys;p=sys.argv[1];l=open(p).read().splitlines(True);open(p,"w").write("".join(l[:-1]))' "$H/.claude/baseline-writes.tsv"
+  printf '{\n  "counts": {"CONV009": 5}\n}\n' > "$H/.claude/lint-baseline.json"
+  l="$(gline "$H")"
+  case "$l" in *FAIL*) ok "H1 truncating the last committed row: FAIL" ;; *) bad "H1 truncation laundered CONV009 3 -> 5" "$l" ;; esac
 else
-  echo "  skip X2-X3 (no git)"
+  echo "  skip X2-X3, M2, H1 (no git)"
 fi
+
+echo "M1 M3 L1 G4 the user's approval is the remedy, and only for the state it saw"
+M="$WORK/m"; newproj "$M"; cp "$P/mxcli" "$M/mxcli"
+mgate() { (cd "$M" && LINT_JSON="$WORK/lint.json" bash bin/lint-gate.sh "$@") 2>&1; }
+ML="$M/.claude/lint-baseline.json"; MLOCK="$M/bin/baseline-lock.sh"
+lintjson CONV009=5; mgate --update-baseline >/dev/null
+lintjson CONV009=3; mgate --update-baseline >/dev/null
+printf '{\n  "counts": {"CONV009": 7}\n}\n' > "$ML"
+bash "$MLOCK" record "$M" lint "$(bash "$MLOCK" sha "$ML")" tighten >/dev/null 2>&1
+# ...and the file goes back to 3, recorded on top: the forged 7 sits mid-log, and the state the
+# user will approve is not the forged one.
+printf '{\n  "counts": {"CONV009": 3}\n}\n' > "$ML"
+bash "$MLOCK" record "$M" lint "$(bash "$MLOCK" sha "$ML")" tighten >/dev/null 2>&1
+l="$(gline "$M")"
+case "$l" in *FAIL*) ok "M1 forged mid-log row: FAIL" ;; *) bad "M1 forged mid-log row not caught" "$l" ;; esac
+human_approve "$M" lint --current
+l="$(gline "$M")"
+case "$l" in *PASS*) ok "M1 the user's approve --current supersedes it" ;; *) bad "M1 approve --current did not clear the forged row (rule 7)" "$l" ;; esac
+lintjson CONV009=8; mgate --update-baseline --reason r >/dev/null 2>&1
+human_approve "$M" lint; mgate --update-baseline --reason r >/dev/null 2>&1
+old="$(cat "$ML")"
+lintjson CONV009=6; mgate --update-baseline >/dev/null 2>&1
+printf '%s\n' "$old" > "$ML"
+l="$(gline "$M")"
+case "$l" in *FAIL*) ok "M3 returning to an old approved state after a tighter write: FAIL" ;; *) bad "M3 an expired approval still covered its old state" "$l" ;; esac
+lintjson CONV009=8; out="$(mgate --update-baseline --reason r)"; rc=$?
+[ "$rc" -ne 0 ] && ok "M3 lint-gate does not reuse the expired approval (rc $rc)" || bad "M3 lint-gate reused an old approval" "$out"
+human_approve "$M" lint --current
+rm -f "$M/.claude/baseline-history/lint/"*
+lintjson CONV009=6; mgate --update-baseline >/dev/null 2>&1
+l="$(gline "$M")"
+case "$l" in *FAIL*) ok "L1 missing snapshots: FAIL" ;; *) bad "L1 missing snapshots not reported" "$l" ;; esac
+human_approve "$M" lint --current
+l="$(gline "$M")"
+case "$l" in *PASS*) ok "L1 the user's approve --current re-anchors" ;; *) bad "L1 approve --current could not clear a missing snapshot" "$l" ;; esac
+Lg="$WORK/legacy2"; newproj "$Lg"; cp "$P/mxcli" "$Lg/mxcli"
+printf '{\n  "counts": {"CONV009": 5}\n}\n' > "$Lg/.claude/lint-baseline.json"
+lintjson CONV009=4; out="$( (cd "$Lg" && LINT_JSON="$WORK/lint.json" bash bin/lint-gate.sh --update-baseline) 2>&1)"; rc=$?
+[ "$rc" -ne 0 ] && ok "G4 unrecorded baseline: even a ratchet-down waits for the user (rc $rc)" || bad "G4 lint-gate recorded over an unverified baseline" "$out"
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"

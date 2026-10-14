@@ -409,6 +409,7 @@ lock_write() {
   fi
   [ "$PRIOR" = GONE ] && why="${why:+$why; }re-creates a baseline that was deleted"
   [ "$PRIOR" = FAIL ] && why="${why:+$why; }follows a baseline that moved without approval"
+  [ "$PRIOR" = MANUAL ] && why="${why:+$why; }follows a baseline with no verifiable record"
   if [ -z "$why" ]; then
     mv "$new" "$BASELINE"
     if [ -n "$LOCK" ]; then bash "$LOCK" record "$PROJECT_ROOT" conformance "$basis"
@@ -461,8 +462,8 @@ if [ "$WROTE_BASELINE" -eq 0 ]; then
     fi
   done <<< "$KEYED"
   # Seeding adds rows the baseline never had; it is recorded, never laundered over a hand edit.
-  if [ -n "$SEEDED" ] && [ "$PRIOR" = FAIL ]; then
-    echo "  note: $(printf '%s' "$SEEDED" | grep -c .) row(s) not seeded — the baseline moved without approval (see gate-check)" >&2
+  if [ -n "$SEEDED" ] && { [ "$PRIOR" = FAIL ] || [ "$PRIOR" = MANUAL ]; }; then
+    echo "  note: $(printf '%s' "$SEEDED" | grep -c .) row(s) not seeded — the baseline is $PRIOR in gate-check; the user runs bin/baseline-approve.sh conformance --current" >&2
     SEEDED=""
   elif [ -n "$SEEDED" ]; then
     { cat "$BASELINE"; printf '%s' "$SEEDED"; } | sed '/^$/d' | sort > "$BASELINE.tmp" \

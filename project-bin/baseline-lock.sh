@@ -14,13 +14,22 @@
 # `record` directly after a hand edit — does not launder a rise: the forged row is looser than
 # its predecessor and verify says FAIL. Only content can pass, never a claim about content.
 #
+# GIT IS THE MEMORY (#375 confirmation review). Rows git HEAD has committed must all still be in
+# the log: removing or truncating them is FAIL, not "predates the lock". A loosening is MANUAL
+# only when a merge produced it (a looser row from a merge's other parent, or merge-made baseline
+# content); a plain one-parent commit of it stays FAIL. An approval covers only the state it saw
+# when given: a later write supersedes it. The user's `approve --current` re-anchors the replay
+# at that row, so it clears every earlier FAIL or MANUAL (rule 7). The instruments refuse any
+# un-approved write unless verify says PASS, and gate-check blocks on FAIL and MANUAL alike: no
+# state but PASS passes without a person.
+#
 # What it does NOT stop, said plainly: a forged row in baseline-approvals.tsv (Claude Code denies
 # the approve command, file-tool edits and shell redirection into it — bin/install-claude-
 # permissions.sh — but an agent determined to evade those, e.g. via an interpreter, can still
-# write one); a harness with no deny rules whose agent terminal is a real TTY; deleting the whole
-# log (verify then reads "predates the lock": MANUAL, not PASS); and a loosening committed to git
-# (reported MANUAL, below, so a merge never reads as tampering). Each of those is a deliberate
-# forgery visible in git, not a flag the rule allowed.
+# write one); a harness with no deny rules whose agent terminal is a real TTY, or a TTY faked by
+# a pty wrapper; and edits to rows not yet committed (outside git, or before the commit, the log
+# is only as tamper-evident as the working tree). Each is a deliberate forgery, not a flag the
+# rule allowed.
 #
 # Covered baselines (kind -> file, relative to the project root):
 #   lint         .claude/lint-baseline.json     project-bin/lint-gate.sh
@@ -38,15 +47,16 @@
 # Usage (instruments, baseline-approve.sh and gate-check call it; a person never needs to):
 #   baseline-lock.sh file     <kind>                         print the baseline path (relative)
 #   baseline-lock.sh sha      <file>                         sha256 of the file, CR stripped
+#   baseline-lock.sh now                                     the records' timestamp (microseconds)
 #   baseline-lock.sh verify   <root> <kind>                  print STATE<TAB>note, exit 0
 #       NONE    no baseline and no record                    (a first write needs no approval)
 #       GONE    no baseline, but records exist               (re-creating it needs approval)
-#       PASS    approved, or no looser than the last verified write
-#       FAIL    looser than the last verified write with no approval, or a recorded write that
-#               loosened without one (a forged record)
-#       MANUAL  no record at all (predates the lock), or the looser content is exactly what git
-#               HEAD holds (a merge or checkout brought it in, not an uncommitted local edit)
-#   baseline-lock.sh approved <root> <kind> <sha>            exit 0 iff an approval row matches
+#       PASS    no looser than the last verified write (replayed from the latest approval)
+#       FAIL    looser than it with no approval, a recorded write that loosened without one
+#               (a forged record), a missing snapshot, or committed rows missing from the log
+#       MANUAL  no record at all (predates the lock, or the log was removed outside git), or a
+#               loosening a git merge produced. Blocks like FAIL; cleared by approve --current
+#   baseline-lock.sh approved <root> <kind> <sha>            exit 0 iff an approval newer than every write matches
 #   baseline-lock.sh record   <root> <kind> <basis>          log the baseline now on disk
 #   baseline-lock.sh propose  <root> <kind> <file> <summary> save the proposal, print the ask
 #
@@ -70,6 +80,11 @@ APPROVALS, WRITES, HISTORY = ".claude/baseline-approvals.tsv", ".claude/baseline
 
 def norm(b):
     return b.replace(b"\r", b"")
+
+def now():
+    # Microseconds: an approval and the write it covers can land in the same second, and the
+    # order between them is the whole check (live(), justified()).
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 def sha_bytes(b):
     return hashlib.sha256(norm(b)).hexdigest()
@@ -104,38 +119,89 @@ def looser(kind, prev, new):
         return [r for r in sorted(new) if new[r] > prev.get(r, 0)]
     return ["%s %s" % k for k in sorted(new) if prev.get(k) == "OK" and new[k] != "OK"]
 
-def head_blob(root, rel):
+def git(root, *a):
     try:
-        r = subprocess.run(["git", "-C", root, "show", "HEAD:./" + rel], capture_output=True, timeout=20)
+        r = subprocess.run(["git", "-C", root] + list(a), capture_output=True, timeout=30)
         return r.stdout if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
         return None
+
+_LINES = {}
+def lines_at(root, rev, rel):
+    if (rev, rel) in _LINES:
+        return _LINES[(rev, rel)]
+    b = git(root, "show", "%s:./%s" % (rev, rel))
+    _LINES[(rev, rel)] = norm(b).decode("utf-8", "replace").splitlines() if b is not None else []
+    return _LINES[(rev, rel)]
+
+def merged_in(root, line):
+    # True when `line` reached HEAD's log through a merge: present on a non-first parent of a
+    # merge commit and absent from its first parent. A row committed on the mainline is not.
+    out = git(root, "log", "--merges", "--format=%H %P", "--", WRITES) or b""
+    for m in out.decode().splitlines():
+        ps = m.split()[1:]
+        if len(ps) > 1 and line not in lines_at(root, ps[0], WRITES) \
+           and any(line in lines_at(root, p, WRITES) for p in ps[1:]):
+            return True
+    return False
+
+def blob_merged(root, rel, s, recorded):
+    # The current content is git HEAD's, and the commit that last changed it on the mainline is a
+    # merge that produced it (or took it from a side that recorded it). A single-parent commit of a
+    # loosening is not a merge: FAIL (#375 confirmation review, H2).
+    hb = git(root, "show", "HEAD:./" + rel)
+    if hb is None or sha_bytes(hb) != s:
+        return False
+    c = (git(root, "log", "-1", "--first-parent", "--format=%P", "--", rel) or b"").decode().split()
+    if len(c) < 2:
+        return False
+    sides = {sha_bytes(git(root, "show", "%s:./%s" % (p, rel)) or b"") for p in c}
+    return s not in sides or s in recorded
 
 def verify(root, kind):
     rel = FILES[kind]
     path = os.path.join(root, rel)
     w, a = rows(root, WRITES, kind), rows(root, APPROVALS, kind)
-    approved = {r[2] for r in a}
-    hw = head_blob(root, WRITES)
-    committed = set(norm(hw).decode("utf-8", "replace").splitlines()) if hw else set()
-    last, manual = None, []
-    for r in w:
+    line = lambda r: "\t".join(r)
+    def justified(i):  # a human approved exactly this write, after the write before it
+        prev = w[i - 1][0] if i else ""
+        return any(ap[2] == w[i][2] and prev <= ap[0] <= w[i][0] for ap in a)
+    k = max([i for i in range(len(w)) if justified(i)], default=None)
+    # Committed rows are a required prefix: a record git has seen cannot be deleted or edited
+    # away (#375 confirmation review, H1). Only a human approval written after them supersedes.
+    ingit = git(root, "rev-parse", "--is-inside-work-tree") is not None
+    if ingit:
+        comm = [l for l in lines_at(root, "HEAD", WRITES) if l.split("\t")[1:2] == [kind]]
+        have = {line(r) for r in w}
+        missing = [l for l in comm if l not in have]
+        anchor = line(w[k]) if k is not None else None
+        superseded = anchor is not None and (anchor not in comm or
+                     all(comm.index(m) < comm.index(anchor) for m in missing))
+        if missing and not superseded:
+            return "FAIL", ("%d committed record(s) missing from %s (first: %s) — the log was truncated or "
+                            "rewritten; restore it from git, or the user approves the current state: "
+                            "bin/baseline-approve.sh %s --current" % (len(missing), WRITES, missing[0][:40], kind))
+    start = k if k is not None else 0
+    last, manual = None, None
+    for i in range(start, len(w)):
+        r = w[i]
         snap = os.path.join(root, HISTORY, kind, r[2])
         if not os.path.isfile(snap) or sha_file(snap) != r[2]:
-            return "FAIL", "recorded write %s (%s) has no matching snapshot under %s — the record cannot be checked" % (r[2][:12], r[0], HISTORY)
+            return "FAIL", "recorded write %s (%s) has no matching snapshot under %s — the record cannot be checked; the user can re-anchor: bin/baseline-approve.sh %s --current" % (r[2][:12], r[0], HISTORY, kind)
         try:
             c = load(kind, open(snap, "rb").read())
         except ValueError:
             return "FAIL", "recorded write %s (%s) is not a readable %s baseline" % (r[2][:12], r[0], kind)
-        up = [] if last is None or r[2] in approved else looser(kind, last, c)
-        if up and "\t".join(r) in committed:
-            # Committed rows came through git: two branches that each wrote a baseline, merged.
-            manual.append("recorded write %s (%s) is looser than the row before it (%s) but is committed — "
-                          "a merge of two branches' baselines, not a local edit; review the history" % (r[2][:12], r[0], ", ".join(up[:5])))
-            up = []
-        if up:
+        up = [] if i == start or justified(i) else looser(kind, last, c)
+        via_merge = bool(ingit and line(r) in comm and merged_in(root, line(r)))
+        if up and via_merge:
+            manual = ("recorded write %s (%s) is looser than the row before it (%s) and came in through a merge "
+                      "— the user reviews it and runs: bin/baseline-approve.sh %s --current" % (r[2][:12], r[0], ", ".join(up[:5]), kind))
+        elif up:
             return "FAIL", ("recorded write %s (%s, basis %s) loosens the baseline (%s) and no approval matches it — "
                             "a record is checked against its content, not believed" % (r[2][:12], r[0], r[3] if len(r) > 3 else "?", ", ".join(up[:5])))
+        elif i == start or justified(i) or not via_merge:
+            manual = None  # a later approval or mainline write clears a merge's MANUAL (M2)
         last = c
     if not os.path.isfile(path):
         if w or a:
@@ -143,24 +209,28 @@ def verify(root, kind):
         return "NONE", "no %s baseline yet" % kind
     raw = open(path, "rb").read()
     s = sha_bytes(raw)
-    if s in approved:
-        return ("MANUAL", manual[0]) if manual else ("PASS", "%s matches a human approval" % rel)
     if last is None:
-        return "MANUAL", "%s has no write record (it predates the lock) — cannot tell who moved it; the next instrument write starts the record" % rel
+        return "MANUAL", ("%s has no write record (it predates the lock, or the log was removed) — the user "
+                          "approves it once: bin/baseline-approve.sh %s --current" % (rel, kind))
     try:
         cur = load(kind, raw)
     except ValueError:
         return "FAIL", "%s is not a readable %s baseline" % (rel, kind)
     up = looser(kind, last, cur)
-    if not up:
-        return ("MANUAL", manual[0]) if manual else ("PASS", "%s is no looser than its last recorded write" % rel)
-    hb = head_blob(root, rel)
-    if hb and sha_bytes(hb) == s:
-        return "MANUAL", ("%s is looser than its last recorded write (%s) but is exactly what git HEAD holds — "
-                          "it came through git (a merge or checkout), not a local edit; review its history, and if the "
-                          "user accepts it they run: bin/baseline-approve.sh %s --current" % (rel, ", ".join(up[:5]), kind))
-    return "FAIL", ("%s moved without approval: looser than its last recorded write (%s) — a person reviews it and runs: "
-                    "bin/baseline-approve.sh %s --current" % (rel, ", ".join(up[:5]), kind))
+    if up and ingit and blob_merged(root, rel, s, {r[2] for r in w}):
+        return "MANUAL", ("%s is looser than its last recorded write (%s) and was produced by a merge — the user "
+                          "reviews it and runs: bin/baseline-approve.sh %s --current" % (rel, ", ".join(up[:5]), kind))
+    if up:
+        return "FAIL", ("%s moved without approval: looser than its last recorded write (%s) — a person reviews it and runs: "
+                        "bin/baseline-approve.sh %s --current" % (rel, ", ".join(up[:5]), kind))
+    return ("MANUAL", manual) if manual else ("PASS", "%s is no looser than its last recorded write" % rel)
+
+def live(root, kind, s):
+    # An approval covers the state it approved when it was given: it must postdate every
+    # recorded write (#375 confirmation review, M3).
+    w = rows(root, WRITES, kind)
+    after = w[-1][0] if w else ""
+    return any(ap[2] == s and ap[0] > after for ap in rows(root, APPROVALS, kind))
 
 def record(root, kind, basis):
     path = os.path.join(root, FILES[kind])
@@ -174,7 +244,7 @@ def record(root, kind, basis):
     with open(p, "a") as f:
         if new:
             f.write("ts\tkind\tsha256\tbasis\n")
-        f.write("%s\t%s\t%s\t%s\n" % (datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), kind, s, basis))
+        f.write("%s\t%s\t%s\t%s\n" % (now(), kind, s, basis))
     for n in (kind, kind + ".summary"):
         try:
             os.remove(os.path.join(root, ".claude", "baseline-pending", n))
@@ -182,13 +252,15 @@ def record(root, kind, basis):
             pass
 
 cmd, args = sys.argv[1], sys.argv[2:]
-if cmd == "sha":
+if cmd == "now":
+    print(now())
+elif cmd == "sha":
     print(sha_file(args[0]))
 elif cmd == "verify":
     st, note = verify(args[0], args[1])
     print("%s\t%s" % (st, note))
 elif cmd == "approved":
-    sys.exit(0 if any(r[2] == args[2] for r in rows(args[0], APPROVALS, args[1])) else 1)
+    sys.exit(0 if live(args[0], args[1], args[2]) else 1)
 elif cmd == "record":
     record(args[0], args[1], args[2])
 PY
@@ -207,6 +279,8 @@ case "$cmd" in
     _file "$1" ;;
   sha)
     "$PY" -c "$_LOCK_PY" sha "$1" ;;
+  now)
+    "$PY" -c "$_LOCK_PY" now ;;
   verify|approved)
     _file "$2" >/dev/null || exit 2
     "$PY" -c "$_LOCK_PY" "$cmd" "$@" ;;
@@ -226,5 +300,5 @@ case "$cmd" in
     echo "   it is denied to you and refuses without a terminal. Then re-run the same command." >&2
     ;;
   *)
-    sed -n '2,57p' "$0"; exit 2 ;;
+    sed -n '2,65p' "$0"; exit 2 ;;
 esac

@@ -56,7 +56,7 @@ BY="$(git -C "$ROOT" config user.name 2>/dev/null || true)"; BY="${BY:-${USER:-u
 NOTE="$( [ "$CURRENT" -eq 1 ] && echo "current file" || head -1 "$SRC.summary" 2>/dev/null)"
 F="$ROOT/.claude/baseline-approvals.tsv"
 [ -f "$F" ] || printf 'ts\tkind\tsha256\tby\tnote\n' > "$F"
-printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$KIND" "$SHA" "$BY" \
+printf '%s\t%s\t%s\t%s\t%s\n' "$(bash "$LOCK" now)" "$KIND" "$SHA" "$BY" \
   "$(printf '%s' "$NOTE" | tr '\t\n' '  ')" >> "$F"
 if [ "$CURRENT" -eq 1 ]; then
   # The file on disk is now the accepted state: log it, so later writes are checked against it.

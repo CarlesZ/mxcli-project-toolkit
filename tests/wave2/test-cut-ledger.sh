@@ -104,6 +104,21 @@ check "no arguments: exit 2" "$RC" "2"
 bash "$CL" --refs "$FIX/crossing-refs.tsv" --slice "$FIX/slice.txt" -o "$TMP/x.tsv" >/dev/null 2>&1; RC=$?
 check "missing --rules: exit 2" "$RC" "2"
 
+echo "== 5b. an unreadable input is exit 2, never the UNRESOLVED exit 1 (review of #345) =="
+run --refs "$FIX/crossing-refs.tsv" --rules "$TMP/no-such-rules.tsv" -o "$TMP/x.tsv" >"$TMP/o5c" 2>&1; RC=$?
+check "a missing --rules file: exit 2" "$RC" "2"
+has "it names the unreadable input" "$(cat "$TMP/o5c")" "cannot read an input"
+run --catalog "$TMP/no-such-catalog.db" --rules "$FIX/cut-rules.tsv" -o "$TMP/x.tsv" >/dev/null 2>&1; RC=$?
+check "a nonexistent --catalog: exit 2" "$RC" "2"
+printf 'not json at all\n' >"$TMP/bad-exporter.json"
+run --refs "$FIX/crossing-refs.tsv" --rules "$FIX/cut-rules.tsv" --exporter-json "$TMP/bad-exporter.json" -o "$TMP/x.tsv" >/dev/null 2>&1; RC=$?
+check "an invalid --exporter-json: exit 2" "$RC" "2"
+# a captured refs file with one line cut short (its last field dropped)
+awk -F'\t' 'BEGIN{OFS="\t"} NR==5 {NF=4} {print}' "$FIX/crossing-refs.tsv" >"$TMP/short-line.tsv"
+run --refs "$TMP/short-line.tsv" --rules "$FIX/cut-rules.tsv" -o "$TMP/x.tsv" >"$TMP/o5d" 2>&1; RC=$?
+check "a --refs line with the wrong field count: exit 2" "$RC" "2"
+has "the refusal counts it and names the line" "$(cat "$TMP/o5d")" "1 line(s) without 5 tab-separated fields (first: line 5)"
+
 echo "== 6. --catalog reads the same edges; --dump-refs round-trips =="
 if cmp -s "$TMP/dump.tsv" "$FIX/crossing-refs.tsv"; then ok "--dump-refs writes the input back byte for byte"
 else bad "--dump-refs round-trip" "$(diff "$FIX/crossing-refs.tsv" "$TMP/dump.tsv" | head -4)"; fi

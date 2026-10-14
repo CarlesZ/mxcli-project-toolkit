@@ -54,10 +54,19 @@ def read_refs(args):
             head = f.readline().rstrip("\n").split("\t")
             if head != REFS_COLS:
                 die("cut-ledger: %s header must be %s" % (args.refs, "\t".join(REFS_COLS)))
-            for line in f:
+            bad = []
+            for n, line in enumerate(f, 2):
+                if not line.strip():
+                    continue
                 v = line.rstrip("\n").split("\t")
                 if len(v) == len(REFS_COLS):
                     rows.append(dict(zip(REFS_COLS, v)))
+                else:
+                    bad.append(n)
+            if bad:
+                # A dropped line is a crossing edge nobody decided on; refusing beats a short ledger.
+                die("cut-ledger: %s has %d line(s) without %d tab-separated fields (first: line %d)"
+                    % (args.refs, len(bad), len(REFS_COLS), bad[0]))
     return rows
 
 
@@ -215,4 +224,10 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Exit 1 means "an edge is UNRESOLVED" and nothing else: an unreadable input (missing file, a
+    # path that is not a catalog, malformed exporter JSON) is a bad argument, exit 2, never 1.
+    try:
+        rc = main()
+    except (OSError, ValueError, sqlite3.Error) as e:
+        die("cut-ledger: cannot read an input: %s: %s" % (type(e).__name__, e))
+    sys.exit(rc)

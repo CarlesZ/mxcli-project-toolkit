@@ -47,7 +47,8 @@
 # for a stub it never is — the evidence column says what the stub does not carry. Java and
 # JavaScript bodies naming another module, and references by string (deep links, REST paths).
 #
-# Exit: 0 every row has a resolution · 1 at least one UNRESOLVED row · 2 bad arguments
+# Exit: 0 every row has a resolution · 1 at least one UNRESOLVED row (and only that) · 2 bad arguments,
+#       an unreadable input (missing file, not a catalog, malformed JSON) or a malformed --refs line
 #
 # Field run: public field-service template app 9.24.2 -> its NativeNote slice into Mendix 11.13.0
 # (2026-10-12): 346 crossing refs -> 308 ledger rows, 0 UNRESOLVED, 0.15 s. A captured subset of that

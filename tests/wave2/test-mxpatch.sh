@@ -145,6 +145,87 @@ I="$(idx "$M")"; [ "$RC" -eq 0 ] && [ "$I" = "checked 27" ] && ok "exec.sh --pat
 grep -q 'The ContentsHash index matches every unit file' "$FX/after-ported-patchers-v0.26.0.out" && grep -q "MISMATCH  $WF" "$FX/after-master-patchers-v0.26.0.out" \
   && ok "[guard] captured: mxcli v0.26.0 found master's patchers stale and these clean, on this model" || bad "capture files"
 
+echo "== W: write order — every crash state is one fix hashes reports and a re-run repairs (#374 review) =="
+# FAULT_PY <bin> <model> <mode>: runs `mxpatch set Enabled=false` on the scheduled event with one
+# fault injected. kill = os._exit between the index commit and the file swap (a SIGKILL there);
+# swapfail = os.replace raises; tmpfail = the temp write raises; commitfail = the index commit raises.
+FAULT_PY='
+import sys, os, builtins
+sys.path.insert(0, sys.argv[1]); import mxpatch
+mode, mpr = sys.argv[3], os.path.join(sys.argv[2], "TestApp.mpr")
+if mode == "kill":
+    real = mxpatch._atomic_write
+    def aw(path, data):
+        if path.endswith(".mxunit"): os._exit(9)
+        return real(path, data)
+    mxpatch._atomic_write = aw
+elif mode == "swapfail":
+    def rep(a, b): raise OSError("injected: replace failed")
+    mxpatch.os.replace = rep
+elif mode == "tmpfail":
+    ropen = builtins.open
+    class F(object):
+        def __init__(s, fh): s.fh = fh
+        def __enter__(s): return s
+        def __exit__(s, *a): s.fh.close()
+        def write(s, d): s.fh.write(d[:10]); raise OSError("injected: disk full")
+    def op(path, mode_="r", *a, **k):
+        fh = ropen(path, mode_, *a, **k)
+        return F(fh) if str(path).endswith(".mxpatch-tmp") else fh
+    builtins.open = op
+elif mode == "commitfail":
+    rdb = mxpatch.Model._db
+    class C(object):
+        def __init__(s, c): s.c = c
+        def execute(s, *a): return s.c.execute(*a)
+        def commit(s): raise RuntimeError("injected: database is locked")
+        def rollback(s): return s.c.rollback()
+        def close(s): return s.c.close()
+    mxpatch.Model._db = lambda self: C(rdb(self))
+try:
+    sys.exit(mxpatch.main(["set", mpr, "--type", "ScheduledEvents$ScheduledEvent", "--name", "NightlyCleanup",
+                           "--key", "Enabled", "--value", "false", "--expect", "true", "--apply"]))
+except BaseException as e:
+    print("raised:", type(e).__name__, e); sys.exit(1)
+'
+fault() { "$PY" -c "$FAULT_PY" "$BIN" "$1" "$2" >"$WORK/fault.$2" 2>&1; }
+filesum() { "$PY" -c 'import sys,hashlib; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
+M="$WORK/w1"; model "$M"; F0="$(filesum "$M/$(upath $SE)")"
+fault "$M" kill; RC=$?
+I="$(idx "$M")"
+[ "$RC" -eq 9 ] && [ "$(filesum "$M/$(upath $SE)")" = "$F0" ] && printf '%s' "$I" | grep -q "^MISMATCH $SE " \
+  && ok "kill between index commit and swap: old unit intact, index MISMATCH (what fix hashes reports)" || bad "kill rc=$RC" "$I"
+OUT="$(MXP set "$M/TestApp.mpr" --type 'ScheduledEvents$ScheduledEvent' --name NightlyCleanup --key Enabled --value false --expect true --apply 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && [ "$(idx "$M")" = "checked 27" ] && printf '%s' "$OUT" | grep -q 'already stale' \
+  && [ "$(stored "$M" $SE)" = "V77jJhY1rHPZmUik9MNfog/UcINc2Zh95K9OVcaC1zU=" ] && ok "re-run after the kill repairs it: index clean, the captured hash" || bad "repair rc=$RC" "$OUT"$'\n'"$(idx "$M")"
+for mode in swapfail tmpfail commitfail; do
+  M="$WORK/w-$mode"; model "$M"; F0="$(filesum "$M/$(upath $SE)")"
+  fault "$M" $mode; RC=$?
+  LEFT="$(find "$M/mprcontents" -name '*.mxpatch-tmp' | wc -l | tr -d ' ')"
+  [ "$RC" -ne 0 ] && [ "$(filesum "$M/$(upath $SE)")" = "$F0" ] && [ "$(idx "$M")" = "checked 27" ] && [ "$LEFT" = 0 ] \
+    && ok "$mode: unit unchanged, index consistent, no .mxpatch-tmp left" || bad "$mode rc=$RC tmp=$LEFT" "$(cat "$WORK/fault.$mode")"$'\n'"$(idx "$M")"
+done
+
+echo "== U: no model path is a usage error, not a traceback =="
+OUT="$(MXP set --type 'Workflows$Workflow' --name Approval --key Caption --value x 2>&1)"; RC=$?
+[ "$RC" -eq 2 ] && printf '%s' "$OUT" | grep -q 'usage: mxpatch.py set <model.mpr>' && ! printf '%s' "$OUT" | grep -q Traceback \
+  && ok "set without a model: exit 2, usage" || bad "no model rc=$RC" "$OUT"
+
+echo "== D: the ported patchers refuse drift =="
+M="$WORK/d"; model "$M"
+MXP set "$M/TestApp.mpr" --type 'Workflows$Workflow' --name Approval --element ACT_Approval_Notify --key Caption --value 'Hand edited' --apply >/dev/null 2>&1
+H0="$(stored "$M" $WF)"; F0="$(filesum "$M/$(upath $WF)")"
+OUT="$(cd "$M" && "$PY" "$BIN/wf-set-call-captions.py" TestApp.mpr MyFirstModule.Approval --captions MyFirstModule.ACT_Approval_Notify='Notify' --apply 2>&1)"; RC=$?
+[ "$RC" -eq 3 ] && [ "$(filesum "$M/$(upath $WF)")" = "$F0" ] && [ "$(stored "$M" $WF)" = "$H0" ] && printf '%s' "$OUT" | grep -q "REFUSED" \
+  && ok "captions: a hand-edited caption is refused, exit 3, nothing written" || bad "captions drift rc=$RC" "$OUT"
+OUT="$(cd "$M" && "$PY" "$BIN/wf-set-call-captions.py" TestApp.mpr MyFirstModule.Approval --captions MyFirstModule.ACT_Approval_Notify='Notify' --expect-caption MyFirstModule.ACT_Approval_Notify='Hand edited' --apply 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && [ "$(idx "$M")" = "checked 27" ] && ok "captions: --expect-caption names it, applied, index clean" || bad "expect-caption rc=$RC" "$OUT"
+F0="$(filesum "$M/$(upath $WF)")"
+OUT="$(cd "$M" && "$PY" "$BIN/wf-add-path-terminators.py" TestApp.mpr MyFirstModule.Approval --expect-paths 3 --apply 2>&1)"; RC=$?
+[ "$RC" -eq 3 ] && [ "$(filesum "$M/$(upath $WF)")" = "$F0" ] && ok "terminators: --expect-paths 3 on a 2-path split: exit 3, nothing written" || bad "paths drift rc=$RC" "$OUT"
+OUT="$(cd "$M" && "$PY" "$BIN/wf-add-path-terminators.py" TestApp.mpr MyFirstModule.Approval --expect-paths 2 --apply 2>&1)"; RC=$?
+[ "$RC" -eq 0 ] && [ "$(idx "$M")" = "checked 27" ] && ok "terminators: --expect-paths 2: applied, index clean" || bad "expect-paths rc=$RC" "$OUT"
+
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"
 [ "$FAIL" -eq 0 ]

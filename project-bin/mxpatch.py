@@ -101,6 +101,20 @@ def uid_blob(unit_path):
     return uuid.UUID(name[: -len(".mxunit")]).bytes_le
 
 
+def _atomic_write(path, data):
+    """Write `data` to `path` through <path>.mxpatch-tmp + os.replace, so `path` is always
+    either the old bytes or the new ones. A failed temp write removes the temp file."""
+    tmp = path + ".mxpatch-tmp"
+    try:
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
 def _bson_str(t, key, value):
     e = value.encode("utf-8")
     return bytes([t]) + key.encode("utf-8") + b"\x00" + struct.pack("<i", len(e) + 1) + e + b"\x00"
@@ -354,9 +368,9 @@ class Model(object):
     def write_unit(self, unit, apply=False, backup=False, log=None):
         """Encode `unit.doc`, write it and set its ContentsHash, as one step.
 
-        Returns "already" (encodes to the bytes on disk), "dry-run" or "written". The index
-        row is updated inside a transaction that commits only after the file swap succeeded;
-        a failed commit puts the old bytes back, so file and index never disagree."""
+        Returns "already" (encodes to the bytes on disk), "dry-run" or "written". The new hash
+        is committed first and the file swapped in after it; see the ORDER comment below for
+        the one crash window left and why a re-run repairs it."""
         log = log or (lambda s: print(s))
         blob = enc_doc(unit.doc)                 # encode first: an encoder error touches nothing
         if blob == unit.raw:
@@ -372,29 +386,31 @@ class Model(object):
                 % (os.path.basename(unit.path), len(blob), len(unit.raw), new_hash))
             return "dry-run"
         if backup:
-            with open(unit.path + ".bak", "wb") as fh:
-                fh.write(unit.raw)
-        tmp = unit.path + ".mxpatch-tmp"
-        with open(tmp, "wb") as fh:
-            fh.write(blob)
+            _atomic_write(unit.path + ".bak", unit.raw)
+        # ORDER, chosen so that every crash state is one `mxcli fix hashes` reports and a re-run
+        # repairs (#374 review): (1) commit the NEW hash to the index, (2) swap the file in with
+        # os.replace. If (2) fails, the index row is put back to the old hash. The remaining
+        # window is a kill between (1) and (2): the index then names bytes that are not on disk
+        # yet, the file still holds the OLD unit intact. `fix hashes` reports that as MISMATCH
+        # (exec.sh --patch restores the snapshot on it), and a re-run of the same patch finds the
+        # old value and rewrites the file and the hash together (it logs "the index was already
+        # stale"), so the model converges. The reverse order would leave the NEW file with the
+        # old hash, which a re-run reads as "already applied" and never repairs.
         db = self._db()
         try:
             cur = db.execute("UPDATE Unit SET ContentsHash = ? WHERE UnitID = ?", (new_hash, unit.uid))
             if cur.rowcount != 1:
+                db.rollback()
                 raise IndexProblem("unit %s: %d index rows matched, expected 1"
                                    % (os.path.basename(unit.path), cur.rowcount))
-            os.replace(tmp, unit.path)
+            db.commit()
             try:
+                _atomic_write(unit.path, blob)
+            except BaseException:
+                # The file is untouched (os.replace is atomic): put the index back with it.
+                db.execute("UPDATE Unit SET ContentsHash = ? WHERE UnitID = ?", (stored, unit.uid))
                 db.commit()
-            except Exception:
-                with open(unit.path, "wb") as fh:
-                    fh.write(unit.raw)
                 raise
-        except Exception:
-            db.rollback()
-            if os.path.exists(tmp):
-                os.remove(tmp)
-            raise
         finally:
             db.close()
         unit.raw = blob
@@ -488,6 +504,8 @@ def main(argv):
     cmd = argv[0]
     pos, kv, flags = _opts(argv[1:])
     apply_ = "--apply" in flags
+    if not pos or not pos[0].lower().endswith((".mpr", ".mxunit")) and not os.path.isdir(pos[0]):
+        raise PatchError("usage: mxpatch.py %s <model.mpr> ... (no model path given; --help for all forms)" % cmd)
     m = Model(pos[0])
     if cmd == "find":
         hits = list(m.units(kv.get("--type"), kv.get("--name")))

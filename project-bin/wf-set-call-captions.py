@@ -35,6 +35,10 @@ alone: every --apply left a stale hash that `mx check` cannot see and Studio Pro
 --captions takes repeated Qualified.Name='Caption' pairs. --captions-file reads the
 same thing one per line, # for comments.
 
+Drift is refused: a Caption is replaced only while it is still the microflow's own name
+(what Studio Pro stamps), or the value given with --expect-caption Qualified.Name='Old'.
+Anything else -- a caption someone already edited -- exits 3 and writes nothing.
+
 FIELD RUN. An approval-workflow app replacement, 2026-09-14, mxcli v0.21.0 / Mendix 11.13.0: 36 call-microflow
 activities across one 16-station approval workflow, all still showing their raw
 ACT_ names months after the microflows themselves had been exposed as workflow
@@ -52,33 +56,33 @@ from mxpatch import get, is_doc
 CALL = "Workflows$CallMicroflowActivity"
 
 
-def set_key(doc, key, value):
-    """Replace key's value in place, preserving its position and BSON type."""
-    try:
-        mxpatch.set_value(doc, key, value)
-        return True
-    except mxpatch.PatchError:     # no Caption key, or one that is not a string
-        return False
-
-
-def walk(node, captions, state):
+def walk(node, captions, expects, state):
     if is_doc(node):
         if get(node, "$Type") == CALL:
             mf = get(node, "Microflow")
             if mf in captions:
                 want = captions[mf]
                 have = get(node, "Caption")
-                if have == want:
-                    state["already"].append(mf)
-                elif set_key(node, "Caption", want):
-                    state["changed"].append((mf, have, want))
-                else:
+                # Drift guard: the caption this tool assumes is there is the one Studio Pro (and
+                # mxcli) stamps -- the microflow's own name -- unless --expect-caption says other.
+                # A caption someone already edited by hand is refused, never overwritten.
+                expect = expects.get(mf, mf.split(".", 1)[-1])
+                try:
+                    r = mxpatch.set_value(node, "Caption", want, expect=expect)
+                except mxpatch.Drift:
+                    state["drifted"].append((mf, have, expect))
+                except mxpatch.PatchError:     # no Caption key, or one that is not a string
                     state["no_caption_field"].append(mf)
+                else:
+                    if r == "already":
+                        state["already"].append(mf)
+                    else:
+                        state["changed"].append((mf, have, want))
         for _t, _k, v in node:
-            walk(v, captions, state)
+            walk(v, captions, expects, state)
     elif isinstance(node, list):
         for v in node:
-            walk(v, captions, state)
+            walk(v, captions, expects, state)
 
 
 def parse_pair(s):
@@ -90,7 +94,7 @@ def parse_pair(s):
 
 def main():
     argv = sys.argv[1:]
-    args, captions, apply_ = [], {}, False
+    args, captions, expects, apply_ = [], {}, {}, False
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -101,6 +105,13 @@ def main():
             while i < len(argv) and not argv[i].startswith("--"):
                 mf, cap = parse_pair(argv[i])
                 captions[mf] = cap
+                i += 1
+            continue
+        elif a == "--expect-caption":
+            i += 1
+            while i < len(argv) and not argv[i].startswith("--"):
+                mf, cap = parse_pair(argv[i])
+                expects[mf] = cap
                 i += 1
             continue
         elif a == "--captions-file":
@@ -121,8 +132,8 @@ def main():
     except mxpatch.PatchError as e:
         sys.exit("wf-set-call-captions: %s" % e)
     doc = unit.doc
-    state = {"changed": [], "already": [], "no_caption_field": []}
-    walk(doc, captions, state)
+    state = {"changed": [], "already": [], "no_caption_field": [], "drifted": []}
+    walk(doc, captions, expects, state)
 
     print("captions to set: %d" % len(state["changed"]))
     seen = {}
@@ -135,6 +146,14 @@ def main():
     print("already correct: %d" % len(state["already"]))
     if state["no_caption_field"]:
         print("NO Caption field (skipped): %d" % len(state["no_caption_field"]))
+
+    if state["drifted"]:
+        print("\nREFUSED -- caption is not the one this run expects (edited since?): %d" % len(state["drifted"]))
+        for mf, have, expect in state["drifted"]:
+            print("    %s: is %r, expected %r" % (mf, have, expect))
+        print("Nothing written. If the current caption is right to replace, pass it:")
+        print("    --expect-caption %s='<current caption>'" % state["drifted"][0][0])
+        sys.exit(3)
 
     missing = set(captions) - {mf for mf, _h, _w in state["changed"]} - set(state["already"])
     if missing:

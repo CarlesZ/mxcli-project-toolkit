@@ -1294,7 +1294,8 @@ if [ "$PATCH_MODE" = "1" ]; then
                 echo "  ⚠ the index is ALREADY out of step before this patch ($(grep -E '^[0-9]+ mismatch' "$HV_BASE"))."
                 echo "    Not this patch's doing, and not held against it. Repair it on its own (rewrites the"
                 echo "    index from the files, never the files): ./mxcli fix hashes -p $MPR_BASE --repair" ;;
-        *)      echo "  ⚠ NOT RUN — the baseline could not be classified (exit $HV_RC: $(hv_first "$HV_BASE"))." ;;
+        *)      echo "  ⚠ NOT RUN — the baseline could not be classified (exit $HV_RC: $(hv_first "$HV_BASE"))."
+                rm -f "$HV_BASE"; HV_BASE="" ;;
       esac
     fi
   fi

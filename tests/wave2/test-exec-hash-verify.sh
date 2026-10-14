@@ -86,8 +86,8 @@ export FX PSFX MXB_LOG="$WORK/mxb-log"
 
 # run <label> — HV_SEQ, STUB_VER, PATCH_EXIT come from the caller's environment.
 run() {
-  rm -f "$P/.stub-n" "$P/.stub-log" "$MXB_LOG"
-  ( cd "$P" && git checkout -q -- Fixture.mpr && SKIP_BASELINE=1 SP_RESTART=0 MXTK_NO_INSTALL=1 \
+  rm -f "$P/.stub-n" "$P/.stub-log" "$MXB_LOG"; rm -rf "$WORK/tmp"; mkdir -p "$WORK/tmp"
+  ( cd "$P" && git checkout -q -- Fixture.mpr && TMPDIR="$WORK/tmp" SKIP_BASELINE=1 SP_RESTART=0 MXTK_NO_INSTALL=1 \
       MXBUILD_PATH="$WORK/mxbuild" JAVA_HOME="$WORK/jdk" ./bin/exec.sh --patch patch.sh ) >"$WORK/out.$1" 2>&1
   echo $?
 }
@@ -140,6 +140,8 @@ echo "== H: baseline unclassifiable (project not found): NOT RUN, kept on the ga
 RC=$(HV_SEQ=verify-notfound-v0.26.0 run H)
 [ "$RC" -eq 0 ] && kept && built && ok "exit 0, kept, gated" || bad "H rc=$RC" "$(tail -10 "$WORK/out.H")"
 [ "$(verifies)" -eq 1 ] && ok "no post-verify without a baseline" || bad "H: $(verifies) calls"
+LEFT="$(find "$WORK/tmp" -name 'exec-hv-*' | wc -l | tr -d ' ')"
+[ "$LEFT" = 0 ] && ok "the errored baseline's temp file is removed" || bad "H: $LEFT exec-hv temp file(s) left in TMPDIR"
 
 echo "== I: the v0.25.0 contract is the same: clean -> stale fails =="
 RC=$(HV_SEQ=verify-clean-v0.25.0,verify-stale-v0.25.0 run I)

@@ -21,7 +21,11 @@ a terminator is left alone -- so running it again costs nothing and forgetting i
 whole fan-out.
 
     bin/wf-add-path-terminators.py <unit.mxunit>                               # report only
-    bin/exec.sh --patch bin/wf-add-path-terminators.py Mod.Workflow --apply    # guarded patch
+    bin/exec.sh --patch bin/wf-add-path-terminators.py Mod.Workflow --expect-paths 9 --apply
+
+--expect-paths N is the drift guard: the dry run reports how many split paths it found; pass
+that count with --apply, and a workflow that changed in between (paths added or dropped by a
+later script) is refused with exit 3, nothing written. Under exec.sh --patch always pass it.
 
 Under exec.sh --patch the script receives the .mpr first and finds the workflow by its
 qualified name; the write gets the snapshot, the `mxcli fix hashes` verify and the mxbuild
@@ -96,8 +100,19 @@ def walk(node, state):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    apply_ = "--apply" in sys.argv[1:]
+    argv, args, expect_paths = sys.argv[1:], [], None
+    apply_ = "--apply" in argv
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--expect-paths" and i + 1 < len(argv):
+            try:
+                expect_paths = int(argv[i + 1])
+            except ValueError:
+                sys.exit("wf-add-path-terminators: --expect-paths takes a number, got %r" % argv[i + 1])
+            i += 1
+        elif not argv[i].startswith("--"):
+            args.append(argv[i])
+        i += 1
     if not args:
         sys.exit(__doc__)
     try:
@@ -112,6 +127,12 @@ def main():
     print("already terminated   : %d" % state["already"])
     print("terminators to add   : %d" % state["added"])
 
+    if expect_paths is not None and state["paths"] != expect_paths:
+        print("\nREFUSED -- %d split paths found, the run expected %d: the workflow is not the one"
+              % (state["paths"], expect_paths))
+        print("this patch was planned against. Nothing written. Re-read it (dry run), then pass the")
+        print("count you just checked.")
+        sys.exit(3)
     if state["paths"] == 0:
         print("\nNo parallel split in this unit -- nothing to do.")
         return
